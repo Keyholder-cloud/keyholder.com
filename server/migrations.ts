@@ -233,4 +233,10 @@ create table valuation_cache (
     id: '004_outbox_attachment',
     sql: `alter table outbox add column attachment jsonb;`,
   },
+  {
+    // Property values from Repliers were removed (owner, 2026-11-14): its saved key and cached answers go too.
+    id: '005_no_property_estimates',
+    sql: `delete from secrets where name like 'avm.%';
+drop table if exists valuation_cache;`,
+  },
 ];

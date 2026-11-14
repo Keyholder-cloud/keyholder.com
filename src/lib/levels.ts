@@ -7,7 +7,7 @@ export type Level = 'bronze' | 'silver' | 'gold';
 
 export const LEVELS: { id: Level; name: string; rank: 1 | 2 | 3; needs: string; gives: string }[] = [
   { id: 'bronze', name: 'Bronze', rank: 1, needs: 'The property, your tenants and their rent', gives: 'Rent tracking, receipts, expenses, a tax summary and a rough idea of what you earn' },
-  { id: 'silver', name: 'Silver', rank: 2, needs: 'What you paid and when', gives: "Your gain since buying, return vs savings and a GIC, rent vs the area, room to borrow, a monthly value check and a rough sale figure" },
+  { id: 'silver', name: 'Silver', rank: 2, needs: 'What you paid and when', gives: 'What it is worth to you (what you paid, or your own estimate, less what is owed), return vs savings and a GIC, rent vs the area, room to borrow and a rough sale figure' },
   { id: 'gold', name: 'Gold', rank: 3, needs: 'Your mortgage and purchase costs', gives: 'Mortgage tracking, full taxes with depreciation, and your gain if you sold' },
 ];
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { seedState } from '../data/seed';
-import { borrowingRoom, gainSincePurchase, rentVsMarket, roughSale, valueHistory } from './silver';
+import { borrowingRoom, gainSincePurchase, rentVsMarket, roughSale } from './silver';
 import { propertyValue } from './finance';
 
 const today = '2026-11-08';
@@ -10,13 +10,14 @@ describe('Silver insights', () => {
   const maple = s.properties.find((p) => p.id === 'p-maple')!;
   const birch = s.properties.find((p) => p.id === 'p-birch')!;
 
-  it('shows the gain since purchase and a value history from the purchase to today', () => {
-    const g = gainSincePurchase(s, maple, today)!;
-    expect(g.gain).toBe(g.value - 61_500_000);
-    const h = valueHistory(s, maple, today);
-    expect(h[0]).toEqual({ date: '2019-06-14', value: 61_500_000 });
-    expect(h[h.length - 1].date).toBe(today);
-    expect(gainSincePurchase(s, birch, today)).toBeNull(); // Bronze: no purchase price
+  it('worth is what you paid; a gain shows only once you add your own estimate', () => {
+    const m = structuredClone(s);
+    m.valuations = m.valuations.filter((v) => v.propertyId !== 'p-maple' || v.source === 'purchase');
+    expect(propertyValue(m, maple, today).value).toBe(61_500_000);
+    expect(gainSincePurchase(m, maple, today)).toBeNull();
+    m.valuations.push({ id: 'v-own', propertyId: 'p-maple', date: '2026-10-01', source: 'owner', low: 70_000_000, likely: 72_000_000, high: 74_000_000, confidence: 'low' });
+    expect(gainSincePurchase(m, maple, today)).toMatchObject({ value: 72_000_000, paid: 61_500_000, gain: 10_500_000 });
+    expect(gainSincePurchase(m, birch, today)).toBeNull(); // Bronze: no purchase price
   });
 
   it('compares rent with the area by bedrooms', () => {

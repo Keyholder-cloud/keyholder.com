@@ -106,7 +106,7 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Real bank data needs Plaid's Production access (a business review; some Canadian banks also need an OAuth
   registration that can take weeks: start early).
 
-### R16. Property values (AVM) ☑ (Repliers; Teranet / RPS once their API documentation is in hand)
+### R16. Property values (AVM): removed 2026-11-14 (see R22)
 - An estimated market value for each property, updated monthly, from an AVM provider. Recommended: Repliers
   Estimates to start (documented API, values from an address); Teranet (Home Value Range) for lender-grade
   values; RPS also estimates rents. MLS® (CREA DDF) has no sold prices and needs a REALTOR® and a CREA
@@ -167,4 +167,18 @@ Status: ☐ to do · ◐ in progress · ☑ done
 ### R21. Unit menu above the card ☑
 - The "⋯" menu on a unit row on Rentals opens on top of the page (not cut off by the card), next to its button, upward
   near the bottom of the screen, and follows the button when the page scrolls.
+
+### R22. No property estimates: worth is what you paid, or your own estimate ☑
+- Owner, 2026-11-14: "remove the property valuation as it does not appear to be accurate. The user would have to enter
+  the purchase price and how much is owed will be used to calculate asset value." Keep an optional "your own
+  estimate" box.
+- Removed: Repliers estimates (Value page, server, Connections slot; its saved key and cache are deleted), the rough
+  guess from the rent, the local price trend, nearby sales, the monthly value check and estimated value growth.
+- Worth = your latest own estimate or appraisal (optional, dated, removable) or else what you paid. Yours = worth ×
+  your ownership − what is owed (mortgage, or your figure). Without a purchase price or an estimate: "Add what you
+  paid", and the property is left out of net worth and the return until then.
+- The return is rent left over plus mortgage paid down in the last 12 months, on your money in it; still compared
+  with savings, a GIC and a stock index fund. Room to borrow and a rough sale figure use the same worth.
+- Bank data stays with Plaid. Stripe Financial Connections offers Canadian bank data only in rollout (general
+  availability planned for Q4 2026); revisit once Stripe confirms transaction history for Canadian banks.
 

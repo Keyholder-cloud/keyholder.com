@@ -35,8 +35,6 @@ const Env = z.object({
   KEYS_SECRET: z.string().min(16).optional(),
   /** Tests only: a stand-in for Plaid's API. */
   PLAID_BASE_URL: z.string().url().optional(),
-  /** Tests only: a stand-in for Repliers' API. */
-  REPLIERS_BASE_URL: z.string().url().optional(),
   BOC_BASE_URL: z.string().url().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
@@ -73,7 +71,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     google: e.GOOGLE_CLIENT_ID && e.GOOGLE_CLIENT_SECRET ? { clientId: e.GOOGLE_CLIENT_ID, clientSecret: e.GOOGLE_CLIENT_SECRET } : undefined,
     keysSecret: e.KEYS_SECRET,
     plaidBaseUrl: production ? undefined : e.PLAID_BASE_URL,
-    repliersBaseUrl: production ? undefined : e.REPLIERS_BASE_URL,
     bocBaseUrl: production ? undefined : e.BOC_BASE_URL,
     keysEnv: Object.fromEntries(KEY_ENV.map((k) => [k, env[k]])) as Record<string, string | undefined>,
     worker: e.WORKER,

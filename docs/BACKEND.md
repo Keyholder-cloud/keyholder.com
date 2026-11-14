@@ -58,7 +58,7 @@ Other hosts: the `Dockerfile` builds one container; give it `DATABASE_URL`, or a
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | — | Turns on "Continue with Google". Redirect URI: `APP_URL/api/auth/google/callback`. |
 | `KEYS_SECRET` | — (Render generates one) | Locks the API keys saved on the dashboard (Support → Connections), AES-256-GCM. Without it, keys can only be set here in Render. Never change it once keys are saved. |
 | `GOOGLE_PLACES_API_KEY` | — | Address suggestions when adding a property (Google Places API (New)). |
-| `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV`, `AVM_PROVIDER`, `AVM_API_KEY` | — | Card payments, bank data and property values (being built). Can be set here or on the Connections page. |
+| `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV` | — | Card payments (being built) and bank data. Can be set here or on the Connections page. |
 | `WORKER` | `inline` | `inline`: email sender and daily jobs run in the web service. `off`: run `npm run worker` separately. |
 | `DAILY_HOUR` | `9` | Hour (server time zone, `TZ`) for automatic reminders and the daily summary email. |
 | `SESSION_DAYS` | `30` | Sign-in lasts this many days (renewed while used). |
@@ -100,8 +100,8 @@ failed (shown under System health). Test and sample addresses (`example.com`, `.
   one short email lists what needs them.
 - Welcome / confirm email, password reset, support request received, support replies, team invitations.
 
-**API keys (Connections).** Google sign-in, email (Resend or Postmark), address lookup (Google Places), Stripe, Plaid and
-property-value (AVM) keys can be set in Render or, by the
+**API keys (Connections).** Google sign-in, email (Resend or Postmark), address lookup (Google Places), Stripe and Plaid
+keys can be set in Render or, by the
 super user, on Support → Connections. Keys saved there are encrypted with `KEYS_SECRET`, shown only as their last 4
 characters, need the super user's password to change, are logged in the audit log, and take over from Render's (removing
 one goes back to Render's). Each service has a Test button that checks the keys with the service (`server/keys.ts`).
@@ -134,8 +134,6 @@ All under `/api`, JSON. Changing requests need `X-Keyholder: 1`. Errors are `{ "
 | `POST /bank/link-token` · `POST /bank/exchange` | landlord | Open Plaid's bank sign-in · keep the connection (token encrypted) and read the first transactions |
 | `POST /bank/sync` · `DELETE /bank/:id` | landlord | "Check now" (reads Plaid's copy) · disconnect (removed at Plaid too) |
 | `POST /plaid/webhook` | Plaid (signed) | New transactions: read right away. The signature (ES256 JWT over the body) is checked. |
-| `POST /valuation` | landlord | Repliers' value for a home: address, postal code, bedrooms, bathrooms, square feet, MLS property type and style (kept 30 days per home) |
-| `GET /valuation/options` | landlord | The property types and styles the MLS board accepts (Repliers aggregates; a day at a time) |
 | `POST /forms/:formId/pdf` | landlord | Ontario's official LTB form (N4, N1, N2, N5, N12, N11) filled with the given field values, as a PDF |
 | `POST /notices/:id/email` | landlord | A served notice emailed to the tenants who agreed to email notices, the official form attached |
 | `GET /address/suggest?q=` · `GET /address/details?id=` | signed in | Canadian address suggestions · street, city, province, postal code, position (Google Places, 60 a minute) |
@@ -160,7 +158,7 @@ Migrations are in `server/migrations.ts` and run at start-up (each once, in a tr
 `users`, `sessions`, `auth_tokens`, `accounts`, `account_state` (+ `account_state_history`),
 `message_deliveries`, `outbox`, `audit_log`, `support_tickets`, `announcements`, `data_requests`,
 `settings`, `system_errors`, `job_runs`, `promotions`, `secrets` (encrypted API keys), `bank_items` (Plaid
-connections, access tokens encrypted), `valuation_cache` (AVM answers, 30 days). Settings include
+connections, access tokens encrypted). Settings include
 `benchmarks` (savings and stock index fund rates, set by the super user) and `benchmarks.gic` (the Bank of
 Canada's 5-year GIC rate, read daily by the worker from www.bankofcanada.ca/valet, series V80691341). The outbox
 has an `attachment` column: an official form to attach (which form and its values; the PDF is made when the email is

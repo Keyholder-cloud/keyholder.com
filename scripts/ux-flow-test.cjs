@@ -129,8 +129,10 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if (await pg.locator('#sv-price').count()) { await pg.fill('#sv-price', '650000'); await pg.fill('#sv-date', '2020-05-01'); await pg.fill('#sv-owed', '400000'); await pg.locator('.drawer-foot >> text=Save').click(); await pg.waitForTimeout(300); await pg.keyboard.press('Escape'); return 'Silver form · ' + next.trim(); }
       return 'Opened: ' + (await pg.evaluate(() => location.hash)) + ' · ' + next.trim();
     });
-    await step(tag, 'A12 Value tab shows Silver insights', async () => {
-      const id = (await state(pg)).properties[0].id; await go(pg, `rent/property/${id}/value`); await pg.waitForSelector('text=Room to borrow'); await pg.waitForSelector('.gain-line');
+    await step(tag, 'A12 Value tab: worth is what you paid (no estimates), less what is owed; Silver insights', async () => {
+      const id = (await state(pg)).properties[0].id; await go(pg, `rent/property/${id}/value`);
+      await pg.waitForSelector('#worth >> text=/What you paid in \\d{4}/'); await pg.waitForSelector('text=Room to borrow');
+      if (await pg.locator('text=/Local price trend|Nearby sales|Worth about|monthly value check|Repliers/').count()) throw new Error('an estimate is still shown');
     });
     await step(tag, 'A13 Mortgage tab → add mortgage (Gold) with an extra payment', async () => {
       const id = (await state(pg)).properties[0].id; await go(pg, `rent/property/${id}/mortgage`);

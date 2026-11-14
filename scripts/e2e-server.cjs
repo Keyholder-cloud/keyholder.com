@@ -24,14 +24,14 @@ const step = async (tag, name, fn) => {
 };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ---------------- Stand-ins for Plaid and Repliers (the real ones are not reached from tests) ----------------
+// ---------------- Stand-ins for Plaid and the Bank of Canada (the real ones are not reached from tests) ----------------
 const http = require('node:http');
 const crypto = require('node:crypto');
 const MOCK_PORT = PORT + 1;
 const MOCK = `http://localhost:${MOCK_PORT}`;
 const plaidKey = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
 const plaidJwk = plaidKey.publicKey.export({ format: 'jwk' });
-const mock = { calls: [], items: new Map(), next: new Map(), n: 0, estimatesStatus: 200 };
+const mock = { calls: [], items: new Map(), next: new Map(), n: 0 };
 const isoToday = () => new Date().toISOString().slice(0, 10);
 const mockServer = http.createServer((req, res) => {
   let raw = ''; req.on('data', (c) => { raw += c; });
@@ -51,17 +51,6 @@ const mockServer = http.createServer((req, res) => {
     } else if (path === '/item/remove') out = { request_id: 'r' };
     else if (path === '/webhook_verification_key/get') out = { key: { ...plaidJwk, alg: 'ES256', kid: b.key_id, use: 'sig' } };
     else if (path === '/institutions/get') out = { institutions: [] };
-    // Repliers, as its docs describe it: the MLS board's own types and styles, and estimates that need them.
-    // The Bank of Canada's weekly 5-year GIC rate (Valet API).
-    else if (path === '/valet/observations/V80691341/json?recent=1') out = { seriesDetail: {}, observations: [{ d: '2026-11-11', V80691341: { v: '2.85' } }] };
-    else if (path.startsWith('/listings?')) out = { aggregates: { details: { propertyType: { Detached: 900, 'Semi-Detached': 300 }, style: { '2-Storey': 500, Bungalow: 400 } }, boardId: { 12: 1500 } } };
-    else if (path === '/estimates') {
-      const missing = [...['city', 'streetName', 'streetNumber', 'zip'].filter((k) => !b.address?.[k]).map((k) => `address.${k}`),
-        ...['numBathrooms', 'numBedrooms', 'propertyType', 'sqft', 'style'].filter((k) => b.details?.[k] === undefined).map((k) => `details.${k}`)];
-      const status = mock.estimatesStatus !== 200 ? mock.estimatesStatus : missing.length ? 400 : 200;
-      if (status !== 200) { res.writeHead(status, { 'content-type': 'application/json' }); res.end(status === 400 ? JSON.stringify([missing.map((param) => ({ param, msg: 'is required' }))]) : ''); return; }
-      out = { estimateId: 1, estimate: 905000, estimateHigh: 960000, estimateLow: 860000, confidence: 0.086, payload: b };
-    }
     else { res.writeHead(404, { 'content-type': 'application/json' }); res.end('{}'); return; }
     res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(out));
   });
@@ -118,7 +107,7 @@ function watch(pg, errors, label) {
   rmSync(DATA, { recursive: true, force: true });
   await new Promise((r) => mockServer.listen(MOCK_PORT, r));
   const server = spawn(process.execPath, ['server-dist/index.mjs'], {
-    env: { ...process.env, PORT: String(PORT), PGLITE_DIR: DATA, LOG_LEVEL: 'warn', ADMIN_EMAIL: ADMIN.email, ADMIN_PASSWORD: ADMIN.password, KEYS_SECRET: 'e2e-keys-secret-0123456789abcdef', PLAID_BASE_URL: MOCK, REPLIERS_BASE_URL: MOCK, BOC_BASE_URL: MOCK, DEV_TOOLS: 'on', NODE_ENV: 'development', APP_URL: `http://localhost:${PORT}` },
+    env: { ...process.env, PORT: String(PORT), PGLITE_DIR: DATA, LOG_LEVEL: 'warn', ADMIN_EMAIL: ADMIN.email, ADMIN_PASSWORD: ADMIN.password, KEYS_SECRET: 'e2e-keys-secret-0123456789abcdef', PLAID_BASE_URL: MOCK, BOC_BASE_URL: MOCK, DEV_TOOLS: 'on', NODE_ENV: 'development', APP_URL: `http://localhost:${PORT}` },
     stdio: ['ignore', 'inherit', 'inherit'],
   });
   let b;
@@ -433,18 +422,17 @@ function watch(pg, errors, label) {
         if (await pg.locator('.addr-list').count()) throw new Error('suggestions shown');
         await pg.locator('.drawer >> text=Cancel').click();
       });
-      await step(tag, 'E27 Super user saves the Plaid and Repliers keys on Connections (Test works): bank connections and property values turn on', async () => {
-        const on = async () => { const c = (await (await fetch(`${BASE}api/session`)).json()).config; return c.banks && c.avm; };
+      await step(tag, 'E27 Super user saves the Plaid keys on Connections (Test works): bank connections turn on; there is no property values slot', async () => {
+        const on = async () => { const c = (await (await fetch(`${BASE}api/session`)).json()).config; return c.banks; };
         if (!(await on())) {
           await go(ad, 'support/connections'); await ad.waitForSelector('#conn-plaid');
           await ad.fill('#key-plaid-clientId', 'e2e-plaid-client'); await ad.fill('#key-plaid-secret', 'e2e-plaid-secret-123'); await ad.selectOption('#key-plaid-env', 'sandbox');
-          await ad.selectOption('#key-avm-provider', 'repliers'); await ad.fill('#key-avm-apiKey', 'e2e-repliers-key-8888');
           await ad.fill('#conn-password', ADMIN.password); await ad.locator('.sp-conn-save .btn.primary').click();
           await ad.waitForSelector('#conn-plaid >> text=Keys saved');
         } else { await go(ad, 'support/connections'); await ad.waitForSelector('#conn-plaid >> text=Keys saved'); }
         await ad.locator('#conn-plaid button', { hasText: /^Test$/ }).click(); await ad.waitForSelector('#conn-plaid >> text=Plaid accepts these keys');
-        await ad.locator('#conn-avm button', { hasText: /^Test$/ }).click(); await ad.waitForSelector('#conn-avm >> text=Repliers Estimates works');
-        await until(on, 5000, 'banks and values on');
+        if (await ad.locator('#conn-avm').count()) throw new Error('a property values slot is still listed');
+        await until(on, 5000, 'banks on');
       });
       await step(tag, 'E28 The landlord connects a bank in Plaid\'s window: the bank shows, its deposit and bill arrive and are looked at', async () => {
         // E12's password reset signed this browser out (a reset ends every other sign-in): sign in again.
@@ -467,29 +455,23 @@ function watch(pg, errors, label) {
         await until(async () => (await api(pg, '/api/state')).body.data.txns.some((t) => t.id === `pl-${item}-t9`), 6000, 'the new transaction');
         if (mock.calls.some((c) => c.path.includes('refresh'))) throw new Error('asked the bank to refresh');
       });
-      await step(tag, 'E30 No purchase price needed: the landlord adds the home\'s details on the Value page and Repliers\' value shows (a refusal is explained, Try again works); kept 30 days', async () => {
+      await step(tag, 'E30 Worth is what you paid, less what is owed; your own estimate replaces what you paid; Keyholder estimates nothing', async () => {
         const prop = (await api(pg, '/api/state')).body.data.properties.find((x) => x.nickname === 'Oak house');
-        if (prop.purchasePrice) throw new Error('this check needs a property without a purchase price');
-        await pg.reload(); // values were turned on (E27) after this page opened
-        if (!(await api(pg, '/api/session')).body.user) await signIn(pg, email, password);
-        await go(pg, `rent/property/${prop.id}/value`); await pg.waitForSelector('#home-facts >> text=Get this home\'s value from Repliers');
-        if (await pg.locator('text=Sample AVM').count()) throw new Error('the placeholder still shows');
-        await pg.waitForSelector('#hf-type option[value="Detached"]', { state: 'attached' });
-        const sqft = tag === 'phone' ? 1650 : 1600; // each run its own home (the server keeps each home's answer 30 days)
-        await pg.fill('#hf-postal', 'm5v 1a1'); await pg.fill('#hf-sqft', String(sqft)); await pg.fill('#hf-beds', '3'); await pg.fill('#hf-baths', '2');
-        await pg.selectOption('#hf-type', 'Detached'); await pg.selectOption('#hf-style', '2-Storey');
-        mock.estimatesStatus = 403; // the Estimates add-on is off at Repliers: the page says so
-        await pg.click('#hf-save'); await pg.waitForSelector('#home-value >> text=/Estimates add-on is not on/');
-        mock.estimatesStatus = 200;
-        await pg.locator('#home-value >> text=Try again').click();
-        await pg.waitForSelector('#home-value >> text=Repliers Estimates'); await pg.waitForSelector('#home-value >> text=$905k');
-        const sent = mock.calls.filter((c) => c.path === '/estimates').pop().body;
-        if (sent.address.zip !== 'M5V 1A1' || sent.details.sqft !== sqft || sent.details.style !== '2-Storey' || sent.address.streetName !== 'Oak') throw new Error('sent ' + JSON.stringify(sent));
-        await until(async () => (await api(pg, '/api/state')).body.data.valuations.some((v) => v.source === 'avm' && v.likely === 90500000 && v.errorPct === 8.6), 10000, 'the value saved to the account');
-        await pg.waitForSelector('.pcard-source >> text=Repliers Estimates');
-        const n = mock.calls.filter((c) => c.path === '/estimates').length;
-        await pg.reload(); await pg.waitForSelector('#home-value'); await wait(800);
-        if (mock.calls.filter((c) => c.path === '/estimates').length !== n) throw new Error('asked Repliers again within 30 days');
+        await pg.reload(); if (!(await api(pg, '/api/session')).body.user) await signIn(pg, email, password);
+        await go(pg, `rent/property/${prop.id}/value`);
+        if (!prop.purchasePrice) {
+          await pg.waitForSelector('#worth >> text=Add what you paid'); await pg.click('#add-paid');
+          await pg.fill('#sv-price', '500000'); await pg.fill('#sv-date', '2020-05-01'); await pg.fill('#sv-owed', '300000');
+          await pg.locator('.drawer-foot .btn.primary').click();
+        }
+        await pg.waitForSelector('#worth >> text=$500,000'); await pg.waitForSelector('#worth >> text=What you paid in 2020');
+        await pg.waitForSelector('#worth .figure.in >> text=$200,000');
+        if (await pg.locator('text=/Repliers|Sample AVM|price trend|Nearby sales|Worth about/').count()) throw new Error('an estimate is still shown');
+        // Your own estimate (an appraisal) is used instead.
+        await pg.click('#add-own'); await pg.fill('#oe-l', '560000'); await pg.click('#oe-save');
+        await pg.waitForSelector('#worth >> text=$560,000'); await pg.waitForSelector('#worth .figure.in >> text=$260,000');
+        await pg.waitForSelector('#worth >> text=/up \\$60,000/');
+        await until(async () => (await api(pg, '/api/state')).body.data.valuations.some((v) => v.source === 'owner' && v.likely === 56000000), 6000, 'the estimate saved');
       });
       await step(tag, 'E31 Disconnect removes the bank at Plaid (no more billing) and from Settings', async () => {
         const removes = mock.calls.filter((c) => c.path === '/item/remove').length;

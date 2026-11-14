@@ -1,9 +1,9 @@
 import type {
-  AppState, Cents, Comparable, Expense, ISODate, Lease, Mortgage, MortgageFrequency, Payment, Period,
+  AppState, Cents, Expense, ISODate, Lease, Mortgage, MortgageFrequency, Payment, Period,
   Property, Unit, Valuation,
 } from '../data/types';
-import { addDays, addMonths, daysBetween, dueDate, periodOf, periodRange, yearsBetween } from './dates';
-import { CATEGORIES, CCA_CLASSES, benchmarks, regionData } from './jurisdiction';
+import { addDays, addMonths, daysBetween, dueDate, fmtDate, periodOf, periodRange } from './dates';
+import { CATEGORIES, CCA_CLASSES, benchmarks } from './jurisdiction';
 import { hasGold } from './levels';
 
 // =====================================================================================
@@ -297,111 +297,37 @@ export function picture(state: AppState, from: ISODate, to: ISODate, opts: { pro
 }
 
 // =====================================================================================
-// Valuation (Silver) — never a falsely precise number (VA-3)
+// Property value (owner, 2026-11-14: "remove the property valuation as it does not appear to be accurate").
+// Keyholder does not estimate home values. The value is the landlord's own latest estimate or appraisal, or else
+// what they paid. What is owed comes from the mortgage (or the landlord's rough figure). Yours = value × share − owed.
 // =====================================================================================
 
-/** Estimate value from the purchase price and a regional price index (open data). */
-export function indexEstimate(prop: Property, today: ISODate): Omit<Valuation, 'id' | 'propertyId'> | null {
-  if (!prop.purchasePrice || !prop.purchaseDate) return null;
-  const r = regionData(prop.province, prop.city);
-  const h = Math.max(0, yearsBetween(prop.purchaseDate, today));
-  // Most recent year at the 1-year rate, years 2–5 at the 5-year rate, older years at the 10-year rate.
-  const g =
-    Math.pow(1 + r.priceGrowth.y1 / 100, Math.min(h, 1)) *
-    Math.pow(1 + r.priceGrowth.y5 / 100, clamp(h - 1, 0, 4)) *
-    Math.pow(1 + r.priceGrowth.y10 / 100, Math.max(h - 5, 0));
-  const likely = Math.round(prop.purchasePrice * g);
-  const spread = r.fallback ? 0.12 : 0.08;
-  return {
-    date: today, source: 'index', likely,
-    low: Math.round(likely * (1 - spread)), high: Math.round(likely * (1 + spread)),
-    confidence: r.fallback ? 'low' : 'medium',
-    note: `${r.priceGrowth.source}${r.fallback ? ' (national fallback — no city data)' : ''}`,
-  };
-}
-
-/** Estimate from owner-entered comparable sales, adjusted for similarity. */
-export function comparablesEstimate(comps: Comparable[], today: ISODate): Omit<Valuation, 'id' | 'propertyId'> | null {
-  const recent = comps.filter((c) => daysBetween(c.saleDate, today) <= 365);
-  if (recent.length === 0) return null;
-  const adjusted = recent.map((c) => Math.round(c.price * (c.similarity === 'less' ? 1.05 : c.similarity === 'more' ? 0.95 : 1))).sort((a, b) => a - b);
-  const mid = Math.floor(adjusted.length / 2);
-  const likely = adjusted.length % 2 ? adjusted[mid] : Math.round((adjusted[mid - 1] + adjusted[mid]) / 2);
-  const low = Math.min(adjusted[0], Math.round(likely * 0.95));
-  const high = Math.max(adjusted[adjusted.length - 1], Math.round(likely * 1.05));
-  return {
-    date: today, source: 'comparables', low, likely, high,
-    confidence: recent.length >= 5 ? 'high' : recent.length >= 3 ? 'medium' : 'low',
-    note: `${recent.length} sale${recent.length === 1 ? '' : 's'} in the last 12 months`,
-  };
-}
-
-const SOURCE_WEIGHT: Record<Valuation['source'], number> = { avm: 5, comparables: 4, index: 3, owner: 2, assessment: 1, purchase: 1 };
-const CONF_WEIGHT = { low: 0.5, medium: 1, high: 1.5 } as const;
-
-/** Blend the latest valuation from each source (within 18 months) into one range. */
-export function blendedValue(vals: Valuation[], today: ISODate): { low: Cents; likely: Cents; high: Cents; confidence: 'low' | 'medium' | 'high'; sources: Valuation[] } | null {
-  const latest = new Map<string, Valuation>();
-  for (const v of [...vals].sort((a, b) => a.date.localeCompare(b.date))) {
-    if (daysBetween(v.date, today) > 548 && v.source !== 'purchase') continue;
-    latest.set(v.source, v);
-  }
-  // A purchase price only counts as a valuation for the first year.
-  const p = latest.get('purchase');
-  if (p && daysBetween(p.date, today) > 365 && latest.size > 1) latest.delete('purchase');
-  const sources = [...latest.values()];
-  if (sources.length === 0) return null;
-  let w = 0, low = 0, likely = 0, high = 0;
-  for (const v of sources) {
-    const wt = SOURCE_WEIGHT[v.source] * CONF_WEIGHT[v.confidence];
-    w += wt; low += v.low * wt; likely += v.likely * wt; high += v.high * wt;
-  }
-  const independent = sources.filter((s) => s.source !== 'purchase').length;
-  return {
-    low: Math.round(low / w), likely: Math.round(likely / w), high: Math.round(high / w),
-    confidence: independent >= 3 ? 'high' : independent >= 2 ? 'medium' : 'low',
-    sources,
-  };
-}
-
-// =====================================================================================
-// Worth-It reading (FP-3) — total return on the owner's equity, rental share only (PS-8)
-// =====================================================================================
-
-export type ValueBasis = 'valuation' | 'purchase' | 'rent';
-
-/**
- * Value to use for a property, best source first: recorded valuations, then the purchase price grown by
- * the local price trend, then (Bronze) an estimate from the rent using the local rent-to-price ratio.
- * Rent-based estimates are already the rented part only.
- */
-/**
- * The value shown for a property. With a connected provider (Repliers), its estimate for the whole home, once the
- * landlord has added the home's details (no purchase price needed). Without one: the purchase price grown by the
- * local price trend, or (no purchase price) a rough figure from the rent and the local rent-to-price ratio.
- */
+export type ValueBasis = 'owner' | 'purchase' | 'none';
 export interface ValueInfo { value: Cents; basis: ValueBasis; source: string; asOf: ISODate }
 
-export function propertyValue(state: AppState, prop: Property, today: ISODate): ValueInfo {
-  const vals = state.valuations.filter((v) => v.propertyId === prop.id);
-  // The connected AVM provider's estimate (refreshed monthly) is the value, when there is a recent one.
-  const avm = latestAvm(state, prop.id, today);
-  if (avm) return { value: avm.likely, basis: 'valuation', source: `${avm.note || 'Automated valuation'} · ${avm.date}`, asOf: avm.date };
-  const idx = indexEstimate(prop, today);
-  const own = vals.filter((v) => v.source !== 'purchase').sort((a, b) => b.date.localeCompare(a.date));
-  if (own.length) {
-    const blend = blendedValue([...vals, ...(idx ? [{ ...idx, id: 'idx', propertyId: prop.id }] : [])], today);
-    if (blend) return { value: blend.likely, basis: 'valuation', source: `Automated valuation blended with ${own.length === 1 ? 'your estimate' : 'your estimates and nearby sales'}`, asOf: today };
+/** The landlord's own latest estimate or appraisal for a property (on or before a date). */
+export function ownEstimate(state: AppState, propertyId: string, asOf?: ISODate): Valuation | undefined {
+  let best: Valuation | undefined;
+  for (const v of state.valuations) {
+    if (v.propertyId !== propertyId || (v.source !== 'owner' && v.source !== 'assessment') || (asOf && v.date > asOf)) continue;
+    if (!best || v.date >= best.date) best = v;
   }
-  if (idx) return { value: idx.likely, basis: 'purchase', source: 'Estimate from what you paid and the local price trend', asOf: today };
-  return { value: rentBasedValue(state, prop), basis: 'rent', source: 'Rough estimate from the rent, not an appraisal', asOf: today };
+  return best;
 }
 
-/** The provider's latest estimate for a property (the last one saved wins on the same day), if under 60 days old. */
-export function latestAvm(state: AppState, propertyId: string, today: ISODate) {
-  let best: AppState['valuations'][number] | undefined;
-  for (const v of state.valuations) if (v.propertyId === propertyId && v.source === 'avm' && daysBetween(v.date, today) <= 60 && (!best || v.date >= best.date)) best = v;
-  return best;
+/** The value used everywhere: your own latest estimate or appraisal, else what you paid. */
+export function propertyValue(state: AppState, prop: Property, today: ISODate): ValueInfo {
+  const own = ownEstimate(state, prop.id, today);
+  if (own) return { value: own.likely, basis: 'owner', source: `${own.source === 'assessment' ? 'Your appraisal' : 'Your estimate'}, ${fmtDate(own.date)}`, asOf: own.date };
+  if (prop.purchasePrice) return { value: prop.purchasePrice, basis: 'purchase', source: `What you paid${prop.purchaseDate ? ` in ${prop.purchaseDate.slice(0, 4)}` : ''}`, asOf: prop.purchaseDate ?? today };
+  return { value: 0, basis: 'none', source: 'Add what you paid', asOf: today };
+}
+
+/** The value on a past date: your estimate made by then, else what you paid (once bought). */
+function valueAt(state: AppState, prop: Property, date: ISODate): Cents {
+  const own = ownEstimate(state, prop.id, date);
+  if (own) return own.likely;
+  return prop.purchasePrice && (!prop.purchaseDate || prop.purchaseDate <= date) ? prop.purchasePrice : 0;
 }
 
 // =====================================================================================
@@ -422,22 +348,24 @@ export function portfolio(state: AppState, today: ISODate) {
   const rows: PortfolioRow[] = state.properties.filter((p) => !p.archived).map((p) => {
     const own = p.ownershipPct / 100;
     const vi = propertyValue(state, p, today);
-    // A rent-based value covers only the rented part; scale up to the whole property for net worth.
-    const whole = vi.basis === 'rent' && p.rentalSharePct > 0 ? Math.round(vi.value / (p.rentalSharePct / 100)) : vi.value;
     const o = owedAt(state, p, today);
     const w = worthIt(state, today, { propertyId: p.id });
-    return { property: p, value: Math.round(whole * own), owed: Math.round(o.owed * own), yours: Math.round((whole - o.owed) * own), earned: w.total, returnPct: w.returnPct, valueInfo: { ...vi, value: whole }, owedKnown: o.known };
+    return { property: p, value: Math.round(vi.value * own), owed: Math.round(o.owed * own), yours: Math.round((vi.value - o.owed) * own), earned: w.total, returnPct: w.returnPct, valueInfo: vi, owedKnown: o.known };
   }).sort((a, b) => b.value - a.value);
-  // Net worth only counts properties whose mortgage is known (or paid off); others are listed, not guessed.
-  const counted = rows.filter((r) => r.owedKnown);
+  // Net worth only counts properties with a value and a known mortgage (or paid off); others are listed, not guessed.
+  const counted = rows.filter((r) => r.owedKnown && r.valueInfo.basis !== 'none');
   const total = (k: 'value' | 'owed' | 'yours') => counted.reduce((a, r) => a + r[k], 0);
-  return { rows, value: total('value'), owed: total('owed'), yours: total('yours'), estimates: rows.filter((r) => r.valueInfo.basis !== 'valuation').length, notCounted: rows.filter((r) => !r.owedKnown).map((r) => r.property) };
+  return {
+    rows, value: total('value'), owed: total('owed'), yours: total('yours'),
+    noValue: rows.filter((r) => r.valueInfo.basis === 'none').map((r) => r.property),
+    notCounted: rows.filter((r) => !r.owedKnown && r.valueInfo.basis !== 'none').map((r) => r.property),
+  };
 }
 
 /**
- * Net worth over time: one point at each year end since the first purchase, plus today.
- * Uses real data (purchase prices, mortgage balances from the amortization schedule); only value is estimated.
- * A property joins the line once both its value and its mortgage are known at that date.
+ * Net worth over time: one point at each year end since the first purchase, plus today. Values are what you paid,
+ * or your own estimate from that time; mortgage balances come from the amortization schedule. A property joins the
+ * line once both are known at that date.
  */
 export function netWorthHistory(state: AppState, today: ISODate): { date: ISODate; yours: Cents; value: Cents; owed: Cents }[] {
   const props = state.properties.filter((p) => !p.archived && p.purchaseDate && p.purchasePrice);
@@ -453,76 +381,63 @@ export function netWorthHistory(state: AppState, today: ISODate): { date: ISODat
       const o = owedAt(state, p, d, today);
       if (!o.known && d !== today) continue;
       const own = p.ownershipPct / 100;
-      const v = d === today ? propertyValue(state, p, today).value : indexEstimate(p, d)?.likely ?? p.purchasePrice!;
-      value += Math.round(v * own); owed += Math.round(o.owed * own);
+      value += Math.round(valueAt(state, p, d) * own); owed += Math.round(o.owed * own);
     }
     return { date: d, value, owed, yours: value - owed };
   }).filter((x) => x.value > 0);
 }
 
-/** Bronze estimate: yearly rent ÷ the area's typical gross yield. */
-export function rentBasedValue(state: AppState, prop: Property): Cents {
-  const yearlyRent = state.units.filter((u) => u.propertyId === prop.id).reduce((a, u) => a + u.rent * 12, 0);
-  const y = regionData(prop.province, prop.city).grossYield.typical / 100;
-  return y > 0 ? Math.round(yearlyRent / y) : 0;
-}
-
 export interface WorthIt {
   value: Cents; debt: Cents; equity: Cents;
-  cashFlow: Cents; principalPaid: Cents; appreciation: Cents;
+  cashFlow: Cents; principalPaid: Cents;
   total: Cents;
-  /** Return on the owner's money. Null unless every property has at least Silver data (we need what is owed). */
+  /** Return on the owner's money. Null unless every property has a value (what you paid, or your estimate). */
   returnPct: number | null;
   benchmarkPct: number;
   diffPts: number | null;
-  appreciationEstimated: boolean;
-  /** Properties whose value is only estimated from rent (Bronze). */
-  roughValue: string[];
+  /** Properties with no value yet (no purchase price and no estimate of your own). */
+  noValue: string[];
   missing: string[];
 }
 
+/**
+ * What the rental part earned in the last 12 months: rent left over after costs, plus mortgage paid down, on your
+ * money in it (value − what is owed). No estimated value growth.
+ */
 export function worthIt(state: AppState, today: ISODate, opts: { propertyId?: string } = {}): WorthIt {
   const from = addDays(addMonths(today, -12), 1);
   const props = state.properties.filter((p) => !p.archived && (!opts.propertyId || p.id === opts.propertyId));
   const missing: string[] = [];
-  const roughValue: string[] = [];
-  let value = 0, debt = 0, principalPaid = 0, appreciation = 0, cashFlow = 0;
-  let appreciationEstimated = false;
+  const noValue: string[] = [];
+  let value = 0, debt = 0, principalPaid = 0, cashFlow = 0;
 
   for (const prop of props) {
     const own = prop.ownershipPct / 100;
+    const share = (prop.rentalSharePct / 100) * own;
     const pv = propertyValue(state, prop, today);
-    // Rent-based values already describe only the rented part; other values are for the whole property.
-    const share = pv.basis === 'rent' ? own : (prop.rentalSharePct / 100) * own;
-    if (pv.basis === 'rent') { roughValue.push(prop.nickname); missing.push(prop.nickname); }
+    if (pv.basis === 'none') { noValue.push(prop.nickname); missing.push(prop.nickname); }
     value += Math.round(pv.value * share);
 
-    const debtShare = (prop.rentalSharePct / 100) * own;
     const m = state.mortgages.find((x) => x.propertyId === prop.id);
     if (m) {
       const rows = amortization(m);
-      debt += Math.round(mortgageBalanceAt(m, today, rows) * debtShare);
-      principalPaid += Math.round(mortgagePaidBetween(m, from, today, rows).principal * debtShare);
+      debt += Math.round(mortgageBalanceAt(m, today, rows) * share);
+      principalPaid += Math.round(mortgagePaidBetween(m, from, today, rows).principal * share);
     } else if (prop.approxMortgageBalance) {
-      debt += Math.round(prop.approxMortgageBalance * debtShare);
+      debt += Math.round(prop.approxMortgageBalance * share);
     }
-
-    // Value growth for one year: today's value × the area's long-run price trend (5-year average).
-    // Always an estimate; single-year moves are too noisy for a small landlord's decision.
-    appreciation += Math.round(pv.value * share * (regionData(prop.province, prop.city).priceGrowth.y5 / 100));
-    appreciationEstimated = true;
 
     cashFlow += Math.round(picture(state, from, today, { propertyId: prop.id }).kept * own);
   }
 
   const equity = value - debt;
-  const total = cashFlow + principalPaid + appreciation;
-  const returnPct = roughValue.length === 0 && equity > 0 ? (total / equity) * 100 : null;
+  const total = cashFlow + principalPaid;
+  const returnPct = noValue.length === 0 && equity > 0 ? (total / equity) * 100 : null;
   return {
-    value, debt, equity, cashFlow, principalPaid, appreciation, total, returnPct,
+    value, debt, equity, cashFlow, principalPaid, total, returnPct,
     benchmarkPct: benchmarks().gic.pct,
     diffPts: returnPct === null ? null : returnPct - benchmarks().gic.pct,
-    appreciationEstimated, roughValue, missing,
+    noValue, missing,
   };
 }
 
