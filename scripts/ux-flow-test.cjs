@@ -822,9 +822,9 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if (await pg.locator('text=Sample landlord app').count()) throw new Error('Sample landlord app button still there');
       await go(pg, 'today'); await pg.waitForSelector('.sp-head'); const h = await pg.evaluate(() => location.hash); if (!h.startsWith('#/support')) throw new Error('opened ' + h);
     });
-    await step(tag, 'J7d Connections lists every service (in use: Google, Email, Address lookup, Plaid, AVM; coming: Stripe)', async () => {
+    await step(tag, 'J7d Connections lists every service (in use: Google, Email, Address lookup, Plaid; coming: Stripe; no property values)', async () => {
       await go(pg, 'support/connections'); await pg.waitForSelector('#conn-preview');
-      for (const [g, names] of [['now', ['Google sign-in', 'Email (Resend)', 'Address lookup (Google Places)', 'Bank data (Plaid)', 'Property values (AVM)']], ['coming', ['Stripe payments']]]) {
+      for (const [g, names] of [['now', ['Google sign-in', 'Email (Resend)', 'Address lookup (Google Places)', 'Bank data (Plaid)']], ['coming', ['Stripe payments']]]) {
         const got = await pg.locator(`#group-${g} .sp-conn h2`).allTextContents();
         if (got.join('|') !== names.join('|')) throw new Error(`${g}: ${got.join(', ')}`);
       }
