@@ -490,7 +490,7 @@ function watch(pg, errors, label) {
         await pg.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
         await pg.waitForSelector('.update-bar >> text=Keyholder was updated', { timeout: 6000 });
         await pg.unroute('**/api/session');
-        await pg.locator('.update-bar >> text=Reload').click(); await pg.waitForLoadState('load'); await pg.waitForSelector('.rent-card, .rent-list, .start-steps');
+        await pg.locator('.update-bar button', { hasText: 'Reload' }).click(); await pg.waitForLoadState('load'); await pg.waitForSelector('.rent-card, .rent-list, .start-steps');
         if (await pg.locator('.update-bar').count()) throw new Error('the bar is still shown after reloading');
       });
       await step(tag, 'E31 Disconnect removes the bank at Plaid (no more billing) and from Settings', async () => {
