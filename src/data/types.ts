@@ -92,19 +92,6 @@ export interface Property {
   /** Owner said there is no mortgage (counts as mortgage details for Gold). */
   mortgageFree?: boolean;
   archived?: boolean;
-  /** The whole home, for its market value (Repliers needs these; no purchase price needed). */
-  home?: HomeFacts;
-}
-
-/** About the whole home (all units and any part the owner lives in), for the automated value. */
-export interface HomeFacts {
-  bedrooms?: number;
-  bathrooms?: number;
-  sqft?: number;
-  /** Property type and style as the MLS board writes them (e.g. "Detached", "2-Storey"). */
-  mlsType?: string;
-  style?: string;
-  yearBuilt?: number;
 }
 
 export type UnitStatus = 'occupied' | 'vacant' | 'notice';
@@ -283,6 +270,7 @@ export interface Message {
 }
 
 // ---- Phase 2 ----
+/** Keyholder uses only what the landlord enters (purchase, owner, assessment); the others are from earlier versions and ignored. */
 export type ValuationSource = 'purchase' | 'owner' | 'index' | 'comparables' | 'assessment' | 'avm';
 
 export interface Valuation {
@@ -295,8 +283,6 @@ export interface Valuation {
   high: Cents;
   confidence: 'low' | 'medium' | 'high';
   note?: string;
-  /** The provider's expected error, % (Repliers: 13.5 means the price is likely within about 13.5%). */
-  errorPct?: number;
 }
 
 export interface Comparable {

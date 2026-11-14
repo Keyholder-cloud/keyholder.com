@@ -172,7 +172,7 @@ export function Landing() {
 
       <footer className="lp-foot">
         <div className="lp-wrap lp-foot-grid">
-          <div><Brand size={26} /><p className="lp-foot-tag">Rental automation for Canadian landlords: receipts, reminders, tracking, valuation and taxes.</p></div>
+          <div><Brand size={26} /><p className="lp-foot-tag">Rental automation for Canadian landlords: receipts, reminders, rent tracking, official notices and taxes.</p></div>
           <nav aria-label="Footer">
             <p>Product</p>{PAGES.map((p) => <Link key={p.id} to={href(p.id)} onClick={() => same(p.id)}>{p.label}</Link>)}
           </nav>
@@ -246,7 +246,7 @@ function CountUp({ to, decimals = 0, prefix = '', suffix = '' }: { to: number; d
 
 // ================================================================ Overview
 const TONES = ['lilac', 'mint', 'sky', 'peach', 'sun', 'rose'] as const;
-const AUTO: [string, string, string][] = [['receipt', 'Receipts', 'mint'], ['bell', 'Reminders', 'peach'], ['trend', 'Valuation', 'lilac'], ['print', 'Taxes', 'sun']];
+const AUTO: [string, string, string][] = [['receipt', 'Receipts', 'mint'], ['bell', 'Reminders', 'peach'], ['paper', 'Notices', 'lilac'], ['print', 'Taxes', 'sun']];
 const ModeBadge = ({ mode }: { mode: 'auto' | 'approve' }) => <span className={`mode-badge ${mode}`}><Icon name={mode === 'auto' ? 'sparkle' : 'check'} size={13} />{mode === 'auto' ? 'Automatic' : 'You approve'}</span>;
 
 /** Sharp line icons for the three set-up steps (24 px grid, even stroke). */
@@ -319,7 +319,7 @@ const TOUR: Stop[] = [
   { id: 'receipt', t: 'Rent receipts', icon: 'receipt', mode: 'auto', d: 'A numbered receipt for every payment.', spot: 'Paid in full', img: shotReceipt, alt: 'A rent receipt for Maya Chen, marked Paid' },
   { id: 'reminder', t: 'Friendly reminders', icon: 'bell', mode: 'auto', d: 'Written for you. Cancelled if rent arrives.', spot: 'Send now', img: shotReminder, alt: 'A friendly rent reminder written for Jordan and Priya, ready to send' },
   { id: 'bills', t: 'Bills and mortgage', icon: 'cash', mode: 'auto', d: 'Bank bills, filed to the right property.', spot: 'Add expense', img: shotBills, alt: 'Bills found in the bank, such as property tax and gas, ready to file' },
-  { id: 'value', t: 'Property valuation', icon: 'trend', mode: 'auto', d: "What it's worth, next to a GIC.", spot: 'Your return', img: shotValue, alt: 'Portfolio: net worth in property and the yearly return compared with savings, a GIC and stocks' },
+  { id: 'value', t: 'Your return', icon: 'trend', mode: 'auto', d: 'What your money earns, next to a GIC.', spot: 'Your return', img: shotValue, alt: 'Portfolio: net worth in property and the yearly return compared with savings, a GIC and stocks' },
   { id: 'taxes', t: 'Tax summary', icon: 'print', mode: 'auto', d: 'Tax numbers, ready for your accountant.', spot: 'Print for accountant', img: shotTaxes, alt: 'Taxes page: the year’s rental income and costs, with a list of anything to fix' },
   { id: 'notice', t: 'Late-rent notices', icon: 'paper', mode: 'approve', d: 'The official notice, filled in. You sign off.', spot: 'You approve', img: shotNotice, alt: 'An N4 notice for unpaid rent, filled in and checked, waiting for the landlord to approve' },
   { id: 'tenants', t: 'Finding tenants', icon: 'users', mode: 'approve', d: 'Compare applicants side by side.', spot: 'Side by side', img: shotTenants, alt: 'Two rental applications compared side by side' },
@@ -528,7 +528,7 @@ function Pricing({ start }: { start: () => void }) {
 
 // ================================================================ Questions
 const FAQ: [string, string, string][] = [
-  ['sparkle', 'What does Keyholder do automatically?', 'It checks your banks for rent and bills, writes receipts and reminders, files your costs, estimates your property value each month and keeps your tax numbers up to date. Receipts and reminders go out with one tap, or automatically once you switch that on. Legal notices and choosing a tenant always need your approval.'],
+  ['sparkle', 'What does Keyholder do automatically?', 'It checks your banks for rent and bills, writes receipts and reminders, files your costs and keeps your tax numbers up to date. Receipts and reminders go out with one tap, or automatically once you switch that on. Legal notices and choosing a tenant always need your approval.'],
   ['heart', "I'm new to being a landlord. Is this for me?", 'Yes. Keyholder is made for people with one or a few rentals, including a basement suite in your own home, where shared costs like heat are split for you. It explains each step in plain words.'],
   ['cash', 'What does it cost?', 'Free for one rental unit. For 2 to 10 units, it is planned at {price} per unit a month. Early-access prices are not final, and you will never be charged without agreeing first.'],
   ['lock', 'Is my bank information safe?', 'Yes. Keyholder can only look at deposits and bills. It can never move money, and it never sees your bank password. You can also skip the bank and tap "Mark paid" yourself.'],
@@ -560,7 +560,7 @@ const HeroLines = () => (
 const WEEK: { day: string; ic?: string; tone?: string; t: string; d: string }[] = [
   { day: 'Mon', ic: 'receipt', tone: 'mint', t: 'Maya paid $1,650', d: 'Receipt sent' },
   { day: 'Tue', ic: 'bell', tone: 'peach', t: 'Reminder sent', d: 'To Jordan & Priya' },
-  { day: 'Wed', ic: 'trend', tone: 'lilac', t: 'Home value updated', d: '$812,000 · up 1.2%' },
+  { day: 'Wed', ic: 'bank', tone: 'lilac', t: 'Bank checked', d: '2 deposits found' },
   { day: 'Thu', ic: 'print', tone: 'sun', t: '3 bills sorted', d: 'Ready for taxes' },
   { day: 'Fri', ic: 'chart', tone: 'sky', t: 'Month summary', d: 'You kept $726' },
   { day: 'Sat', t: 'Yours', d: 'Nothing to do' },

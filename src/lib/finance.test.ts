@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { AppState, Lease, Mortgage, Payment, Property } from '../data/types';
+import type { AppState, Lease, Mortgage, Payment, Property, Valuation } from '../data/types';
 import {
-  amortization, blendedValue, buildingCostBase, ccaSchedule, chargeState, comparablesEstimate, indexEstimate,
-  leaseBalance, leaseLedger, mortgageBalanceAt, mortgagePaidBetween, mortgagePayment, periodicRate, rentalPortion,
-  rentBasedValue, worthIt,
+  amortization, buildingCostBase, ccaSchedule, chargeState,
+  leaseBalance, leaseLedger, mortgageBalanceAt, mortgagePaidBetween, mortgagePayment, periodicRate, propertyValue, rentalPortion,
+  worthIt,
 } from './finance';
 import { propertyLevel } from './levels';
 import { addMonths, dueDate, periodRange } from './dates';
@@ -104,35 +104,26 @@ describe('Canadian mortgage math (semi-annual compounding)', () => {
   });
 });
 
-describe('valuation (phase 2)', () => {
-  it('grows the purchase price by the regional index and returns a range', () => {
-    const v = indexEstimate(prop({ purchasePrice: 50_000_000, purchaseDate: '2025-11-08' }), '2026-11-08')!;
-    expect(v.likely).toBeLessThan(50_000_000); // Hamilton 1-year placeholder is negative
-    expect(v.low).toBeLessThan(v.likely);
-    expect(v.high).toBeGreaterThan(v.likely);
-  });
+describe('property value: your own estimate, else what you paid (Keyholder does not estimate values)', () => {
+  const today = '2026-11-08';
+  const st = (p: Property, valuations: Valuation[] = []) => ({ properties: [p], valuations, units: [], leases: [], payments: [], expenses: [], mortgages: [] }) as unknown as AppState;
+  const v = (o: Partial<Valuation>): Valuation => ({ id: 'v', propertyId: 'p1', date: '2026-10-01', source: 'owner', low: 1, likely: 1, high: 1, confidence: 'low', ...o });
+  const bought = prop({ purchasePrice: 50_000_000, purchaseDate: '2020-05-01' });
 
-  it('returns null without a purchase price', () => {
-    expect(indexEstimate(prop(), '2026-11-08')).toBeNull();
+  it('is what you paid until you add your own estimate', () => {
+    expect(propertyValue(st(bought), bought, today)).toMatchObject({ value: 50_000_000, basis: 'purchase', source: 'What you paid in 2020' });
   });
-
-  it('adjusts comparables for similarity and takes the median', () => {
-    const v = comparablesEstimate([
-      { id: 'a', propertyId: 'p1', address: 'a', saleDate: '2026-06-01', price: 60_000_000, bedrooms: 3, similarity: 'similar' },
-      { id: 'b', propertyId: 'p1', address: 'b', saleDate: '2026-06-01', price: 57_000_000, bedrooms: 2, similarity: 'less' },
-      { id: 'c', propertyId: 'p1', address: 'c', saleDate: '2024-01-01', price: 10_000_000, bedrooms: 1, similarity: 'similar' },
-    ], '2026-11-08')!;
-    expect(v.note).toContain('2 sales');
-    expect(v.likely).toBe(Math.round((59_850_000 + 60_000_000) / 2));
+  it('uses your latest own estimate or appraisal (not one dated after today)', () => {
+    const s = st(bought, [v({ id: 'a', date: '2025-01-10', likely: 55_000_000 }), v({ id: 'b', date: '2026-09-01', source: 'assessment', likely: 60_000_000 }), v({ id: 'c', date: '2027-01-01', likely: 99_000_000 })]);
+    expect(propertyValue(s, bought, today)).toMatchObject({ value: 60_000_000, basis: 'owner', asOf: '2026-09-01' });
+    expect(propertyValue(s, bought, today).source).toMatch(/^Your appraisal/);
   });
-
-  it('blends sources and drops stale purchase prices', () => {
-    const b = blendedValue([
-      { id: '1', propertyId: 'p1', date: '2020-01-01', source: 'purchase', low: 1, likely: 1, high: 1, confidence: 'high' },
-      { id: '2', propertyId: 'p1', date: '2026-10-01', source: 'owner', low: 90, likely: 100, high: 110, confidence: 'medium' },
-    ], '2026-11-08')!;
-    expect(b.likely).toBe(100);
-    expect(b.sources.map((s) => s.source)).toEqual(['owner']);
+  it('ignores estimates saved by earlier versions (automated, price trend, nearby sales)', () => {
+    const s = st(bought, [v({ source: 'avm', likely: 90_000_000 }), v({ source: 'index', likely: 80_000_000 }), v({ source: 'comparables', likely: 70_000_000 })]);
+    expect(propertyValue(s, bought, today).value).toBe(50_000_000);
+  });
+  it('has no value without a purchase price or an estimate of your own', () => {
+    expect(propertyValue(st(prop()), prop(), today)).toMatchObject({ value: 0, basis: 'none' });
   });
 });
 
@@ -163,23 +154,27 @@ describe('CCA (phase 3)', () => {
   });
 });
 
-describe('levels and rent-based value (Bronze)', () => {
+describe('levels, and what a property earns', () => {
   const base = (o: Partial<Property> = {}) => prop({ id: 'p1', city: 'Hamilton', ...o });
   const state = (p: Property, extra: Partial<AppState> = {}) => ({
     properties: [p], units: [{ id: 'u1', propertyId: 'p1', label: 'A', rent: 200000, bedrooms: 2, utilitiesIncluded: [], status: 'occupied' }],
     leases: [], payments: [], expenses: [], valuations: [], comparables: [], mortgages: [], tenants: [], ...extra,
   }) as unknown as AppState;
 
-  it('estimates value from rent and the local gross yield', () => {
-    // $2,000 × 12 = $24,000 a year ÷ 5.0% Hamilton typical yield = $480,000
-    expect(rentBasedValue(state(base()), base())).toBe(48_000_000);
+  it('without what you paid there is no value, so no return to compare yet', () => {
+    const w = worthIt(state(base()), '2026-11-08');
+    expect(w.noValue).toEqual(['Test']);
+    expect(w.value).toBe(0);
+    expect(w.returnPct).toBeNull(); // no GIC comparison until Silver
   });
 
-  it('counts estimated value growth even with only rent known', () => {
-    const w = worthIt(state(base()), '2026-11-08');
-    expect(w.roughValue).toEqual(['Test']);
-    expect(w.appreciation).toBe(Math.round(48_000_000 * 0.03)); // 5-year Hamilton trend 3.0%
-    expect(w.returnPct).toBeNull(); // no GIC comparison until Silver
+  it('the return is rent left over plus mortgage paid down, on your money; no estimated growth', () => {
+    const b = base({ purchasePrice: 50_000_000, purchaseDate: '2020-01-01', approxMortgageBalance: 30_000_000 });
+    const w = worthIt(state(b), '2026-11-08');
+    expect(w.value).toBe(50_000_000);
+    expect(w.equity).toBe(20_000_000);
+    expect(w.total).toBe(w.cashFlow + w.principalPaid);
+    expect(w.returnPct).toBeCloseTo((w.total / 20_000_000) * 100, 6);
   });
 
   it('moves Bronze → Silver → Gold as details are added', () => {

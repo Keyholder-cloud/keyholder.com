@@ -6,7 +6,6 @@ import { levelInfo, nextStep, propertyLevel, type Level } from '../lib/levels';
 import { keyholderScore } from '../lib/score';
 import { banksOn } from '../data/api';
 import { portfolio } from '../lib/finance';
-import { monthChange } from '../lib/silver';
 import { benchmarks } from '../lib/jurisdiction';
 import { fmtShort } from '../lib/money';
 import { Drawer, Field, MoneyInput, Seg } from './ui';
@@ -58,8 +57,7 @@ export function PropertyCard({ property, active, banner }: { property: Property;
   };
   const onLeave = () => { ref.current?.style.setProperty('--rx', '0deg'); ref.current?.style.setProperty('--ry', '0deg'); };
   if (!row) return null;
-  const rough = row.valueInfo.basis === 'rent';
-  const month = monthChange(state, property, today);
+  const none = row.valueInfo.basis === 'none';
 
   return (
     <div ref={ref} className={`pcard ${level}${active ? ' active' : ''}${upgraded ? ' upgraded' : ''}${banner ? ' banner' : ''}`}
@@ -71,11 +69,11 @@ export function PropertyCard({ property, active, banner }: { property: Property;
         <span className="pcard-addr">{property.address}, {property.city}</span>
       </button>
       <div className="pcard-figs">
-        <div><span>Worth about</span><strong>{rough ? '~' : ''}{fmtShort(row.value)}</strong></div>
-        <div><span>Yours</span><strong>{row.owedKnown ? fmtShort(row.yours) : '—'}</strong></div>
+        <div><span>Worth</span><strong>{none ? '—' : fmtShort(row.value)}</strong></div>
+        <div><span>Yours</span><strong>{row.owedKnown && !none ? fmtShort(row.yours) : '—'}</strong></div>
         <div><span>Return a year</span><strong>{row.returnPct === null ? '—' : `${row.returnPct.toFixed(1)}%`}</strong>{row.returnPct !== null && <em className="vs-gic">GIC {benchmarks().gic.pct}%</em>}</div>
       </div>
-      <div className="pcard-source">{month !== null && level !== 'bronze' ? <><strong>{month >= 0 ? '+' : '−'}{fmtShort(Math.abs(month))} this month</strong> · </> : null}{row.valueInfo.source}</div>
+      <div className="pcard-source">{row.valueInfo.source}{!none && !row.owedKnown ? ' · add what is owed' : ''}</div>
     </div>
   );
 }

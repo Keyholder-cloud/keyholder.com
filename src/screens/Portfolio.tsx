@@ -50,7 +50,6 @@ function Overview() {
 
   const parts = [
     { label: 'Rent left over', v: w.cashFlow, cls: 'rent' },
-    { label: 'Value growth', v: w.appreciation, cls: 'growth' },
     { label: 'Mortgage paid off', v: w.principalPaid, cls: 'paid' },
   ].filter((p) => p.v !== 0);
   const pos = parts.reduce((a, p) => a + Math.max(0, p.v), 0) || 1;
@@ -64,6 +63,7 @@ function Overview() {
           <Figure cents={pf.yours} size="lg" />
           <p className="soft" style={{ margin: '4px 0 0' }}>Worth {fmtShort(pf.value)} − owed {fmtShort(pf.owed)}</p>
           {pf.notCounted.length > 0 && <p className="small" style={{ margin: '8px 0 0' }}>Not counted yet: {pf.notCounted.map((p, i) => <span key={p.id}>{i ? ', ' : ''}<Link to={`/rent/property/${p.id}/mortgage`}>{p.nickname}</Link></span>)}. Add what is owed on it to include it.</p>}
+          {pf.noValue.length > 0 && <p className="small" style={{ margin: '8px 0 0' }}>No value yet: {pf.noValue.map((p, i) => <span key={p.id}>{i ? ', ' : ''}<Link to={`/rent/property/${p.id}/value`}>{p.nickname}</Link></span>)}. Add what you paid to include it.</p>}
         </div>
         <div className="sheet pf-return">
           <div className="small soft">Earned, last 12 months</div>
@@ -87,7 +87,7 @@ function Overview() {
             {pr.pct === null ? 'Add what you paid and what is owed on a property to compare it.' : pr.pct >= pr.rows[1].pct ? `Your properties are beating a 5-year GIC by ${(pr.pct - pr.rows[1].pct).toFixed(1)} points.` : `A 5-year GIC is ahead by ${(pr.rows[1].pct - pr.pct).toFixed(1)} points this year.`}
             {pr.missing.length > 0 && <> {' '}<span className="soft">Not included yet: {pr.missing.map((p, i) => <span key={p.id}>{i ? ', ' : ''}<Link to={`/rent/property/${p.id}/value`}>{p.nickname}</Link></span>)} (add what you paid).</span></>}
           </p>
-          <p className="tiny soft" style={{ margin: '6px 0 0' }}>Rent left over, mortgage paid down and value growth, divided by your money in it. Comparison rates are estimates.</p>
+          <p className="tiny soft" style={{ margin: '6px 0 0' }}>Rent left over and mortgage paid down, divided by your money in it (what you paid, or your own estimate, less what is owed).</p>
         </div>
       </section>
 
@@ -107,9 +107,9 @@ function Overview() {
               <tbody>{pf.rows.map((r) => (
                 <tr key={r.property.id}>
                   <td><Link to={`/rent/property/${r.property.id}`}>{r.property.nickname}</Link></td>
-                  <td className="num">{r.valueInfo.basis === 'rent' ? '~' : ''}{fmt0(r.value)}</td>
+                  <td className="num">{r.valueInfo.basis === 'none' ? '—' : fmt0(r.value)}</td>
                   <td className="num">{r.owedKnown ? fmt0(r.owed) : '—'}</td>
-                  <td className="num">{r.owedKnown ? fmt0(r.yours) : '—'}</td>
+                  <td className="num">{r.owedKnown && r.valueInfo.basis !== 'none' ? fmt0(r.yours) : '—'}</td>
                   <td className="num">{fmt0(r.earned)}</td>
                   <td className="num">{r.returnPct === null ? '—' : `${r.returnPct.toFixed(1)}%`}</td>
                 </tr>
@@ -120,7 +120,7 @@ function Overview() {
         ) : (
           <div className="pcards">{pf.rows.map((r) => <PropertyCard key={r.property.id} property={r.property} />)}</div>
         )}
-        {pf.estimates > 0 && <p className="small soft" style={{ marginTop: 12 }}>Values are estimates. Add your own or nearby sales on the Value tab. <Link to="/today">Complete details on Home</Link></p>}
+        <p className="small soft" style={{ marginTop: 12 }}>Worth is what you paid, or your own estimate (each property's Value tab). Keyholder does not estimate home values.</p>
       </section>
       {addProp && <PropertyForm onClose={() => setAddProp(false)} />}
     </div>
@@ -147,7 +147,7 @@ function NetWorthChart({ points }: { points: { date: string; yours: number; valu
         {points.map((p) => <circle key={p.date} cx={x(p.date)} cy={y(p.yours)} r={p === last ? 5 : 3} fill="var(--pine)" />)}
         {points.filter((_, i) => i === 0 || i === points.length - 1 || points.length < 9 || i % 2 === 0).map((p) => <text key={p.date} x={x(p.date)} y={H - 8} textAnchor="middle" fontSize="11" fill="var(--ink-soft)" fontFamily="var(--font-mono)">{p === last ? 'Today' : yearOf(p.date)}</text>)}
       </svg>
-      <div className="legend"><span><i style={{ background: 'var(--pine)' }} />What's yours</span><span><i style={{ border: '1px dashed var(--ink-faint)' }} />What it's worth</span><span>Values estimated · mortgage balances from your mortgage · {fmtDate(addDays(last.date, 0))}</span></div>
+      <div className="legend"><span><i style={{ background: 'var(--pine)' }} />What's yours</span><span><i style={{ border: '1px dashed var(--ink-faint)' }} />What it's worth</span><span>Worth: what you paid, or your own estimate · what is owed from your mortgage · {fmtDate(addDays(last.date, 0))}</span></div>
     </div>
   );
 }

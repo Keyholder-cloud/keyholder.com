@@ -189,7 +189,7 @@ const GROUPS: { id: ServiceInfo['group']; title: string; sub: string }[] = [
   { id: 'coming', title: 'Coming', sub: 'Being built. Keys can be saved now; they are used once each feature is ready.' },
 ];
 /** Browser-only preview: the same list with sample statuses (there is no server, so nothing can be saved). */
-const PREVIEW_STATE: Record<ServiceId, ServiceState> = { google: 'connected', email: 'off', places: 'none', stripe: 'none', plaid: 'none', avm: 'none' };
+const PREVIEW_STATE: Record<ServiceId, ServiceState> = { google: 'connected', email: 'off', places: 'none', stripe: 'none', plaid: 'none' };
 const previewData = (): ConnData => ({
   canSave: false,
   services: SERVICES.map((svc) => ({

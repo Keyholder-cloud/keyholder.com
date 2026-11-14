@@ -43,10 +43,6 @@ function plaidSign(body: string, iat = Math.floor(Date.now() / 1000)) {
   const sig = signData('sha256', Buffer.from(`${head}.${claims}`), { key: plaidKey.privateKey, dsaEncoding: 'ieee-p1363' }).toString('base64url');
   return `${head}.${claims}.${sig}`;
 }
-// A stand-in for Repliers' estimates (dollars), counting calls.
-let repliersCalls = 0;
-let repliersStatus = 200;
-const repliersBodies: any[] = [];
 
 // The whole API against a real (embedded) Postgres, as the app uses it.
 
@@ -69,21 +65,6 @@ beforeAll(async () => {
       const path = new URL(String(url)).pathname;
       const a = plaidAnswer(path, JSON.parse(String(init?.body ?? '{}')));
       return new Response(JSON.stringify(a), { status: 'error_code' in a ? 400 : 200 });
-    }
-    if (String(url).startsWith('https://api.repliers.io/listings?')) {
-      if (repliersStatus !== 200) return new Response('', { status: repliersStatus });
-      return new Response(JSON.stringify({ aggregates: { details: { propertyType: { Detached: 900, 'Semi-Detached': 300, Duplex: 40 }, style: { '2-Storey': 500, Bungalow: 400 } }, boardId: { 12: 1500 } } }), { status: 200 });
-    }
-    if (String(url) === 'https://api.repliers.io/estimates') {
-      repliersCalls++;
-      if (repliersStatus !== 200) return new Response('', { status: repliersStatus });
-      const b = JSON.parse(String(init?.body ?? '{}'));
-      repliersBodies.push(b);
-      const missing = [...['city', 'streetName', 'streetNumber', 'zip'].filter((k) => !b.address?.[k]).map((k) => `address.${k}`),
-        ...['numBathrooms', 'numBedrooms', 'propertyType', 'sqft', 'style'].filter((k) => b.details?.[k] === undefined || b.details?.[k] === '').map((k) => `details.${k}`)];
-      if (missing.length) return new Response(JSON.stringify([missing.map((param) => ({ param, msg: 'is required' }))]), { status: 400 });
-      if (!['Detached', 'Semi-Detached', 'Duplex'].includes(b.details.propertyType)) return new Response(JSON.stringify([[{ param: 'details.propertyType', msg: 'must be a value in your MLS data' }]]), { status: 400 });
-      return new Response(JSON.stringify({ estimateId: 1, estimate: 812345.67, estimateHigh: 850000, estimateLow: 780000, confidence: 0.086, payload: b }), { status: 200 });
     }
     if (String(url).includes('places:autocomplete')) return new Response(JSON.stringify({ suggestions: [{ placePrediction: { placeId: 'ChIJplace123456', text: { text: '100 Queen St W, Toronto, ON, Canada' }, structuredFormat: { mainText: { text: '100 Queen St W' }, secondaryText: { text: 'Toronto, ON, Canada' } } } }] }), { status: 200 });
     if (String(url).includes('places.googleapis.com/v1/places/')) return new Response(JSON.stringify({ location: { latitude: 43.6535, longitude: -79.3841 }, addressComponents: [
@@ -536,44 +517,14 @@ describe('bank data (Plaid)', () => {
   });
 });
 
-describe('property values (AVM)', () => {
-  it('Repliers values a home from its address and facts (in cents), as its docs require; kept 30 days; errors are explained', async () => {
+describe('no property estimates', () => {
+  it('the estimate routes are gone and Connections has no property values slot', async () => {
+    expect((await call('POST', '/api/valuation', { cookie: alex, body: {} })).status).toBe(404);
+    expect((await call('GET', '/api/session')).body.config.avm).toBeUndefined();
     const sup = (await call('POST', '/api/auth/login', { body: { email: 'admin', password: ADMIN.password } })).cookie!;
-    const home = { street: '160 Wellington Street', city: 'Belleville', province: 'ON', postalCode: 'k8n 2a1', propertyType: 'Detached', style: '2-Storey', bedrooms: 4, bathrooms: 2, sqft: 1850, yearBuilt: 1925 };
-    expect((await call('POST', '/api/valuation', { cookie: alex, body: home })).status).toBe(404); // not set up yet
-    // A key that covers several boards uses the Board ID set on Connections.
-    await call('PUT', '/api/admin/connections', { cookie: sup, body: { password: ADMIN.password, values: { 'avm.provider': 'repliers', 'avm.apiKey': 'repliers-key-5555', 'avm.boardId': '12' } } });
-    expect((await call('GET', '/api/session')).body.config.avm).toBe(true);
-    // The MLS board's own property types and styles, for the landlord to choose from.
-    expect((await call('GET', '/api/valuation/options', { cookie: alex })).body).toEqual({ propertyTypes: ['Detached', 'Semi-Detached', 'Duplex'], styles: ['2-Storey', 'Bungalow'], boards: ['12'] });
-    const v = await call('POST', '/api/valuation', { cookie: alex, body: home });
-    expect(v.body).toMatchObject({ likely: 81234567, high: 85000000, low: 78000000, confidence: 'high', errorPct: 8.6, provider: 'Repliers Estimates' });
-    expect(repliersBodies.at(-1)).toEqual({
-      address: { streetNumber: '160', streetName: 'Wellington', streetSuffix: 'St', city: 'Belleville', zip: 'K8N 2A1' },
-      details: { numBedrooms: 4, numBathrooms: 2, propertyType: 'Detached', style: '2-Storey', sqft: 1850, yearBuilt: 1925 },
-      boardId: 12,
-    });
-    expect(repliersCalls).toBe(1);
-    expect((await call('POST', '/api/valuation', { cookie: alex, body: home })).body).toMatchObject({ likely: 81234567, cached: true });
-    expect(repliersCalls).toBe(1);
-    // A corrected fact asks again; a type the board does not use is explained in plain words.
-    await call('POST', '/api/valuation', { cookie: alex, body: { ...home, sqft: 1900 } });
-    expect(repliersCalls).toBe(2);
-    const wrong = await call('POST', '/api/valuation', { cookie: alex, body: { ...home, propertyType: 'Castle' } });
-    expect(wrong.status).toBe(422);
-    expect(wrong.body.error).toMatch(/Property type: must be a value in your MLS data/);
-    // Missing facts never reach Repliers.
-    expect((await call('POST', '/api/valuation', { cookie: alex, body: { ...home, sqft: undefined } })).status).toBe(400);
-    expect((await call('POST', '/api/valuation', { cookie: alex, body: { ...home, postalCode: '12345' } })).status).toBe(400);
-    expect((await call('POST', '/api/admin/connections/test', { cookie: sup, body: { service: 'avm' } })).body).toMatchObject({ ok: true, message: expect.stringContaining('Repliers Estimates works') });
-    repliersStatus = 403;
-    const err = await call('POST', '/api/valuation', { cookie: alex, body: { ...home, street: '10 Oak St' } });
-    expect(err.status).toBe(400);
-    expect(err.body.error).toMatch(/Estimates add-on is not on/);
-    expect((await call('POST', '/api/admin/connections/test', { cookie: sup, body: { service: 'avm' } })).body).toMatchObject({ ok: false, message: expect.stringMatching(/Estimates add-on is not on/) });
-    repliersStatus = 200;
-    await call('PUT', '/api/admin/connections', { cookie: sup, body: { password: ADMIN.password, values: { 'avm.provider': 'teranet' } } });
-    expect((await call('POST', '/api/valuation', { cookie: alex, body: { ...home, street: '11 Oak St' } })).status).toBe(501);
+    const c = (await call('GET', '/api/admin/connections', { cookie: sup })).body;
+    expect(JSON.stringify(c)).not.toMatch(/avm|Repliers/i);
+    expect((await call('PUT', '/api/admin/connections', { cookie: sup, body: { password: ADMIN.password, values: { 'avm.apiKey': 'x' } } })).status).toBe(400);
   });
 });
 

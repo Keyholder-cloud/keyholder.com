@@ -3,7 +3,7 @@ import type {
   AppState, Applicant, BankConnection, BankName, BankTxn, ExpenseCategory, Listing, Notice, TodoPref, Comparable, Expense, Lease, Mortgage, Payment, Profile, Property, Tenant, Tone, Unit, Valuation,
 } from './types';
 import { emptyState, seedState, STATE_VERSION, defaultProfile } from './seed';
-import { addDays, daysBetween, dueDate, periodOf, todayISO } from '../lib/dates';
+import { addDays, dueDate, periodOf, todayISO } from '../lib/dates';
 import { activeLease, currentLeases, leaseLedger, openRooms } from '../lib/finance';
 import { suggestMatch } from '../lib/matching';
 import { reminderDraft } from '../lib/templates';
@@ -15,7 +15,6 @@ import { vendorKey } from '../lib/bankrules';
 import { CATEGORIES } from '../lib/jurisdiction';
 import { api, banksOn, getConn, serverMode, setUser } from './api';
 import * as sync from './sync';
-import { askedThisSession, askValue, avmOn, missingFacts } from './avm';
 
 // Stage 1 store: all data lives in the browser (localStorage). In stage 2 each action below
 // becomes an API call; the action names are the contract for the backend.
@@ -608,15 +607,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Live site: clear out a practice bank connection left from before (real Plaid ones stay, even while banks are off).
   const pretend = serverMode() && ((state.banks ?? []).some((b) => !realBank(b)) || state.txns.some(fakeTxn));
   useEffect(() => { if (pretend && sync.owned(state)) act.removePretendBank(); }, [pretend, state, act]);
-  // Property values from the connected provider (Repliers): each property whose home details are filled in, about
-  // once a month (the server keeps each answer 30 days, so asking again within the month is free).
-  useEffect(() => {
-    if (!avmOn() || !sync.owned(state)) return;
-    const t = todayISO();
-    const due = state.properties.filter((p) => !p.archived && !missingFacts(state, p).length && !askedThisSession(p.id)
-      && !state.valuations.some((v) => v.propertyId === p.id && v.source === 'avm' && daysBetween(v.date, t) < 30));
-    for (const p of due.slice(0, 10)) void askValue(state, p, act.addValuation);
-  }, [state, act]);
   // Bank transactions that arrived from Plaid (the server wrote them): look at each new one once.
   const unchecked = state.txns.some((t) => t.source === 'bank' && t.status === 'new' && !t.checked);
   useEffect(() => { if (unchecked && sync.owned(state)) act.processBankTxns(); }, [unchecked, state, act]);

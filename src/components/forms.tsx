@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { AddressField, addressLookupOn, type PickedAddress } from './AddressField';
 import type {
-  CCAClass, Comparable, Expense, ExpenseCategory, Lease, Mortgage, MortgageFrequency, PayMethod, Payment, Person, Property, PropertyType, Tenant, Unit, Valuation,
+  CCAClass, Expense, ExpenseCategory, Lease, Mortgage, MortgageFrequency, PayMethod, Payment, Person, Property, PropertyType, Tenant, Unit, Valuation,
 } from '../data/types';
 import { uid, useStore } from '../data/store';
 import { propertyLevel } from '../lib/levels';
@@ -615,40 +615,22 @@ export function OwnerEstimateForm({ propertyId, onClose }: { propertyId: string;
   const [date, setDate] = useState(today);
   const [note, setNote] = useState('');
   return (
-    <Drawer title="Record a value" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!likely} onClick={() => {
+    <Drawer title="Your own estimate" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" id="oe-save" disabled={!likely} onClick={() => {
       if (!likely) return;
       act.addValuation({ propertyId, date, source, likely, low: low ?? Math.round(likely * 0.95), high: high ?? Math.round(likely * 1.05), confidence: source === 'assessment' ? 'medium' : 'low', note: note || undefined });
       onClose();
     }}>Save to history</button></>}>
-      <Field label="Where is this number from?"><Seg label="Source" value={source} onChange={setSource} options={[{ id: 'owner', label: 'My estimate' }, { id: 'assessment', label: 'Assessment / appraisal' }]} /></Field>
-      <Field label="Most likely value" htmlFor="oe-l"><MoneyInput id="oe-l" value={likely} onChange={setLikely} /></Field>
+      <p className="soft" style={{ marginTop: 0 }}>What you think the property is worth today, for example from a recent appraisal. Keyholder uses your latest estimate instead of what you paid.</p>
+      <Field label="Where is this number from?"><Seg label="Source" value={source} onChange={setSource} options={[{ id: 'owner', label: 'My estimate' }, { id: 'assessment', label: 'Appraisal' }]} /></Field>
+      <Field label="What it is worth" htmlFor="oe-l"><MoneyInput id="oe-l" value={likely} onChange={setLikely} /></Field>
       <div className="grid2">
         <Field label="Low (optional)" htmlFor="oe-lo"><MoneyInput id="oe-lo" value={low} onChange={setLow} /></Field>
         <Field label="High (optional)" htmlFor="oe-hi"><MoneyInput id="oe-hi" value={high} onChange={setHigh} /></Field>
       </div>
       <Field label="As of" htmlFor="oe-d"><input id="oe-d" type="date" className="input" value={date} max={today} onChange={(e) => setDate(e.target.value)} /></Field>
-      <Field label="Note" htmlFor="oe-n"><input id="oe-n" className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="MPAC 2016 value, bank appraisal at refinance…" /></Field>
-      <p className="small soft">Every value is kept as a dated entry. Nothing is overwritten.</p>
+      <Field label="Note" htmlFor="oe-n"><input id="oe-n" className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Bank appraisal at refinance…" /></Field>
+      <p className="small soft">Each estimate is kept with its date. Remove one any time on the Value tab.</p>
     </Drawer>
   );
 }
-
-export function ComparableForm({ propertyId, onClose }: { propertyId: string; onClose: () => void }) {
-  const { act, today } = useStore();
-  const [c, setC] = useState<Comparable>({ id: uid('c'), propertyId, address: '', saleDate: today, price: 0, bedrooms: 3, similarity: 'similar' });
-  const set = (x: Partial<Comparable>) => setC((o) => ({ ...o, ...x }));
-  return (
-    <Drawer title="Add a nearby sale" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!c.address || !c.price} onClick={() => { act.saveComparable(c); onClose(); }}>Add sale</button></>}>
-      <Field label="Address" htmlFor="cf-a"><input id="cf-a" className="input" value={c.address} onChange={(e) => set({ address: e.target.value })} /></Field>
-      <div className="grid2">
-        <Field label="Sold for" htmlFor="cf-p"><MoneyInput id="cf-p" value={c.price || undefined} onChange={(v) => set({ price: v ?? 0 })} /></Field>
-        <Field label="Sale date" htmlFor="cf-d"><input id="cf-d" type="date" className="input" value={c.saleDate} max={today} onChange={(e) => set({ saleDate: e.target.value })} /></Field>
-      </div>
-      <Field label="Bedrooms" htmlFor="cf-b"><input id="cf-b" type="number" className="input" value={c.bedrooms} onChange={(e) => set({ bedrooms: Number(e.target.value) })} /></Field>
-      <Field label="Compared with yours, it is…"><Seg label="Similarity" value={c.similarity} onChange={(similarity) => set({ similarity })} options={[{ id: 'less', label: 'Less desirable' }, { id: 'similar', label: 'About the same' }, { id: 'more', label: 'Nicer' }]} /></Field>
-      <p className="small soft">Find recent sales on your local real estate board, HouseSigma, or ask your agent. Sales older than 12 months are not used.</p>
-    </Drawer>
-  );
-}
-
 
