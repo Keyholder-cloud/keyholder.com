@@ -51,6 +51,8 @@ const mockServer = http.createServer((req, res) => {
     } else if (path === '/item/remove') out = { request_id: 'r' };
     else if (path === '/webhook_verification_key/get') out = { key: { ...plaidJwk, alg: 'ES256', kid: b.key_id, use: 'sig' } };
     else if (path === '/institutions/get') out = { institutions: [] };
+    // The Bank of Canada's weekly 5-year GIC rate (Valet API).
+    else if (path === '/valet/observations/V80691341/json?recent=1') out = { seriesDetail: {}, observations: [{ d: '2026-11-11', V80691341: { v: '2.85' } }] };
     else { res.writeHead(404, { 'content-type': 'application/json' }); res.end('{}'); return; }
     res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(out));
   });
