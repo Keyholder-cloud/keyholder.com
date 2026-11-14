@@ -124,9 +124,11 @@ function watch(pg, errors, label) {
       const pg = await ctxA.newPage(); watch(pg, errors, 'A');
       global.__pg = pg;
 
-      await step(tag, 'E1 The website runs with the server (accounts on the server)', async () => {
+      await step(tag, 'E1 The website runs with the server (accounts on the server); it reports which build it serves, for "Keyholder was updated"', async () => {
         await pg.goto(BASE); await pg.waitForSelector('.lp-hero-h');
-        const s = await api(pg, '/api/session'); if (!s.body?.config) throw new Error('no session config'); return `version ${s.body.config.version}`;
+        const s = await api(pg, '/api/session'); if (!s.body?.config) throw new Error('no session config');
+        if (!/^[0-9a-f]{12}$/.test(s.body.config.build || '')) throw new Error('no build fingerprint: ' + s.body.config.build);
+        return `version ${s.body.config.version} · build ${s.body.config.build}`;
       });
       await step(tag, 'E2 Signup: the account first (first and last name, email, password), then 6 questions, the plan and Go to dashboard; the 5-step tour starts', async () => {
         await go(pg, 'start'); await pg.waitForSelector('h1:has-text("Create your free account")');
@@ -474,6 +476,22 @@ function watch(pg, errors, label) {
         await pg.waitForSelector('#worth >> text=$560,000'); await pg.waitForSelector('#worth .figure.in >> text=$260,000');
         await pg.waitForSelector('#worth >> text=/up \\$60,000/');
         await until(async () => (await api(pg, '/api/state')).body.data.valuations.some((v) => v.source === 'owner' && v.likely === 56000000), 6000, 'the estimate saved');
+      });
+      await step(tag, 'E30b An estimate saved by an earlier version is removed when the account opens; a new deploy shows "Keyholder was updated" with Reload', async () => {
+        const cur = (await api(pg, '/api/state')).body; const d = cur.data;
+        const prop = d.properties.find((x) => x.nickname === 'Oak house');
+        d.valuations.push({ id: 'v-old-avm', propertyId: prop.id, date: isoToday(), source: 'avm', low: 70000000, likely: 75000000, high: 80000000, confidence: 'medium', note: 'Repliers Estimates' });
+        const put = await pg.evaluate(async (body) => (await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Keyholder': '1' }, body: JSON.stringify(body) })).status, { baseRevision: cur.revision, data: d });
+        if (put !== 200) throw new Error('save ' + put);
+        await pg.reload(); await go(pg, 'today');
+        await until(async () => !(await api(pg, '/api/state')).body.data.valuations.some((v) => v.source === 'avm'), 8000, 'the old estimate removed');
+        // The server now serves a new build: the open tab offers to reload.
+        await pg.route('**/api/session', async (route) => { const r = await route.fetch(); const b = await r.json(); b.config.build = 'ffffffffffff'; await route.fulfill({ response: r, json: b }); });
+        await pg.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+        await pg.waitForSelector('.update-bar >> text=Keyholder was updated', { timeout: 6000 });
+        await pg.unroute('**/api/session');
+        await pg.locator('.update-bar >> text=Reload').click(); await pg.waitForLoadState('load'); await pg.waitForSelector('.rent-card, .rent-list, .start-steps');
+        if (await pg.locator('.update-bar').count()) throw new Error('the bar is still shown after reloading');
       });
       await step(tag, 'E31 Disconnect removes the bank at Plaid (no more billing) and from Settings', async () => {
         const removes = mock.calls.filter((c) => c.path === '/item/remove').length;

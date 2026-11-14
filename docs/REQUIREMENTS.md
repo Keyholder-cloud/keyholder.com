@@ -182,3 +182,30 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Bank data stays with Plaid. Stripe Financial Connections offers Canadian bank data only in rollout (general
   availability planned for Q4 2026); revisit once Stripe confirms transaction history for Canadian banks.
 
+
+### R23. Old estimates gone everywhere; "Keyholder was updated" ☑
+- Owner, 2026-11-14: "My dashboard is still showing repliers estimate, not sure where its getting the data from."
+- Estimates saved by earlier versions (Repliers, price trend, nearby sales) are removed from each account the next
+  time it opens; only what the landlord entered stays (purchase price, own estimate, appraisal). The audit log notes it.
+- Problems logged by the removed property values service are closed on the support dashboard's Health page.
+- A tab left open keeps running the version it loaded: the server reports a fingerprint of the app it serves, and the
+  app checks it every few minutes and when the tab comes back. A new version shows "Keyholder was updated. Reload to
+  get the latest version." with a Reload button.
+
+### R24. Shared lease: each person pays their share ☑
+- Owner, 2026-11-14: a unit with several people "does not function properly, when I mark as paid and send receipt it
+  comes back to asking me to mark as paid, I want it to reflect like the main units and appear like subtabs underneath."
+- Each person on a shared lease has a share of the rent: an even split unless shares are entered (Add a tenant and
+  Edit people; they must add up to the rent, or all stay blank). A room rented on its own lease is not affected.
+- Home and Rentals show a row per person under the unit: their share, where they stand this month (paid, part paid,
+  due, late) and their own Mark paid. The unit's row keeps the next step (receipt, reminder, notice) but no Mark paid
+  of its own. A month paid in full, by anyone, is paid for everyone.
+- Mark paid fills in this month while it is unpaid (before: the oldest month owing, which left this month asking
+  again) and the person's share. "Who paid?" can also be "Everyone" for one payment for the whole rent.
+- The receipt goes to the person who paid and is made out to them. A reminder goes only to whoever has not paid,
+  for what they still owe ("your share"). If that person has no email, it goes to everyone on the lease.
+- Legal notices still name everyone on the lease.
+- A bank deposit whose payer name matches one person (and their share's amount) is matched to them; the match drawer
+  asks "Who paid?" on a shared lease. The payer-name check now uses the best match across everyone on the lease.
+- Payments recorded before this change (no person) still count toward the month. Removing someone from a lease
+  moves the others' payments to their new place; the removed person's payments count toward the month.

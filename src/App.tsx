@@ -20,6 +20,7 @@ import { SignIn } from './screens/Account';
 import { AuthLinks } from './screens/AuthLinks';
 import { Support } from './screens/Support';
 import { AnnouncementBar } from './support/Announcement';
+import { UpdateBar } from './components/UpdateBar';
 import { SampleBanner, Tour, PageSub, HelpButton } from './components/Guide';
 import { SetupCircle } from './components/Setup';
 
@@ -119,6 +120,7 @@ function Shell() {
         </div>
         <div className="top-tools desk"><span className="top-tools" data-tour="account"><SetupCircle /><SettingsIcon /></span></div>
         <main>
+          <UpdateBar />
           <AnnouncementBar where="app" />
           <SampleBanner />
           <Routes>

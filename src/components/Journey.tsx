@@ -16,6 +16,8 @@ import { FormWizard } from './FormWizard';
 import { LevelUpForm, ScoreRing } from './levels';
 import { PaymentForm } from './forms';
 import { Icon } from './Icon';
+import { PeopleRows } from './PeopleRows';
+import { isShared } from '../lib/shares';
 import { MatchDrawer } from '../screens/Tray';
 import { LateRentDrawer } from '../screens/Rentals';
 
@@ -133,15 +135,18 @@ function RentLine({ unit, lease, card, free }: { unit: Unit; lease?: Lease; card
   const visible = card && !isHidden(state, prefKey(card), today) ? card : null;
   const st = statusFor(state, lease, card, today, free);
   const line = lease ? currentLine(state, lease, today) : undefined;
+  // Shared lease: each person has a row underneath with their own "Mark paid", so this row has none.
+  const shared = isShared(tenant) && !!line;
   // Fallback when nothing is due or the step is hidden: the plain rent action.
   let fallback: React.ReactNode = null;
   if (!visible && lease && line) {
     if (line.state === 'late' || (line.state === 'partial' && line.daysLate > 0)) fallback = <button className="btn" onClick={() => setLate(true)}>Late rent options</button>;
-    else if (line.state !== 'paid') fallback = <button className="btn" onClick={() => setPay(true)}>Mark paid</button>;
+    else if (line.state !== 'paid') fallback = shared ? null : <button className="btn" onClick={() => setPay(true)}>Mark paid</button>;
     else fallback = <span className="paid-on">{fmtDay(line.payments[line.payments.length - 1]?.date ?? line.due)}</span>;
   }
   return (
-    <li className={`rent-row ${st.tone === 'late' ? 'late' : ''}`}>
+    <>
+    <li className={`rent-row ${st.tone === 'late' ? 'late' : ''}${shared ? ' has-people' : ''}`}>
       {tenant ? (
         <Link to={`/rent/tenant/${tenant.id}`} className="who-link">
           <Avatar name={tenant.names.join(' & ')} size={42} />
@@ -162,6 +167,8 @@ function RentLine({ unit, lease, card, free }: { unit: Unit; lease?: Lease; card
       {pay && lease && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}
       {late && lease && <LateRentDrawer lease={lease} onClose={() => setLate(false)} />}
     </li>
+    {shared && lease && line && <PeopleRows lease={lease} line={line} look="home" />}
+    </>
   );
 }
 

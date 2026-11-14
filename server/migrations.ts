@@ -239,4 +239,9 @@ create table valuation_cache (
     sql: `delete from secrets where name like 'avm.%';
 drop table if exists valuation_cache;`,
   },
+  {
+    // The support dashboard's Health page: problems from the removed property values service are closed.
+    id: '006_close_property_value_errors',
+    sql: `update system_errors set resolved_at = now() where area = 'Property values' and resolved_at is null;`,
+  },
 ];

@@ -563,6 +563,23 @@ html body .drawer { z-index: 126; }
 .check-line { display: flex; gap: 10px; align-items: center; margin: 4px 0 16px; font-size: var(--t-16); cursor: pointer; }
 .check-line input { width: 20px; height: 20px; accent-color: var(--accent); }
 .row-act .official-pdf { white-space: nowrap; }
+/* Shared lease: a row per person under the unit (Home and Rentals), each with their share and their own Mark paid. */
+.rent-row.has-people, .unit-row.has-people { border-bottom-color: transparent; }
+.rent-row.person-row, .unit-row.person-row { min-height: 0; padding-top: 8px; padding-bottom: 8px; background: color-mix(in srgb, var(--paper-sunk) 45%, transparent); }
+.rent-row.person-row { padding-left: 46px; }
+.rent-row.person-row .who { font-size: var(--t-16); }
+.rent-row.person-row .person-share { display: block; font-size: var(--t-14); color: var(--ink-soft); }
+.unit-row.person-row .unit-who strong { font-size: var(--t-14); }
+.person-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink-blue); background: var(--paper-raised); }
+.unit-row.person-row .person-dot-wrap { display: flex; justify-content: center; background: none; border: 0; box-shadow: none; }
+.person-row .btn { min-height: 36px; }
+@media (max-width: 640px) {
+  .rent-row.person-row { padding-left: 30px; }
+  .unit-row.person-row .person-dot-wrap { width: 20px; }
+}
+/* A new version was deployed while this tab was open. */
+.update-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 auto 16px; max-width: var(--content);
+  padding: 10px 14px; border-radius: 10px; background: var(--accent-tint); border: 1px solid var(--accent); color: var(--ink); font-size: var(--t-14); }
 /* The Value tab: what it's worth to you. */
 .worth { margin-bottom: 24px; }
 .worth-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
