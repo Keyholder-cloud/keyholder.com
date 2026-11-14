@@ -1,12 +1,15 @@
-import type { AppState, BankTxn, Cents, ISODate, Period } from '../data/types';
+import type { AppState, BankTxn, Cents, ISODate, Period, Tenant } from '../data/types';
 import { daysBetween } from './dates';
 import { currentLeases, leaseLedger } from './finance';
+import { tenantPeople } from './people';
+import { isShared, personLines } from './shares';
 
 // Payment matcher (BK-2, BK-3). Deposits are scored against open rent charges.
 // High confidence logs automatically; medium/low go to the "Needs a look" tray.
 
 export type Confidence = 'high' | 'medium' | 'low';
-export interface Suggestion { leaseId: string; period: Period; confidence: Confidence; score: number; reasons: string[] }
+/** `person`: on a shared lease, who paid (their place in the tenant's people), when the payer's name says so. */
+export interface Suggestion { leaseId: string; period: Period; confidence: Confidence; score: number; reasons: string[]; person?: number }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -14,15 +17,24 @@ export function nameScore(payer: string, names: string[], aliases: string[]): { 
   const p = norm(payer);
   if (!p) return { score: 0 };
   for (const a of aliases) if (norm(a) === p) return { score: 40, reason: `Known payer "${a}"` };
+  // The best match across everyone on the lease (Priya Patel's deposit matches Priya, not just Jordan's surname).
+  let best: { score: number; reason?: string } = { score: 0 };
   for (const n of names) {
     const nn = norm(n);
     if (nn === p) return { score: 40, reason: 'Payer name matches the tenant' };
     const pt = p.split(' '), nt = nn.split(' ');
     const shared = nt.filter((t) => t.length > 1 && pt.includes(t));
-    if (shared.length >= 2) return { score: 35, reason: 'Payer name matches the tenant' };
-    if (shared.length === 1 && shared[0] === nt[nt.length - 1]) return { score: 22, reason: `Shares the surname ${n.split(' ').pop()}` };
+    if (shared.length >= 2 && best.score < 35) best = { score: 35, reason: 'Payer name matches the tenant' };
+    else if (shared.length === 1 && shared[0] === nt[nt.length - 1] && best.score < 22) best = { score: 22, reason: `Shares the surname ${n.split(' ').pop()}` };
   }
-  return { score: 0 };
+  return best;
+}
+
+/** Who a bank deposit is from, on a shared lease: the one person whose name matches the payer. */
+export function personFor(t: Tenant | undefined, payer: string): number | undefined {
+  if (!isShared(t)) return undefined;
+  const hits = tenantPeople(t).map((p, i) => ({ i, s: nameScore(payer, [p.name], []).score })).filter((x) => x.s >= 35);
+  return hits.length === 1 ? hits[0].i : undefined;
 }
 
 export function suggestMatch(state: AppState, txn: Pick<BankTxn, 'amount' | 'payer' | 'memo' | 'date'>, today: ISODate): Suggestion | null {
@@ -32,6 +44,9 @@ export function suggestMatch(state: AppState, txn: Pick<BankTxn, 'amount' | 'pay
     const tenant = state.tenants.find((t) => t.id === lease.tenantId);
     const unit = state.units.find((u) => u.id === lease.unitId);
     if (!tenant || !unit) continue;
+    // Shared lease: each person pays their own share, so a deposit can match one person's share.
+    const shared = isShared(tenant);
+    const who = shared ? personFor(tenant, txn.payer) : undefined;
     const open = leaseLedger(lease, state.payments, today).filter((l) => l.paid < l.charge);
     // Also consider next month (people pay early).
     if (open.length === 0) continue;
@@ -39,7 +54,11 @@ export function suggestMatch(state: AppState, txn: Pick<BankTxn, 'amount' | 'pay
       const reasons: string[] = [];
       let score = 0;
       const owing = line.charge - line.paid;
+      const people = shared ? personLines(state, lease, line) : [];
+      const mine = who !== undefined ? people[who] : undefined;
       if (txn.amount === owing) { score += 45; reasons.push(`Amount equals the ${owing === line.charge ? 'rent' : 'balance owing'}`); }
+      else if (mine && mine.owing > 0 && txn.amount === mine.owing) { score += 45; reasons.push(`Amount equals ${mine.name.split(' ')[0]}'s share`); }
+      else if (shared && people.some((x) => x.owing > 0 && x.owing === txn.amount)) { score += 30; reasons.push("Amount equals one person's share"); }
       else if (txn.amount === lease.rent) { score += 38; reasons.push('Amount equals the monthly rent'); }
       else if (txn.amount < owing) { score += 12; reasons.push('Could be a partial payment'); }
       const ns = nameScore(txn.payer, tenant.names, tenant.aliases);
@@ -49,7 +68,7 @@ export function suggestMatch(state: AppState, txn: Pick<BankTxn, 'amount' | 'pay
       else if (gap <= 20) score += 4;
       const memo = norm(txn.memo);
       if (memo && (memo.includes('rent') || memo.split(' ').includes(norm(unit.label)) || (lease.room && memo.includes(norm(lease.room))))) { score += 6; reasons.push('Message mentions rent or the unit'); }
-      candidates.push({ leaseId: lease.id, period: line.period, confidence: 'low', score, reasons });
+      candidates.push({ leaseId: lease.id, period: line.period, confidence: 'low', score, reasons, person: who });
     }
   }
   candidates.sort((a, b) => b.score - a.score || a.period.localeCompare(b.period));

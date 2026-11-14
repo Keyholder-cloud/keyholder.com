@@ -21,6 +21,8 @@ import { byValue } from '../lib/score';
 import { PaymentForm, PropertyForm, TenancyForm, UnitForm } from '../components/forms';
 import { Drawer, Empty, Field, MoneyInput, Seg, Stamp } from '../components/ui';
 import { Icon } from '../components/Icon';
+import { PeopleRows } from '../components/PeopleRows';
+import { isShared } from '../lib/shares';
 import { ReminderDrawer } from './Tray';
 import { SceneEmptyHome } from '../components/Art';
 
@@ -115,19 +117,23 @@ function LeaseRow({ unit, lease, tenant }: { unit: Unit; lease: Lease; tenant: T
   // A deposit waiting to be confirmed for this tenant: show it instead of "late".
   const found = trayItems(state, today).some((t) => t.kind === 'match' && t.suggestion?.leaseId === lease.id);
   const isLate = !found && (line.state === 'late' || (line.state === 'partial' && line.daysLate > 0));
+  // Shared lease: each person has their own row underneath, with their own "Mark paid".
+  const shared = isShared(tenant);
   return (
-    <li className={`unit-row ${isLate ? 'late' : ''}`}>
+    <>
+    <li className={`unit-row ${isLate ? 'late' : ''}${shared ? ' has-people' : ''}`}>
       <span className={`unit-label${unit.label.length > 2 ? ' long' : ''}`}>{unit.label}</span>
       <Link to={`/rent/tenant/${tenant.id}`} className="unit-who"><strong>{tenant.names.join(' & ')}</strong><span>{lease.room ? `${lease.room} · ` : ''}{fmt(lease.rent)} a month{tenant.names.length > 1 ? ' · shared lease' : ''}</span></Link>
       <span className="unit-state">
         {line.state === 'paid' && <span className="status paid"><Icon name="check" size={16} />Paid</span>}
         {isLate && <span className="status late">Late · {line.daysLate} days</span>}
         {(line.state === 'due' || line.state === 'upcoming') && <span className="status due">{line.state === 'due' ? 'Due today' : `Due ${fmtDay(line.due)}`}</span>}
+        {line.state === 'partial' && !isLate && !found && <span className="status partial">{fmt(line.charge - line.paid)} owed</span>}
         {found && line.state !== 'paid' && <span className="status due">Payment found</span>}
       </span>
       <span className="row-act">
         {found && line.state !== 'paid' ? <button className="btn primary" onClick={() => nav('/today')}>Confirm</button> : isLate ? <button className="btn primary" onClick={() => setLate(lease)}>Late rent options</button>
-          : line.state !== 'paid' ? <button className="btn" onClick={() => setPay(true)}>Mark paid</button> : null}
+          : line.state !== 'paid' && !shared ? <button className="btn" onClick={() => setPay(true)}>Mark paid</button> : null}
         <UnitMenu onRaise={() => setRaise(true)} />
       </span>
       <RaiseRentSuggestion lease={lease} unit={unit} onRaise={() => setRaise(true)} />
@@ -135,6 +141,8 @@ function LeaseRow({ unit, lease, tenant }: { unit: Unit; lease: Lease; tenant: T
       {pay && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}
       {late && <LateRentDrawer lease={late} onClose={() => setLate(null)} />}
     </li>
+    {shared && <PeopleRows lease={lease} line={line} look="rentals" />}
+    </>
   );
 }
 

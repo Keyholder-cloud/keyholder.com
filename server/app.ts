@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
@@ -115,10 +115,12 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   // banks: bank checks are on when Plaid is set up (Connections) and the super user has not turned them off.
   // addressLookup: address suggestions (Google Places) when its key is set.
   // banksOff: banks the super user turned off one by one.
+  // A fingerprint of the app being served (it changes with each deploy), so a tab left open can offer to reload.
+  let build = 'dev';
   const publicConfig = async () => {
     await keys.refresh(db);
     const b = await bankSettings(db);
-    return { google: !!keys.google(), emailDelivery: keys.email().provider !== 'log', banks: b.enabled && plaid.ready(), banksOff: b.enabled ? b.off : [], addressLookup: !!keys.places(), benchmarks: await benchmarksNow(db), version: VERSION };
+    return { google: !!keys.google(), emailDelivery: keys.email().provider !== 'log', banks: b.enabled && plaid.ready(), banksOff: b.enabled ? b.off : [], addressLookup: !!keys.places(), benchmarks: await benchmarksNow(db), version: VERSION, build };
   };
   // Counted per address and email, after the body is read, so one person's typos never lock out another.
   const authLimit = { rateLimit: { hook: 'preHandler' as const, max: 10, timeWindow: '1 minute', keyGenerator: (r: FastifyRequest) => `${r.ip}:${normEmail(String((r.body as { email?: string })?.email ?? ''))}` } };
@@ -597,6 +599,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   const page = indexFile && existsSync(indexFile)
     ? readFileSync(indexFile, 'utf8').replace(/<head>/i, '<head>\n    <meta name="keyholder-server" content="1" />')
     : null;
+  if (page) build = createHash('sha256').update(page).digest('hex').slice(0, 12);
   if (dir && page) {
     await app.register(fstatic, {
       root: dir, wildcard: true, index: false,

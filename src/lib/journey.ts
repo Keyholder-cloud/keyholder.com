@@ -4,6 +4,7 @@ import { activeLease, activeLeases, byRoom, leasePlace, openRooms, roomLabels, r
 import { formById, formsFor } from './forms';
 import { arrears, nextNotice, propertyOf } from './notices';
 import { trayItems } from './tray';
+import { tenantPeople } from './people';
 import type { LedgerLine } from './finance';
 
 // The tenant journey: one card per tenant, empty unit or property, showing only the current step.
@@ -94,7 +95,9 @@ function tenantCard(state: AppState, lease: Lease, today: ISODate): JourneyCard 
   const receipt = tray.find((t) => t.kind === 'message' && t.message.leaseId === lease.id && t.message.kind === 'receipt');
   if (receipt && receipt.kind === 'message') {
     const pay = state.payments.find((p) => p.id === state.receipts.find((r) => r.id === receipt.message.receiptId)?.paymentId);
-    return { ...base, stepKey: `receipt-${receipt.message.id}`, stage: 'paying', text: `Send ${who}'s receipt`, detail: pay ? `${(pay.amount / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' })} received ${fmtDate(pay.date)}` : undefined, priority: 2, step: { kind: 'send-receipt', message: receipt.message }, progress: 'Step 2 of 2' };
+    // Shared lease: the receipt is for the person who paid.
+    const payer = pay?.person !== undefined ? tenantPeople(tenant)[pay.person]?.name : undefined;
+    return { ...base, stepKey: `receipt-${receipt.message.id}`, stage: 'paying', text: `Send ${payer ? firstName(payer) : who}'s receipt`, detail: pay ? `${(pay.amount / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' })} received ${fmtDate(pay.date)}` : undefined, priority: 2, step: { kind: 'send-receipt', message: receipt.message }, progress: 'Step 2 of 2' };
   }
   const reminder = tray.find((t) => t.kind === 'reminder' && t.lease.id === lease.id);
   const owing = arrears(state, lease, today);

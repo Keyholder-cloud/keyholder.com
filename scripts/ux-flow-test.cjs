@@ -93,10 +93,17 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.locator('.drawer >> text=Add another person').click(); await pg.fill('#tf-n1', 'Luis Gomez'); await pg.fill('#tf-e1', 'luis@example.com');
       const today = await pg.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; });
       await pg.fill('#tf-s', today); await pg.fill('#tf-r', '2000');
+      // Two people: who pays what, blank for an even split; shares that do not add up block saving.
+      await pg.waitForSelector('#tf-shares >> text=Who pays what each month');
+      if ((await pg.getAttribute('#tf-sh0', 'placeholder')) !== '1000.00') throw new Error('no even split shown');
+      await pg.fill('#tf-sh0', '1200'); await pg.waitForSelector('#tf-shares >> text=share for everyone');
+      if (await pg.locator('.drawer-foot >> text=Save tenant and lease').isEnabled()) throw new Error('saving allowed with one share');
+      await pg.fill('#tf-sh0', '');
       await pg.locator('.drawer-foot >> text=Save tenant and lease').click(); await pg.waitForTimeout(300);
       await pg.waitForSelector('.unit-row:has-text("Rita Gomez")');
     });
-    let row = (who) => pg.locator('.rent-row', { hasText: who });
+    // A unit's row on Home (not the rows of the people on a shared lease, which sit underneath it).
+    let row = (who) => pg.locator('.rent-row:not(.person-row)', { hasText: who });
     await step(tag, 'A5 Home row for the new tenant says "Prepare lease"', async () => {
       await go(pg, 'today'); const t = await row('Rita').locator('.row-act .btn').first().textContent(); if (t !== 'Prepare lease') throw new Error('button: ' + t); return t;
     });
@@ -661,6 +668,42 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'rentals'); await pg.locator('.unit-row', { hasText: 'Jordan' }).locator('text=Late rent options').click(); await pg.locator('.drawer >> text=Write reminder').click();
       const to = await pg.locator('.drawer .to-line').textContent(); if (!/jpatel@example\.com/.test(to) || !/priya\.patel@example\.com/.test(to)) throw new Error('To: ' + to);
       await pg.keyboard.press('Escape'); return to.trim();
+    });
+    await step(tag, 'H4b Shared lease: a row per person under the unit; each pays their share; the receipt goes to the payer; the row does not ask again', async () => {
+      await go(pg, 'today');
+      const person = (i) => pg.locator(`.rent-row.person-row[data-person="${i}"]`);
+      const main = pg.locator('.rent-row:not(.person-row)', { hasText: 'Jordan' });
+      if ((await person(0).textContent()).indexOf('$725.00 share') < 0) throw new Error('no share on the row: ' + (await person(0).textContent()));
+      if (await main.locator('.row-act >> text=Mark paid').count()) throw new Error('the unit row still has its own Mark paid');
+      const month = await pg.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; });
+      // Jordan pays his half: this month, his share, his receipt.
+      await person(0).locator('text=Mark paid').click(); await pg.waitForSelector('.drawer [aria-label="Who paid?"]');
+      if ((await pg.locator('.drawer [aria-label="Who paid?"] [aria-pressed=true]').textContent()) !== 'Jordan') throw new Error('Jordan not chosen');
+      if (!/^725(\.00)?$/.test(await pg.inputValue('#pf-amt'))) throw new Error('amount: ' + (await pg.inputValue('#pf-amt')));
+      if ((await pg.inputValue('#pf-period')) !== month) throw new Error('month: ' + (await pg.inputValue('#pf-period')));
+      await pg.locator('.drawer-foot >> text=Mark paid').click(); await pg.waitForTimeout(250);
+      if (!/Paid/.test(await person(0).locator('.status').textContent())) throw new Error('Jordan not paid');
+      if (!(await person(1).locator('text=Mark paid').count())) throw new Error('Priya lost her Mark paid');
+      if ((await main.locator('.row-act .btn').first().textContent()) !== 'Send receipt') throw new Error('main: ' + (await main.locator('.row-act').textContent()));
+      await main.locator('text=Send receipt').click(); await pg.waitForTimeout(250);
+      const after = (await main.locator('.row-act').textContent()).replace('⋯', '').trim();
+      if (/Mark paid|Send receipt/.test(after)) throw new Error('the row asks again: ' + after);
+      // The reminder now goes to Priya only, for her share.
+      await go(pg, 'rentals'); await pg.locator('.unit-row:not(.person-row)', { hasText: 'Jordan' }).locator('text=Late rent options').click(); await pg.locator('.drawer >> text=Write reminder').click();
+      const to = await pg.locator('.drawer .to-line').textContent(); if (/jpatel/.test(to) || !/priya\.patel@example\.com/.test(to)) throw new Error('To: ' + to);
+      if (!/725\.00 \(your share\)/.test(await pg.inputValue('.drawer textarea'))) throw new Error('reminder is not for her share');
+      await pg.keyboard.press('Escape'); await pg.waitForTimeout(150);
+      // Priya pays from Rentals: both paid, nothing left to mark.
+      await pg.locator('.unit-row.person-row[data-person="1"] >> text=Mark paid').click();
+      if (!/^725(\.00)?$/.test(await pg.inputValue('#pf-amt'))) throw new Error('Priya amount: ' + (await pg.inputValue('#pf-amt')));
+      await pg.locator('.drawer-foot >> text=Mark paid').click(); await pg.waitForTimeout(250);
+      if (await pg.locator('.unit-row', { hasText: 'Patel' }).locator('text=Mark paid').count()) throw new Error('still asks to mark paid');
+      const st = await state(pg);
+      const pays = st.payments.filter((p) => p.leaseId === 'l-patel' && p.period === month && !p.voided).map((p) => p.person);
+      if (JSON.stringify(pays) !== '[0,1]') throw new Error('who paid: ' + JSON.stringify(pays));
+      const rc = st.messages.filter((m) => m.leaseId === 'l-patel' && m.kind === 'receipt' && m.period === month).map((m) => JSON.stringify(m.to));
+      if (rc.join() !== '[0],[1]') throw new Error('receipts to: ' + rc.join());
+      return to.trim();
     });
     await step(tag, 'H5 By the room: a row per rented room, and "2 of 3 rooms rented" with the free room', async () => {
       await go(pg, 'today');

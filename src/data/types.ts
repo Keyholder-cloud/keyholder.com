@@ -115,6 +115,8 @@ export interface Person {
   name: string;
   email: string;
   phone: string;
+  /** Shared lease: this person's part of the monthly rent. Blank for everyone means an equal split. */
+  share?: Cents;
 }
 
 export type NoticeMethod = 'email' | 'hand' | 'mail';
@@ -176,6 +178,8 @@ export interface Payment {
   period: Period;
   source: PaymentSource;
   note?: string;
+  /** Shared lease: who paid (their place in the tenant's people). Blank counts toward the month only. */
+  person?: number;
   voided?: boolean;
   createdAt: string;
 }
@@ -265,6 +269,8 @@ export interface Message {
   body: string;
   status: 'draft' | 'sent' | 'cancelled';
   edited: boolean;
+  /** Shared lease: who it goes to (places in the tenant's people). Blank means everyone on the lease. */
+  to?: number[];
   createdAt: string;
   sentAt?: string;
 }

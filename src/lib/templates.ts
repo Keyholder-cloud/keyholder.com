@@ -1,6 +1,8 @@
 import type { AppState, Lease, Message, Tone } from '../data/types';
 import { fmtDate, fmtPeriod } from './dates';
-import { leaseBalance } from './finance';
+import { leaseBalance, leaseLedger } from './finance';
+import { tenantPeople } from './people';
+import { isShared, personLines } from './shares';
 import { fmt } from './money';
 
 // Reminder and receipt wording (AR-2). Merge fields: {first}, {amount}, {due}, {unit}, {balance}, {instructions}, {owner}.
@@ -49,16 +51,27 @@ Please pay the full balance by the end of this week. If it remains unpaid, I wil
   },
 };
 
-export function mergeFields(state: AppState, lease: Lease, period: string, today: string): Record<string, string> {
+/**
+ * `to`: on a shared lease, the people it goes to (places in the tenant's people). Then {first} is only their names,
+ * and {amount} and {balance} are what they still owe of their share for that month.
+ */
+export function mergeFields(state: AppState, lease: Lease, period: string, today: string, to?: number[]): Record<string, string> {
   const tenant = state.tenants.find((t) => t.id === lease.tenantId);
   const unit = state.units.find((u) => u.id === lease.unitId);
-  const first = tenant ? tenant.names.map((n) => n.split(' ')[0]).join(' and ') : 'there';
+  const people = tenant ? tenantPeople(tenant) : [];
+  const some = to?.length ? people.filter((_, i) => to.includes(i)) : people;
+  const first = some.length ? some.map((p) => p.name.split(' ')[0]).join(' and ') : 'there';
+  let share: string | undefined;
+  if (to?.length && isShared(tenant)) {
+    const line = leaseLedger(lease, state.payments, today, period).find((l) => l.period === period);
+    if (line) share = fmt(personLines(state, lease, line).filter((p) => to.includes(p.idx)).reduce((a, p) => a + p.owing, 0));
+  }
   return {
     first,
-    amount: fmt(lease.rent),
+    amount: share ? `${share} (your share)` : fmt(lease.rent),
     due: fmtDate(`${period}-${String(lease.dueDay).padStart(2, '0')}`),
     unit: unit?.label ?? '',
-    balance: fmt(leaseBalance(lease, state.payments, today)),
+    balance: share ?? fmt(leaseBalance(lease, state.payments, today)),
     period: fmtPeriod(period),
     instructions: lease.paymentMethod === 'etransfer' ? `You can send an Interac e-Transfer to ${state.profile.email || 'my usual email'}.` : '',
     owner: state.profile.name || 'Your landlord',
@@ -69,8 +82,8 @@ export function fill(template: string, fields: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (_, k) => fields[k] ?? `{${k}}`);
 }
 
-export function reminderDraft(state: AppState, lease: Lease, period: string, tone: Tone, today: string) {
-  const f = mergeFields(state, lease, period, today);
+export function reminderDraft(state: AppState, lease: Lease, period: string, tone: Tone, today: string, to?: number[]) {
+  const f = mergeFields(state, lease, period, today, to);
   return { subject: fill(REMINDER[tone].subject, f), body: fill(REMINDER[tone].body, f) };
 }
 
@@ -78,8 +91,8 @@ export function messageBody(state: AppState, msg: Message, today: string): { sub
   if (msg.edited || msg.body) return { subject: msg.subject, body: msg.body };
   const lease = state.leases.find((l) => l.id === msg.leaseId);
   if (!lease) return { subject: msg.subject, body: msg.body };
-  if (msg.kind === 'reminder' && msg.period) return reminderDraft(state, lease, msg.period, msg.tone ?? 'gentle', today);
-  const f = mergeFields(state, lease, msg.period ?? '', today);
+  if (msg.kind === 'reminder' && msg.period) return reminderDraft(state, lease, msg.period, msg.tone ?? 'gentle', today, msg.to);
+  const f = mergeFields(state, lease, msg.period ?? '', today, msg.to);
   return {
     subject: `Rent receipt — ${f.period}`,
     body: `Hi ${f.first},\n\nThank you — your rent payment has been received. Your receipt is attached.\n\n${f.owner}`,
