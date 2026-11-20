@@ -1,3 +1,4 @@
+import { PLAID_PRIVACY_URL } from './Security';
 import { PageSub } from '../components/Guide';
 import { useMemo, useState } from 'react';
 import { Link, NavLink, useParams } from 'react-router-dom';
@@ -261,6 +262,7 @@ function PlaidConnect({ onClose }: { onClose: () => void }) {
         <li><Icon name="bell" size={16} />New transactions arrive as soon as your bank reports them. Rent that clearly matches a tenant is marked paid.</li>
         <li><Icon name="close" size={16} />Disconnect any time in Settings.</li>
       </ul>
+      <p className="small soft consent-line" id="plaid-consent">By choosing "Continue to your bank", you agree that Plaid may collect your bank data and share it with Keyholder, as described in <a href={PLAID_PRIVACY_URL} target="_blank" rel="noopener noreferrer">Plaid's End User Privacy Policy</a>, and that Keyholder uses it as described in <a href="#/welcome/security#bank" target="_blank" rel="noopener noreferrer">Security &amp; privacy</a>.</p>
       {err && <p className="small acct-error" role="alert">{err}</p>}
     </Drawer>
   );

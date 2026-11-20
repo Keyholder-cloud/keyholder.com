@@ -602,3 +602,6 @@ html body .drawer { z-index: 126; }
 .plain-list { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 10px; }
 .plain-list li { display: flex; gap: 10px; align-items: flex-start; }
 .plain-list li svg { flex: none; margin-top: 3px; color: var(--primary); }
+/* "By continuing you agree…" lines: sign-up, and before Plaid opens. */
+.consent-line { margin: 12px 0 0; line-height: 1.5; }
+.consent-line a { color: inherit; text-decoration: underline; }
