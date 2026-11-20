@@ -1,3 +1,4 @@
+import { SecurityPage } from './Security';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { fmtPrice, useUnitPrice } from '../data/pricing';
 import { createPortal } from 'react-dom';
@@ -103,7 +104,9 @@ export function Landing() {
   // The old Provinces and Questions pages are now sections of About.
   const section = raw === 'provinces' ? 'rules' : raw === 'questions' ? 'faq' : '';
   const page: PageId = (section ? 'about' : PAGES.find((p) => p.id === raw)?.id ?? '') as PageId;
-  const idx = PAGES.findIndex((p) => p.id === page);
+  // Security & privacy: its own page, linked from the footer (not the top menu).
+  const trust = raw === 'security' || raw === 'privacy' || raw === 'terms';
+  const idx = trust ? -1 : PAGES.findIndex((p) => p.id === page);
   // Only a signed-in account (admin included) gets "Open my dashboard", and only in the menu bar.
   // Everyone else sees Sign in and Sign up at the top right, and Get started on the page.
   const signedIn = !!state.profile.account?.signedIn;
@@ -113,15 +116,15 @@ export function Landing() {
   const same = (id: string) => { setMenu(false); if (id !== page) return; if (id === 'features') toTour(); else window.scrollTo(0, 0); };
 
   useEffect(() => { const on = () => setSolid(window.scrollY > 12); on(); window.addEventListener('scroll', on, { passive: true }); return () => window.removeEventListener('scroll', on); }, []);
-  useEffect(() => { setMenu(false); if (page === 'features') toTour(); else window.scrollTo(0, 0); }, [page]);
-  useEffect(() => { document.title = idx === 0 ? 'Keyholder · Rental automation for Canadian landlords' : `${PAGES[idx].label} · Keyholder`; }, [idx]);
+  useEffect(() => { setMenu(false); if (page === 'features' && !trust) toTour(); else window.scrollTo(0, 0); }, [page, trust]);
+  useEffect(() => { document.title = trust ? 'Security & privacy · Keyholder' : idx === 0 ? 'Keyholder · Rental automation for Canadian landlords' : `${PAGES[idx].label} · Keyholder`; }, [idx, trust]);
   useEffect(() => { document.body.style.overflow = menu ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [menu]);
-  useReveal(page);
-  const ctaShown = usePageCtaShown(page);
-  const overview = page === '' || page === 'features';
+  useReveal(trust ? 'security' : page);
+  const ctaShown = usePageCtaShown(trust ? 'security' : page);
+  const overview = !trust && (page === '' || page === 'features');
   const inTour = useTourInView(overview);
   // Which menu item is lit: on the Overview, Features lights up while the tour is on screen.
-  const isOn = (id: string) => (overview ? (id === 'features' ? inTour : id === '' ? !inTour : false) : id === page);
+  const isOn = (id: string) => (trust ? false : overview ? (id === 'features' ? inTour : id === '' ? !inTour : false) : id === page);
 
   // Top right, always: Sign in and Sign up (or the dashboard for someone signed in).
   const ctas = signedIn
@@ -152,8 +155,9 @@ export function Landing() {
 
       <main>
         {overview && <Overview start={start} />}
-        {page === 'about' && <About section={section} />}
-        {page === 'pricing' && <Pricing start={start} />}
+        {trust && <SecurityPage />}
+        {!trust && page === 'about' && <About section={section} />}
+        {!trust && page === 'pricing' && <Pricing start={start} />}
 
         <section className="lp-sec lp-cta-sec">
           <div className="lp-wrap">
@@ -178,6 +182,9 @@ export function Landing() {
           </nav>
           <nav aria-label="Get started">
             <p>Start</p><Link to="/start">Create a free account</Link><Link to="/signin">Sign in</Link>
+          </nav>
+          <nav aria-label="Trust">
+            <p>Trust</p><Link to="/welcome/security">Security &amp; privacy</Link><Link to="/welcome/security#bank">Bank connections (Plaid)</Link><Link to="/welcome/security#rights">Privacy policy</Link><Link to="/welcome/security#terms">Terms of use</Link>
           </nav>
           <p className="lp-legal">Keyholder prepares documents and information. It does not give legal or tax advice, file returns, or hold or move money. Notice periods, forms and rates in this preview are being verified with each province. Screens show sample properties. Photos from Unsplash. © 2026 Keyholder.</p>
         </div>

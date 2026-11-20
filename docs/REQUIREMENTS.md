@@ -192,20 +192,31 @@ Status: ☐ to do · ◐ in progress · ☑ done
   app checks it every few minutes and when the tab comes back. A new version shows "Keyholder was updated. Reload to
   get the latest version." with a Reload button.
 
-### R24. Shared lease: each person pays their share ☑
-- Owner, 2026-11-14: a unit with several people "does not function properly, when I mark as paid and send receipt it
-  comes back to asking me to mark as paid, I want it to reflect like the main units and appear like subtabs underneath."
-- Each person on a shared lease has a share of the rent: an even split unless shares are entered (Add a tenant and
-  Edit people; they must add up to the rent, or all stay blank). A room rented on its own lease is not affected.
-- Home and Rentals show a row per person under the unit: their share, where they stand this month (paid, part paid,
-  due, late) and their own Mark paid. The unit's row keeps the next step (receipt, reminder, notice) but no Mark paid
-  of its own. A month paid in full, by anyone, is paid for everyone.
-- Mark paid fills in this month while it is unpaid (before: the oldest month owing, which left this month asking
-  again) and the person's share. "Who paid?" can also be "Everyone" for one payment for the whole rent.
-- The receipt goes to the person who paid and is made out to them. A reminder goes only to whoever has not paid,
-  for what they still owe ("your share"). If that person has no email, it goes to everyone on the lease.
-- Legal notices still name everyone on the lease.
-- A bank deposit whose payer name matches one person (and their share's amount) is matched to them; the match drawer
-  asks "Who paid?" on a shared lease. The payer-name check now uses the best match across everyone on the lease.
-- Payments recorded before this change (no person) still count toward the month. Removing someone from a lease
-  moves the others' payments to their new place; the removed person's payments count toward the month.
+### R24. Rent status that stays put, for every kind of rental ☑ (replaces the per-person shares of 2026-11-14)
+- Owner, 2026-11-20: "I no longer see paid on lara after she has paid for the month and her receipt is sent ... for
+  folks that rent a unit by the room ... after I mark them as paid they go back to asking me if they have paid rent.
+  Make it like it is for Lara." and "It should reflect Rent Paid - Nov 1, similar to rent due ... hover shows a question
+  mark but green".
+- Paid rows show a green "Rent paid · Nov 1" pill (the day it was paid) on Home and Rentals, with the same "?" help as
+  "Rent due"; its explanation bubble is green.
+- Cause found for rooms: rooms usually have the same rent; a bank deposit for rent already marked paid by hand was
+  offered to the next unpaid room ("Rent to confirm"). Now such a deposit is attached to that payment, whichever came
+  first (deposit up to a month before or two weeks after); a named sender only matches their own rent; when rooms
+  have the same rent and the sender names nobody, "Whose rent is it?" lists the rooms (and rent already marked paid)
+  with nothing pre-picked.
+- Rooms show under their unit on Home and Rentals ("Unit Upper · by the room · 2 of 3 paid"); each room row works like
+  a whole unit. A room tenant whose lease has no room number still shows. The rent roll has a row per room.
+- Several people on one lease: one row and one Mark paid (the per-person rows and shares were removed). Mark paid
+  fills this month first, while it is unpaid.
+
+### R25. Security & privacy page; ready for Plaid production ☑
+- Owner, 2026-11-20: a documentation page with the sections needed to comply with Plaid, in the current design, and a
+  Word document with the answers Plaid asks to become a commercial user.
+- Website page /welcome/security (footer "Trust" column; linked at sign-up and before Plaid opens): Plaid bank
+  connections, what we collect and why, what we never do, consent and choices, retention and deletion, protections,
+  incidents, service providers, tenants' information, PIPEDA rights, terms of use, reporting a security issue.
+- "Connect your bank" names Plaid and links Plaid's End User Privacy Policy before "Continue to your bank".
+- The Word document (kept outside the repository) answers Plaid's company and application profile, use case, the
+  25-question security questionnaire with an honest status for each, and includes a starter security policy, the
+  retention policy and an action list. Open items for the owner: database off Render's free plan, the
+  privacy@keyholder.cloud mailbox, two-step sign-in on admin accounts, branch protection.

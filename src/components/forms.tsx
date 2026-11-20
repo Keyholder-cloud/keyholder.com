@@ -6,9 +6,8 @@ import type {
 import { uid, useStore } from '../data/store';
 import { propertyLevel } from '../lib/levels';
 import { addMonths, fmtPeriod, periodOf, periodRange } from '../lib/dates';
-import { activeLeases, byRoom, hasSpace, leaseLedger, mortgagePayment, openRooms, rentalPortion, type LedgerLine } from '../lib/finance';
-import { defaultPeriod, evenSplit, isShared, personLines, shareProblem } from '../lib/shares';
-import { tenantPeople, withPeople } from '../lib/people';
+import { activeLeases, byRoom, defaultPeriod, hasSpace, leaseLedger, mortgagePayment, openRooms, rentalPortion } from '../lib/finance';
+import { withPeople } from '../lib/people';
 import { CATEGORIES, CCA_CLASSES, PROVINCES, category, province } from '../lib/jurisdiction';
 import { fmt } from '../lib/money';
 import { Icon } from './Icon';
@@ -18,43 +17,25 @@ import { Drawer, Field, MoneyInput, Seg, Term } from './ui';
 // =====================================================================================
 // Log a payment by hand (RL-2)
 // =====================================================================================
-/**
- * `person`: on a shared lease, the person paying (their place in the tenant's people). The form then fills in what
- * they still owe of their share, and the receipt goes to them. The month is this month while it is not fully paid.
- */
-export function PaymentForm({ leaseId, person: forPerson, onClose, correct }: { leaseId?: string; person?: number; onClose: () => void; correct?: Payment }) {
+export function PaymentForm({ leaseId, onClose, correct }: { leaseId?: string; onClose: () => void; correct?: Payment }) {
   const { state, act, today } = useStore();
   const leases = state.leases.filter((l) => !l.end || l.end >= addMonths(today, -3));
   const [lid, setLid] = useState(correct?.leaseId ?? leaseId ?? leases[0]?.id ?? '');
   const lease = state.leases.find((l) => l.id === lid);
-  // Without the payment being fixed, so its own amount counts as still owing.
-  const others = useMemo(() => ({ ...state, payments: state.payments.filter((p) => p.id !== correct?.id) }), [state, correct]);
-  const open = useMemo(() => (lease ? leaseLedger(lease, others.payments, today, periodOf(addMonths(today, 1))) : []), [lease, others, today]);
-  const tenant = lease ? state.tenants.find((t) => t.id === lease.tenantId) : undefined;
-  const people = isShared(tenant) ? tenantPeople(tenant) : [];
-  const [person, setPerson] = useState<number | undefined>(correct ? correct.person : forPerson);
-  const [period, setPeriod] = useState(correct?.period ?? (lease ? defaultPeriod(others, lease, today) : periodOf(today)));
+  const open = useMemo(() => (lease ? leaseLedger(lease, state.payments.filter((p) => p.id !== correct?.id), today, periodOf(addMonths(today, 1))) : []), [lease, state.payments, today, correct]);
+  // This month while it is unpaid (not the oldest month owing: that left this month asking again).
+  const [period, setPeriod] = useState(correct?.period ?? (lease ? defaultPeriod(state, lease, today) : periodOf(today)));
   const line = open.find((l) => l.period === period);
-  /** What is still owed for a month: by this person on a shared lease, else by the lease. */
-  const owedFor = (l: LedgerLine | undefined, who: number | undefined, ls = lease) => {
-    if (!l || !ls) return 0;
-    if (who !== undefined && people.length) return personLines(others, ls, l)[who]?.owing ?? 0;
-    return Math.max(0, l.charge - l.paid);
-  };
-  const fill = (l: LedgerLine | undefined, who: number | undefined) =>
-    owedFor(l, who) || (who !== undefined && people.length && l && lease ? personLines(others, lease, l)[who]?.share : l?.charge) || lease?.rent;
-  const [amount, setAmount] = useState<number | undefined>(correct?.amount ?? fill(line, person));
+  const [amount, setAmount] = useState<number | undefined>(correct?.amount ?? (line ? line.charge - line.paid : lease?.rent));
   const [date, setDate] = useState(correct?.date ?? today);
   const [method, setMethod] = useState<PayMethod>(correct?.method ?? lease?.paymentMethod ?? 'etransfer');
   const [note, setNote] = useState(correct?.note ?? '');
-  const owing = owedFor(line, person);
-  const payer = person !== undefined ? people[person]?.name : undefined;
+  const owing = line ? line.charge - line.paid : 0;
 
   const submit = () => {
     if (!lease || !amount) return;
-    const who = people.length && person !== undefined ? { person } : {};
-    if (correct) act.correctPayment(correct.id, { amount, date, period, method, note, person: people.length ? person : undefined });
-    else act.logPayment({ leaseId: lease.id, amount, date, period, method, note: note || undefined, source: 'manual', ...who });
+    if (correct) act.correctPayment(correct.id, { amount, date, period, method, note });
+    else act.logPayment({ leaseId: lease.id, amount, date, period, method, note: note || undefined, source: 'manual' });
     onClose();
   };
 
@@ -69,12 +50,7 @@ export function PaymentForm({ leaseId, person: forPerson, onClose, correct }: { 
           <div className="choices" role="radiogroup">
             {leases.map((l) => {
               const t = state.tenants.find((x) => x.id === l.tenantId); const u = state.units.find((x) => x.id === l.unitId);
-              return <button key={l.id} role="radio" aria-checked={lid === l.id} className="choice" onClick={() => {
-                setLid(l.id); setPerson(undefined);
-                const pd = defaultPeriod(state, l, today); setPeriod(pd);
-                const o = leaseLedger(l, state.payments, today, periodOf(addMonths(today, 1))).find((x) => x.period === pd);
-                setAmount((o && Math.max(0, o.charge - o.paid)) || l.rent);
-              }}>
+              return <button key={l.id} role="radio" aria-checked={lid === l.id} className="choice" onClick={() => { setLid(l.id); const pd = defaultPeriod(state, l, today); setPeriod(pd); const o = leaseLedger(l, state.payments, today, periodOf(addMonths(today, 1))).find((x) => x.period === pd); setAmount((o && Math.max(0, o.charge - o.paid)) || l.rent); }}>
                 <span className="t">{t?.names.join(' & ')}</span><span className="s">Unit {u?.label}</span>
               </button>;
             })}
@@ -83,12 +59,6 @@ export function PaymentForm({ leaseId, person: forPerson, onClose, correct }: { 
       )}
       {lease && (
         <>
-          {people.length > 1 && (
-            <Field label="Who paid?">
-              <Seg label="Who paid?" value={person ?? -1} onChange={(v) => { const who = v === -1 ? undefined : v; setPerson(who); setAmount(fill(line, who)); }}
-                options={[...people.map((p, i) => ({ id: i, label: p.name.split(' ')[0] })), { id: -1, label: 'Everyone' }]} />
-            </Field>
-          )}
           <div className="grid2">
             <Field label="Amount" htmlFor="pf-amt" hint={amount && owing && amount < owing ? `${fmt(owing - amount)} will still be owed` : undefined}>
               <MoneyInput id="pf-amt" value={amount} onChange={setAmount} />
@@ -96,7 +66,7 @@ export function PaymentForm({ leaseId, person: forPerson, onClose, correct }: { 
             <Field label="Date" htmlFor="pf-date"><input id="pf-date" type="date" className="input" value={date} max={today} onChange={(e) => setDate(e.target.value)} /></Field>
           </div>
           <Field label="Rent for" htmlFor="pf-period">
-            <select id="pf-period" className="input" value={period} onChange={(e) => { setPeriod(e.target.value); const l = open.find((x) => x.period === e.target.value); if (l) setAmount(fill(l, person)); }}>
+            <select id="pf-period" className="input" value={period} onChange={(e) => { setPeriod(e.target.value); const l = open.find((x) => x.period === e.target.value); if (l) setAmount(Math.max(0, l.charge - l.paid) || l.charge); }}>
               {open.slice().reverse().map((l) => <option key={l.period} value={l.period}>{fmtPeriod(l.period)} {l.paid >= l.charge ? '(paid)' : l.paid > 0 ? '(part paid)' : ''}</option>)}
             </select>
           </Field>
@@ -106,36 +76,10 @@ export function PaymentForm({ leaseId, person: forPerson, onClose, correct }: { 
               <Field label="Note" htmlFor="pf-note"><input id="pf-note" className="input" value={note} onChange={(e) => setNote(e.target.value)} /></Field>
             </>
           ) : <button className="btn ghost small" onClick={() => setMore(true)}>More details</button>}
-          <p className="small soft" style={{ marginTop: 16 }}>{state.profile.autoSend ? `A receipt is sent to ${payer ?? 'the tenant'}.` : `A receipt${payer ? ` for ${payer}` : ''} will be ready for you to send.`}</p>
+          <p className="small soft" style={{ marginTop: 16 }}>{state.profile.autoSend ? 'A receipt is sent to the tenant.' : 'A receipt will be ready for you to send.'}</p>
         </>
       )}
     </Drawer>
-  );
-}
-
-/**
- * Shared lease: what each person pays each month. Blank for everyone splits the rent evenly; once one is typed,
- * everyone needs one and they must add up to the rent (`shareProblem`).
- */
-export function ShareFields({ people, rent, onChange, idp }: { people: Person[]; rent: number | undefined; onChange: (i: number, share: number | undefined) => void; idp: string }) {
-  const named = people.filter((p) => p.name.trim());
-  if (named.length < 2 || !rent) return null;
-  const even = evenSplit(rent, named.length);
-  const problem = shareProblem(people, rent);
-  let k = 0;
-  return (
-    <div className="sheet share-q" id={`${idp}-shares`}>
-      <strong>Who pays what each month</strong>
-      <p className="small soft" style={{ margin: '4px 0 12px' }}>Leave blank to split {fmt(rent)} evenly. Each person gets their own Mark paid, receipt and reminders.</p>
-      <div className="grid2">
-        {people.map((p, i) => {
-          if (!p.name.trim()) return null;
-          const ph = (even[k++] / 100).toFixed(2);
-          return <Field key={i} label={p.name.trim().split(' ')[0]} htmlFor={`${idp}-sh${i}`}><MoneyInput id={`${idp}-sh${i}`} value={p.share} placeholder={ph} onChange={(v) => onChange(i, v)} /></Field>;
-        })}
-      </div>
-      {problem && <p className="small urgent" role="alert" style={{ margin: 0 }}>{problem}</p>}
-    </div>
   );
 }
 
@@ -499,7 +443,7 @@ export function TenancyForm({ unitId, onClose }: { unitId?: string; onClose: () 
   const [paidThrough, setPaidThrough] = useState('');
   const months = older ? periodRange(periodOf(start), thisPeriod).reverse() : [];
   const lastPaid = paidThrough && months.includes(paidThrough) ? paidThrough : standing === 'yes' ? (months.includes(lastDue) ? lastDue : months[0]) : '';
-  const valid = unit && people[0].name.trim() && rent && start && (!byRoom(unit) || room) && (!older || !!lastPaid) && !shareProblem(people, rent);
+  const valid = unit && people[0].name.trim() && rent && start && (!byRoom(unit) || room) && (!older || !!lastPaid);
 
   const save = () => {
     if (!unit || !rent) return;
@@ -547,7 +491,6 @@ export function TenancyForm({ unitId, onClose }: { unitId?: string; onClose: () 
         <Field label="Rent due on day" htmlFor="tf-d"><input id="tf-d" type="number" min={1} max={28} className="input" value={dueDay} onChange={(e) => setDueDay(Number(e.target.value) || 1)} /></Field>
         <Field label={<Term def="Ontario allows a deposit of up to one month's rent, applied to the last month. Interest is owed yearly at the guideline rate.">Last month's rent deposit</Term>} htmlFor="tf-lmr"><MoneyInput id="tf-lmr" value={lmr} onChange={setLmr} /></Field>
       </div>
-      {!(unit && byRoom(unit)) && <ShareFields people={people} rent={rent} idp="tf" onChange={(i, share) => setPerson(i, { share })} />}
       <Field label="How will they pay?"><Seg label="Method" value={method} onChange={setMethod} options={[{ id: 'etransfer', label: 'e-Transfer' }, { id: 'cheque', label: 'Cheque' }, { id: 'cash', label: 'Cash' }, { id: 'direct-deposit', label: 'Deposit' }]} /></Field>
       <Field label="Utilities arrangement" htmlFor="tf-ut"><input id="tf-ut" className="input" value={utilities} onChange={(e) => setUtilities(e.target.value)} placeholder="Tenant pays hydro; heat and water included" /></Field>
       <div className="btn-row"><label className="check"><input type="checkbox" checked={parking} onChange={(e) => setParking(e.target.checked)} />Parking</label><label className="check"><input type="checkbox" checked={pets} onChange={(e) => setPets(e.target.checked)} />Pets</label></div>

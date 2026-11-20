@@ -4,7 +4,6 @@ import { activeLease, activeLeases, byRoom, leasePlace, openRooms, roomLabels, r
 import { formById, formsFor } from './forms';
 import { arrears, nextNotice, propertyOf } from './notices';
 import { trayItems } from './tray';
-import { tenantPeople } from './people';
 import type { LedgerLine } from './finance';
 
 // The tenant journey: one card per tenant, empty unit or property, showing only the current step.
@@ -95,9 +94,7 @@ function tenantCard(state: AppState, lease: Lease, today: ISODate): JourneyCard 
   const receipt = tray.find((t) => t.kind === 'message' && t.message.leaseId === lease.id && t.message.kind === 'receipt');
   if (receipt && receipt.kind === 'message') {
     const pay = state.payments.find((p) => p.id === state.receipts.find((r) => r.id === receipt.message.receiptId)?.paymentId);
-    // Shared lease: the receipt is for the person who paid.
-    const payer = pay?.person !== undefined ? tenantPeople(tenant)[pay.person]?.name : undefined;
-    return { ...base, stepKey: `receipt-${receipt.message.id}`, stage: 'paying', text: `Send ${payer ? firstName(payer) : who}'s receipt`, detail: pay ? `${(pay.amount / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' })} received ${fmtDate(pay.date)}` : undefined, priority: 2, step: { kind: 'send-receipt', message: receipt.message }, progress: 'Step 2 of 2' };
+    return { ...base, stepKey: `receipt-${receipt.message.id}`, stage: 'paying', text: `Send ${who}'s receipt`, detail: pay ? `${(pay.amount / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' })} received ${fmtDate(pay.date)}` : undefined, priority: 2, step: { kind: 'send-receipt', message: receipt.message }, progress: 'Step 2 of 2' };
   }
   const reminder = tray.find((t) => t.kind === 'reminder' && t.lease.id === lease.id);
   const owing = arrears(state, lease, today);
@@ -153,7 +150,10 @@ export function journeyLeases(state: AppState, unit: Unit, today: ISODate): Leas
   const ended = (room?: string) => state.leases.find((x) => x.unitId === unit.id && (!byRoom(unit) || x.room === room) && x.end && x.end >= addDays(today, -30) && x.end <= addDays(today, 60));
   if (!byRoom(unit)) { const l = activeLease(state, unit.id, today) ?? ended(); return l ? [l] : []; }
   const running = activeLeases(state, unit.id, today);
-  return roomLabels(unit).flatMap((r) => { const l = running.find((x) => x.room === r) ?? ended(r); return l ? [l] : []; });
+  const labels = roomLabels(unit);
+  const inRooms = labels.flatMap((r) => { const l = running.find((x) => x.room === r) ?? ended(r); return l ? [l] : []; });
+  // A tenant with no room number (or a room above the count, after the unit was changed) still shows.
+  return [...inRooms, ...running.filter((l) => !l.room || !labels.includes(l.room))];
 }
 
 /** The current step for one unit: its tenant's journey step, or the empty unit's step. Stages are internal only. */

@@ -23,7 +23,8 @@ export function trayItems(state: AppState, today: string): TrayItem[] {
   for (const m of state.messages) if (m.status === 'draft') items.push({ kind: 'message', id: m.id, message: m });
 
   // Don't nag a tenant whose deposit is already sitting in the tray waiting to be matched.
-  const pendingDeposits = state.txns.filter((t) => t.status === 'new' && t.amount > 0).map((t) => suggestMatch(state, t, today)?.leaseId);
+  const deposits = state.txns.filter((t) => t.status === 'new' && t.amount > 0).map((t) => ({ t, s: suggestMatch(state, t, today) }));
+  const pendingDeposits = deposits.filter((x) => !x.s?.paymentId).map((x) => x.s?.leaseId);
   for (const lease of currentLeases(state, today)) {
     const tenant = state.tenants.find((t) => t.id === lease.tenantId);
     if (!tenant || tenant.remindersPaused || pendingDeposits.includes(lease.id)) continue;
@@ -41,10 +42,8 @@ export function trayItems(state: AppState, today: string): TrayItem[] {
     }
   }
 
-  for (const t of state.txns) {
-    if (t.status !== 'new') continue;
-    if (t.amount > 0) items.push({ kind: 'match', id: t.id, txn: t, suggestion: suggestMatch(state, t, today) });
-  }
+  // A deposit that is rent already marked paid is attached to it (the store does that), not asked about.
+  for (const { t, s } of deposits) if (!s?.paymentId) items.push({ kind: 'match', id: t.id, txn: t, suggestion: s });
   return items;
 }
 

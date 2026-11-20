@@ -3,7 +3,6 @@ import { todayISO } from '../src/lib/dates';
 import { fmt } from '../src/lib/money';
 import { reminderDraft } from '../src/lib/templates';
 import { trayItems } from '../src/lib/tray';
-import { reminderTo } from '../src/lib/shares';
 import type { Config } from './config';
 import type { Db } from './db';
 import { queueMail, recordError, sendDue } from './email';
@@ -48,9 +47,8 @@ export async function dailyRun(cfg: Config, db: Db, today = todayISO()) {
           const now = new Date().toISOString();
           for (const item of due) {
             if (item.kind !== 'reminder') continue;
-            const to = reminderTo(next, item.lease, item.line.period, today);
-            const draft = reminderDraft(next, item.lease, item.line.period, item.tone, today, to);
-            next.messages.push({ id: uid('msg'), kind: 'reminder', tenantId: item.lease.tenantId, leaseId: item.lease.id, period: item.line.period, tone: item.tone, subject: draft.subject, body: draft.body, status: 'sent', edited: false, ...(to ? { to } : {}), createdAt: now, sentAt: now });
+            const draft = reminderDraft(next, item.lease, item.line.period, item.tone, today);
+            next.messages.push({ id: uid('msg'), kind: 'reminder', tenantId: item.lease.tenantId, leaseId: item.lease.id, period: item.line.period, tone: item.tone, subject: draft.subject, body: draft.body, status: 'sent', edited: false, createdAt: now, sentAt: now });
             const t = next.tenants.find((x) => x.id === item.lease.tenantId);
             next.audit.unshift({ id: uid('a'), at: now, action: 'Reminder sent automatically', detail: `${item.tone} to ${t?.names.join(' & ') ?? 'tenant'} for ${item.line.period}` });
             reminders++;

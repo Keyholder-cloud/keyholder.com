@@ -146,6 +146,7 @@ export function EmailSignup({ onDone }: { onDone: (w: Who) => void }) {
       )}
       {err && <p className="small acct-error" role="alert">{err.text} {err.signIn && <Link to="/signin">Sign in</Link>}</p>}
       <button className="btn primary" disabled={!ready || busy}>{!server ? 'Continue with email' : busy ? 'Creating your account…' : 'Create my account'}</button>
+      <p className="tiny soft consent-line">By creating an account you agree to the <Link to="/welcome/security#terms" target="_blank">terms of use</Link> and how we handle your information in <Link to="/welcome/security" target="_blank">Security &amp; privacy</Link>.</p>
     </form>
   );
 }

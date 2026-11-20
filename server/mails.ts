@@ -1,7 +1,6 @@
 import type { AppState, Message } from '../src/data/types';
 import { fmt } from '../src/lib/money';
 import { fmtPeriod } from '../src/lib/dates';
-import { recipients, tenantPeople } from '../src/lib/people';
 import type { Mail } from './email';
 
 // The words in every email Keyholder sends. Plain text: it reads well everywhere, including old phones.
@@ -49,8 +48,7 @@ const first = (name: string) => name.trim().split(/\s+/)[0] || 'there';
 export function tenantMails(state: AppState, m: Message, accountId: string): Mail[] {
   const tenant = state.tenants.find((t) => t.id === m.tenantId);
   if (!tenant) return [];
-  // Shared lease: a receipt goes to the person who paid, a reminder to whoever has not paid their share.
-  const people = recipients(tenant, m.to);
+  const people = tenant.people?.length ? tenant.people : [{ name: tenant.names[0] ?? '', email: tenant.email }];
   const owner = state.profile.name || state.profile.account?.name || 'Your landlord';
   const replyTo = state.profile.account?.email || state.profile.email || undefined;
   let subject = m.subject || 'A message from your landlord';
@@ -62,13 +60,12 @@ export function tenantMails(state: AppState, m: Message, accountId: string): Mai
     const unit = state.units.find((u) => u.id === lease?.unitId);
     const prop = state.properties.find((p) => p.id === unit?.propertyId);
     if (!r || !pay) return [];
-    const payer = pay.person !== undefined ? tenantPeople(tenant)[pay.person]?.name : undefined;
     subject = `Rent receipt #${r.number}${pay.period ? ` for ${fmtPeriod(pay.period)}` : ''}`;
     text = [
-      `Hi ${(payer ? [payer] : tenant.names).map((n) => n.split(' ')[0]).join(' & ')},`, '',
+      `Hi ${tenant.names.map((n) => n.split(' ')[0]).join(' & ')},`, '',
       `Thank you. This is your receipt for rent.`, '',
       `Receipt number: ${r.number}`,
-      `Received from: ${payer ?? tenant.names.join(' & ')}`,
+      `Received from: ${tenant.names.join(' & ')}`,
       `Amount: ${fmt(pay.amount)}`,
       `For rent of: ${pay.period ? fmtPeriod(pay.period) : '—'}`,
       `Paid on: ${pay.date}${pay.method ? ` (${pay.method === 'etransfer' ? 'e-Transfer' : pay.method})` : ''}`,

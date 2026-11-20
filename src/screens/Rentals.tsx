@@ -1,4 +1,4 @@
-import { PageSub } from '../components/Guide';
+import { PageSub, StatusPill } from '../components/Guide';
 import { OfficialPdfButton } from '../components/OfficialForm';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -6,7 +6,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import type { Applicant, Lease, Listing, Notice, Tenant, Unit } from '../data/types';
 import { currentLine, unitTenant, useStore } from '../data/store';
-import { activeLeases, byRoom, hasSpace, openRooms, roomsLine } from '../lib/finance';
+import { activeLeases, byRoom, hasSpace, openRooms, paidOn, roomsLine, roomsPaid } from '../lib/finance';
 import { applicantPeople } from '../lib/people';
 import { addDays, daysBetween, fmtDate, fmtDay, fmtPeriod } from '../lib/dates';
 import { arrears, earliestIncrease, nextNotice, propertyOf } from '../lib/notices';
@@ -21,8 +21,6 @@ import { byValue } from '../lib/score';
 import { PaymentForm, PropertyForm, TenancyForm, UnitForm } from '../components/forms';
 import { Drawer, Empty, Field, MoneyInput, Seg, Stamp } from '../components/ui';
 import { Icon } from '../components/Icon';
-import { PeopleRows } from '../components/PeopleRows';
-import { isShared } from '../lib/shares';
 import { ReminderDrawer } from './Tray';
 import { SceneEmptyHome } from '../components/Art';
 
@@ -66,7 +64,8 @@ function PropertyBlock({ propertyId }: { propertyId: string }) {
 
 /**
  * One row per unit: who lives there, this month's rent, and the one action that matters.
- * A unit rented by the room gets a row per rented room, and one for its free rooms.
+ * A unit rented by the room gets a row for the unit, with a row per rented room underneath (each works like a
+ * whole unit) and one for its free rooms.
  */
 export function UnitRow({ unit }: { unit: Unit }) {
   const { state, today } = useStore();
@@ -75,19 +74,32 @@ export function UnitRow({ unit }: { unit: Unit }) {
     return lease && tenant ? <LeaseRow unit={unit} lease={lease} tenant={tenant} /> : <VacantRow unit={unit} />;
   }
   const free = openRooms(state, unit, today);
+  const sum = roomsPaid(state, unit, today);
+  const tone = sum.rented && sum.paid === sum.rented ? 'paid' : sum.late ? 'late' : 'due';
   return (
     <>
+      <li className={`unit-row unit-head${sum.late ? ' late' : ''}`}>
+        <span className={`unit-label${unit.label.length > 2 ? ' long' : ''}`}>{unit.label}</span>
+        <span className="unit-who"><strong>By the room</strong><span>{roomsLine(state, unit, today)}</span></span>
+        <span className="unit-state">{sum.rented > 0
+          ? <StatusPill tone={tone} meaning="Each room's rent is tracked on its own row underneath.">{tone === 'paid' && <Icon name="check" size={16} />}{sum.paid} of {sum.rented} paid</StatusPill>
+          : <StatusPill tone="vacant">No rooms rented</StatusPill>}</span>
+        <span className="row-act" />
+      </li>
       {activeLeases(state, unit.id, today).map((l) => {
         const t = state.tenants.find((x) => x.id === l.tenantId);
-        return t ? <LeaseRow key={l.id} unit={unit} lease={l} tenant={t} /> : null;
+        return t ? <LeaseRow key={l.id} unit={unit} lease={l} tenant={t} room /> : null;
       })}
-      {free.length > 0 && <VacantRow unit={unit} free={free} />}
+      {free.length > 0 && <VacantRow unit={unit} free={free} room />}
     </>
   );
 }
 
-/** An empty unit, or the free rooms of a unit rented by the room. */
-function VacantRow({ unit, free }: { unit: Unit; free?: string[] }) {
+/** The left column of a room's row: a dot under the unit's label, so rooms read as part of their unit. */
+const RoomMark = () => <span className="unit-label room-mark" aria-hidden><span /></span>;
+
+/** An empty unit, or the free rooms of a unit rented by the room (`room`: shown under the unit's row). */
+function VacantRow({ unit, free, room }: { unit: Unit; free?: string[]; room?: boolean }) {
   const { state, today } = useStore();
   const nav = useNavigate();
   const listing = state.listings.find((l) => l.unitId === unit.id);
@@ -97,8 +109,8 @@ function VacantRow({ unit, free }: { unit: Unit; free?: string[] }) {
   const lost = Math.round((unit.rent * (free?.length ?? 1) * 12 * days) / 365);
   const what = !free ? 'Empty' : free.length === 1 ? `${free[0]} is free` : `${free.length} rooms are free`;
   return (
-    <li className="unit-row vacant">
-      <span className={`unit-label${unit.label.length > 2 ? ' long' : ''}`}>{unit.label}</span>
+    <li className={`unit-row vacant${room ? ' room-row' : ''}`}>
+      {room ? <RoomMark /> : <span className={`unit-label${unit.label.length > 2 ? ' long' : ''}`}>{unit.label}</span>}
       <span className="unit-who"><strong>{what}{days ? ` for ${days} days` : ''}</strong><span>{free ? `${roomsLine(state, unit, today)} · ` : ''}{listing ? `Asking ${fmt0(listing.askingRent)}` : `Last rent ${fmt0(unit.rent)}`}{days ? ` · about ${fmt0(lost)} rent lost` : ''}</span></span>
       <span className="unit-state">{apps.length ? <span className="status due">{apps.length} application{apps.length > 1 ? 's' : ''}</span> : <span className="status vacant">No applications</span>}</span>
       <button className="btn primary" onClick={() => nav(`/rent/property/${unit.propertyId}/find`)}>Find a tenant</button>
@@ -106,8 +118,8 @@ function VacantRow({ unit, free }: { unit: Unit; free?: string[] }) {
   );
 }
 
-/** A lease: the whole unit's (one or several people), or one room's. */
-function LeaseRow({ unit, lease, tenant }: { unit: Unit; lease: Lease; tenant: Tenant }) {
+/** A lease: the whole unit's (one or several people), or one room's (`room`: shown under the unit's row). */
+function LeaseRow({ unit, lease, tenant, room }: { unit: Unit; lease: Lease; tenant: Tenant; room?: boolean }) {
   const { state, today } = useStore();
   const nav = useNavigate();
   const [pay, setPay] = useState(false);
@@ -117,23 +129,21 @@ function LeaseRow({ unit, lease, tenant }: { unit: Unit; lease: Lease; tenant: T
   // A deposit waiting to be confirmed for this tenant: show it instead of "late".
   const found = trayItems(state, today).some((t) => t.kind === 'match' && t.suggestion?.leaseId === lease.id);
   const isLate = !found && (line.state === 'late' || (line.state === 'partial' && line.daysLate > 0));
-  // Shared lease: each person has their own row underneath, with their own "Mark paid".
-  const shared = isShared(tenant);
+  const paid = line.state === 'paid' ? paidOn(line) : undefined;
   return (
-    <>
-    <li className={`unit-row ${isLate ? 'late' : ''}${shared ? ' has-people' : ''}`}>
-      <span className={`unit-label${unit.label.length > 2 ? ' long' : ''}`}>{unit.label}</span>
+    <li className={`unit-row${room ? ' room-row' : ''}${isLate ? ' late' : ''}`}>
+      {room ? <RoomMark /> : <span className={`unit-label${unit.label.length > 2 ? ' long' : ''}`}>{unit.label}</span>}
       <Link to={`/rent/tenant/${tenant.id}`} className="unit-who"><strong>{tenant.names.join(' & ')}</strong><span>{lease.room ? `${lease.room} · ` : ''}{fmt(lease.rent)} a month{tenant.names.length > 1 ? ' · shared lease' : ''}</span></Link>
       <span className="unit-state">
-        {line.state === 'paid' && <span className="status paid"><Icon name="check" size={16} />Paid</span>}
-        {isLate && <span className="status late">Late · {line.daysLate} days</span>}
-        {(line.state === 'due' || line.state === 'upcoming') && <span className="status due">{line.state === 'due' ? 'Due today' : `Due ${fmtDay(line.due)}`}</span>}
-        {line.state === 'partial' && !isLate && !found && <span className="status partial">{fmt(line.charge - line.paid)} owed</span>}
-        {found && line.state !== 'paid' && <span className="status due">Payment found</span>}
+        {line.state === 'paid' && <StatusPill tone="paid" meaning={paid ? undefined : 'Rent for this month counts as paid.'}><Icon name="check" size={16} />{paid ? `Rent paid · ${fmtDay(paid)}` : 'Rent paid'}</StatusPill>}
+        {isLate && <StatusPill tone="late">Late · {line.daysLate} days</StatusPill>}
+        {line.state === 'partial' && !isLate && !found && <StatusPill tone="partial">{fmt(line.charge - line.paid)} owed</StatusPill>}
+        {(line.state === 'due' || line.state === 'upcoming') && !found && <StatusPill tone="due">{line.state === 'due' ? 'Rent due today' : `Rent due ${fmtDay(line.due)}`}</StatusPill>}
+        {found && line.state !== 'paid' && <StatusPill tone="due">Payment found</StatusPill>}
       </span>
       <span className="row-act">
         {found && line.state !== 'paid' ? <button className="btn primary" onClick={() => nav('/today')}>Confirm</button> : isLate ? <button className="btn primary" onClick={() => setLate(lease)}>Late rent options</button>
-          : line.state !== 'paid' && !shared ? <button className="btn" onClick={() => setPay(true)}>Mark paid</button> : null}
+          : line.state !== 'paid' ? <button className="btn" onClick={() => setPay(true)}>Mark paid</button> : null}
         <UnitMenu onRaise={() => setRaise(true)} />
       </span>
       <RaiseRentSuggestion lease={lease} unit={unit} onRaise={() => setRaise(true)} />
@@ -141,8 +151,6 @@ function LeaseRow({ unit, lease, tenant }: { unit: Unit; lease: Lease; tenant: T
       {pay && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}
       {late && <LateRentDrawer lease={late} onClose={() => setLate(null)} />}
     </li>
-    {shared && <PeopleRows lease={lease} line={line} look="rentals" />}
-    </>
   );
 }
 

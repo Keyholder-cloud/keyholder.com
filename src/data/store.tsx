@@ -5,9 +5,7 @@ import type {
 import { emptyState, seedState, STATE_VERSION, defaultProfile } from './seed';
 import { addDays, dueDate, periodOf, todayISO } from '../lib/dates';
 import { activeLease, currentLeases, leaseLedger, openRooms } from '../lib/finance';
-import { personFor, suggestMatch } from '../lib/matching';
-import { reminderTo, renumberPeople } from '../lib/shares';
-import { tenantPeople } from '../lib/people';
+import { markedPayment, suggestMatch } from '../lib/matching';
 import { reminderDraft } from '../lib/templates';
 import { fmt } from '../lib/money';
 import { BANK_CHECK_HOURS } from '../lib/jurisdiction';
@@ -72,12 +70,6 @@ const tenantName = (d: AppState, leaseId: string) => {
   const t = d.tenants.find((x) => x.id === l?.tenantId);
   return t?.names.join(' & ') ?? 'tenant';
 };
-/** Shared lease: the name of the person who paid, when the payment says who. */
-const payerName = (d: AppState, tenantId: string, person?: number) => {
-  if (person === undefined) return undefined;
-  const t = d.tenants.find((x) => x.id === tenantId);
-  return t ? tenantPeople(t)[person]?.name : undefined;
-};
 
 /** `get` reads the latest state, for actions whose message depends on it (the updater itself may run later). */
 function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) {
@@ -95,7 +87,6 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
     d.receipts.push({ id: rid, number, paymentId: pay.id, status: auto ? 'sent' : 'draft', createdAt: nowIso, sentAt: auto ? nowIso : undefined });
     d.messages.push({
       id: uid('msg'), kind: 'receipt', tenantId: lease.tenantId, leaseId: lease.id, period: p.period, receiptId: rid,
-      ...(p.person !== undefined ? { to: [p.person] } : {}),
       subject: 'Your rent receipt', body: '', status: auto ? 'sent' : 'draft', edited: false, createdAt: nowIso, sentAt: auto ? nowIso : undefined,
     });
     const line = leaseLedger(lease, d.payments, today()).find((l) => l.period === p.period);
@@ -105,15 +96,17 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
     // Cure tracking (N4-7): if all arrears are paid, a served notice is cancelled by payment.
     const owing = leaseLedger(lease, d.payments, today()).filter((l) => l.due < today() && l.paid < l.charge).length;
     if (!owing) for (const n of d.notices) if (n.leaseId === lease.id && n.status === 'served' && formById(n.formId)?.situation === 'late-rent') { n.status = 'voided-by-payment'; audit(d, 'Notice cancelled by payment', n.kind); }
-    audit(d, 'Payment logged', `${fmt(p.amount)} from ${payerName(d, lease.tenantId, p.person) ?? tenantName(d, lease.id)} for ${p.period} (${p.source})`);
+    audit(d, 'Payment logged', `${fmt(p.amount)} from ${tenantName(d, lease.id)} for ${p.period} (${p.source})`);
     return pay;
   }
 
   function autoMatch(d: AppState, t: BankTxn) {
     const s = suggestMatch(d, t, today());
+    // Rent already marked paid by hand: the deposit is that payment (no second payment, no other tenant).
+    if (s?.paymentId) { t.status = 'matched'; t.paymentId = s.paymentId; return true; }
     if (s?.confidence === 'high') {
       const lease = d.leases.find((l) => l.id === s.leaseId)!;
-      const pay = recordPayment(d, { leaseId: s.leaseId, period: s.period, amount: t.amount, date: t.date, method: lease.paymentMethod, source: t.source, ...(s.person !== undefined ? { person: s.person } : {}) });
+      const pay = recordPayment(d, { leaseId: s.leaseId, period: s.period, amount: t.amount, date: t.date, method: lease.paymentMethod, source: t.source });
       t.status = 'matched'; t.paymentId = pay.id;
       return true;
     }
@@ -225,14 +218,7 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
       });
       toast(`${t.names[0]} added. Rent of ${fmt(l.rent)} is now on the ledger.`);
     },
-    /** `from`: each person's place before the edit (blank for someone new), when people were added or removed. */
-    saveTenant(t: Tenant, from?: (number | undefined)[]) {
-      mut((d) => {
-        const i = d.tenants.findIndex((x) => x.id === t.id); if (i >= 0) d.tenants[i] = t;
-        if (from) renumberPeople(d, t.id, from);
-        audit(d, 'Tenant updated', t.names.join(' & '));
-      });
-    },
+    saveTenant(t: Tenant) { mut((d) => { const i = d.tenants.findIndex((x) => x.id === t.id); if (i >= 0) d.tenants[i] = t; audit(d, 'Tenant updated', t.names.join(' & ')); }); },
     saveLease(l: Lease) { mut((d) => { const i = d.leases.findIndex((x) => x.id === l.id); if (i >= 0) d.leases[i] = l; audit(d, 'Lease updated', l.id); }); },
     endTenancy(leaseId: string, end: string) {
       mut((d) => {
@@ -254,7 +240,7 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
       toast(auto ? `Payment of ${fmt(p.amount)} logged. Receipt sent.` : `Payment of ${fmt(p.amount)} logged. Receipt drafted for your approval.`);
     },
     /** Edits never overwrite silently (RL-5): void the old payment, log a new one, supersede the receipt. */
-    correctPayment(paymentId: string, changes: Partial<Pick<Payment, 'amount' | 'date' | 'period' | 'method' | 'note' | 'person'>>) {
+    correctPayment(paymentId: string, changes: Partial<Pick<Payment, 'amount' | 'date' | 'period' | 'method' | 'note'>>) {
       mut((d) => {
         const old = d.payments.find((p) => p.id === paymentId); if (!old) return;
         old.voided = true;
@@ -292,10 +278,9 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
     },
     sendReminder(lease: Lease, period: string, tone: Tone, edit?: { subject: string; body: string }) {
       mut((d) => {
-        const to = reminderTo(d, lease, period, today());
-        const draft = edit ?? reminderDraft(d, lease, period, tone, today(), to);
+        const draft = edit ?? reminderDraft(d, lease, period, tone, today());
         const now = new Date().toISOString();
-        d.messages.push({ id: uid('msg'), kind: 'reminder', tenantId: lease.tenantId, leaseId: lease.id, period, tone, subject: draft.subject, body: draft.body, status: 'sent', edited: !!edit, ...(to ? { to } : {}), createdAt: now, sentAt: now });
+        d.messages.push({ id: uid('msg'), kind: 'reminder', tenantId: lease.tenantId, leaseId: lease.id, period, tone, subject: draft.subject, body: draft.body, status: 'sent', edited: !!edit, createdAt: now, sentAt: now });
         if (!edit) d.profile.approvedUnchanged += 1;
         audit(d, 'Reminder sent', `${tone} to ${tenantName(d, lease.id)} for ${period}`);
       });
@@ -460,12 +445,11 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
       });
       toast(through ? 'Saved. Rent before then counts as paid.' : 'Saved. Keyholder keeps tracking what is owed.');
     },
-    confirmMatch(txnId: string, leaseId: string, period: string, learnAlias: boolean, person?: number) {
+    confirmMatch(txnId: string, leaseId: string, period: string, learnAlias: boolean) {
       mut((d) => {
         const t = d.txns.find((x) => x.id === txnId); if (!t) return;
         const lease = d.leases.find((l) => l.id === leaseId)!;
-        const who = person ?? personFor(d.tenants.find((x) => x.id === lease.tenantId), t.payer);
-        const pay = recordPayment(d, { leaseId, period, amount: t.amount, date: t.date, method: lease.paymentMethod, source: t.source, ...(who !== undefined ? { person: who } : {}) });
+        const pay = recordPayment(d, { leaseId, period, amount: t.amount, date: t.date, method: lease.paymentMethod, source: t.source });
         t.status = 'matched'; t.paymentId = pay.id;
         if (learnAlias) {
           const ten = d.tenants.find((x) => x.id === lease.tenantId);
@@ -473,6 +457,15 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
         }
       });
       toast('Matched. Payment logged and receipt drafted.');
+    },
+    /** "Whose rent is it?": the deposit is rent already marked paid by hand; attach it to that payment. */
+    linkDeposit(txnId: string, paymentId: string) {
+      mut((d) => {
+        const t = d.txns.find((x) => x.id === txnId); const p = d.payments.find((x) => x.id === paymentId); if (!t || !p) return;
+        t.status = 'matched'; t.paymentId = p.id;
+        audit(d, 'Deposit matched to rent already marked paid', `${fmt(t.amount)} from ${t.payer} (${tenantName(d, p.leaseId)}, ${p.period})`);
+      });
+      toast('Matched to the rent you already marked paid.');
     },
     ignoreTxn(id: string) { mut((d) => { const t = d.txns.find((x) => x.id === id); if (t) t.status = 'ignored'; }); },
     unignoreTxn(id: string) { mut((d) => { const t = d.txns.find((x) => x.id === id); if (t) t.status = 'new'; }); },
@@ -493,6 +486,17 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
     // ---- Phase 2 ----
     addValuation(v: Omit<Valuation, 'id'>, quiet = false) { mut((d) => { d.valuations.push({ ...v, id: uid('v') }); audit(d, 'Valuation recorded', `${v.note ?? v.source} ${fmt(v.likely)}`); }); if (!quiet) toast('Valuation saved to the history.'); },
     removeValuation(id: string) { mut((d) => { d.valuations = d.valuations.filter((v) => v.id !== id); }); },
+    /** Deposits waiting in the bank list that are rent already marked paid by hand: attached to those payments. */
+    linkMarkedDeposits() {
+      mut((d) => {
+        for (const t of d.txns) {
+          if (t.status !== 'new' || t.amount <= 0) continue;
+          const p = markedPayment(d, t); if (!p) continue;
+          t.status = 'matched'; t.paymentId = p.id;
+          audit(d, 'Deposit matched to rent already marked paid', `${fmt(t.amount)} from ${t.payer} (${tenantName(d, p.leaseId)}, ${p.period})`);
+        }
+      });
+    },
     /** Estimates saved by earlier versions (Repliers, price trend, nearby sales) are removed; only what you entered stays. */
     dropOldEstimates() {
       mut((d) => {
@@ -634,6 +638,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     else if (!u && a?.signedIn && (a.provider === 'email' || a.provider === 'google')) mut((d) => { if (d.profile.account) d.profile.account.signedIn = false; });
     sync.startPulling();
   }, [mut]);
+  // A deposit for rent already marked paid by hand is attached to it, whichever came first.
+  const linkable = useMemo(() => state.txns.some((t) => t.status === 'new' && t.amount > 0 && !!markedPayment(state, t)), [state]);
+  useEffect(() => { if (linkable && (sync.owned(state) || !serverMode())) act.linkMarkedDeposits(); }, [linkable, state, act]);
   // Estimates saved by earlier versions: removed once (only the landlord's own figures are kept).
   const oldEstimates = state.valuations.some((v) => OLD_ESTIMATE.has(v.source));
   useEffect(() => { if (oldEstimates && (sync.owned(state) || !serverMode())) act.dropOldEstimates(); }, [oldEstimates, state, act]);

@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { Lease, Unit } from '../data/types';
 import { currentLine, useStore } from '../data/store';
 import { addDays, addMonths, fmtDay, fmtPeriod, periodOf } from '../lib/dates';
-import { activeLease, byRoom, leasePlace, openRooms, roomsLine } from '../lib/finance';
+import { activeLease, byRoom, leasePlace, openRooms, paidOn, roomsLine, roomsPaid } from '../lib/finance';
 import { allJourneyCards, isHidden, journeyLeases, leaseStep, openStep, prefKey, propertySteps, unitStep, type JourneyCard } from '../lib/journey';
 import { keyholderScore, scoreKey } from '../lib/score';
 import { banksOn } from '../data/api';
@@ -16,8 +16,6 @@ import { FormWizard } from './FormWizard';
 import { LevelUpForm, ScoreRing } from './levels';
 import { PaymentForm } from './forms';
 import { Icon } from './Icon';
-import { PeopleRows } from './PeopleRows';
-import { isShared } from '../lib/shares';
 import { MatchDrawer } from '../screens/Tray';
 import { LateRentDrawer } from '../screens/Rentals';
 
@@ -99,7 +97,7 @@ function statusFor(state: ReturnType<typeof useStore>['state'], lease: Lease | u
   if (c?.stage === 'moving-out') return { label: 'Moving out', tone: 'due' };
   if (c?.step.kind === 'confirm-payment') return { label: 'Rent to confirm', tone: 'due' };
   const line = currentLine(state, lease, today)!;
-  if (line.state === 'paid') return { label: 'Rent paid', tone: 'paid' };
+  if (line.state === 'paid') { const d = paidOn(line); return { label: d ? `Rent paid · ${fmtDay(d)}` : 'Rent paid', tone: 'paid' }; }
   if (line.state === 'late') return { label: `Rent late · ${line.daysLate} day${line.daysLate === 1 ? '' : 's'}`, tone: 'late' };
   if (line.state === 'partial') return { label: `${fmt(line.charge - line.paid)} rent owed`, tone: line.daysLate > 0 ? 'late' : 'partial' };
   if (line.state === 'due') return { label: 'Rent due today', tone: 'due' };
@@ -108,7 +106,8 @@ function statusFor(state: ReturnType<typeof useStore>['state'], lease: Lease | u
 
 /**
  * One unit on Home. A unit rented as a whole is one line, however many people share the lease.
- * A unit rented by the room has a line per rented room, plus one for its free rooms.
+ * A unit rented by the room has a line for the unit, with a line per rented room underneath (each works like a
+ * whole unit: Mark paid, Send receipt, Rent paid), plus one for its free rooms.
  */
 function UnitLine({ unit }: { unit: Unit }) {
   const { state, today } = useStore();
@@ -118,15 +117,29 @@ function UnitLine({ unit }: { unit: Unit }) {
   const free = openRooms(state, unit, today);
   // A room whose tenant just left can still have move-out steps; they show on the free-rooms line.
   const freeCard = leases.filter((l) => l.end && l.end < today).map((l) => leaseStep(state, l, today)).find(Boolean) ?? openStep(state, unit, today);
+  const prop = state.properties.find((p) => p.id === unit.propertyId);
+  const sum = roomsPaid(state, unit, today);
+  const tone = sum.rented && sum.paid === sum.rented ? 'paid' : sum.late ? 'late' : 'due';
   return (
     <>
-      {running.map((l) => <RentLine key={l.id} unit={unit} lease={l} card={leaseStep(state, l, today)} />)}
-      {free.length > 0 && <RentLine unit={unit} card={freeCard} free={free.length} />}
+      <li className={`rent-row unit-head${sum.late ? ' late' : ''}`}>
+        <Link to={`/rent/property/${unit.propertyId}`} className="who-link">
+          <span className="unit-ic" aria-hidden><Icon name="door" size={20} /></span>
+          <span className="who-text" title={`${prop?.nickname} · ${roomsLine(state, unit, today)}`}><span className="who">Unit {unit.label} · by the room</span></span>
+        </Link>
+        {sum.rented > 0
+          ? <StatusPill tone={tone} meaning="Each room's rent is tracked on its own row underneath.">{tone === 'paid' && <Icon name="check" size={16} />}{sum.paid} of {sum.rented} paid</StatusPill>
+          : <StatusPill tone="vacant">No rooms rented</StatusPill>}
+        <span className="row-act" />
+      </li>
+      {running.map((l) => <RentLine key={l.id} unit={unit} lease={l} card={leaseStep(state, l, today)} room />)}
+      {free.length > 0 && <RentLine unit={unit} card={freeCard} free={free.length} room />}
     </>
   );
 }
 
-function RentLine({ unit, lease, card, free }: { unit: Unit; lease?: Lease; card: JourneyCard | null; free?: number }) {
+/** `room`: a room of a unit rented by the room, shown underneath the unit's line. */
+function RentLine({ unit, lease, card, free, room }: { unit: Unit; lease?: Lease; card: JourneyCard | null; free?: number; room?: boolean }) {
   const { state, today } = useStore();
   const [pay, setPay] = useState(false);
   const [late, setLate] = useState(false);
@@ -135,18 +148,17 @@ function RentLine({ unit, lease, card, free }: { unit: Unit; lease?: Lease; card
   const visible = card && !isHidden(state, prefKey(card), today) ? card : null;
   const st = statusFor(state, lease, card, today, free);
   const line = lease ? currentLine(state, lease, today) : undefined;
-  // Shared lease: each person has a row underneath with their own "Mark paid", so this row has none.
-  const shared = isShared(tenant) && !!line;
   // Fallback when nothing is due or the step is hidden: the plain rent action.
   let fallback: React.ReactNode = null;
   if (!visible && lease && line) {
     if (line.state === 'late' || (line.state === 'partial' && line.daysLate > 0)) fallback = <button className="btn" onClick={() => setLate(true)}>Late rent options</button>;
-    else if (line.state !== 'paid') fallback = shared ? null : <button className="btn" onClick={() => setPay(true)}>Mark paid</button>;
-    else fallback = <span className="paid-on">{fmtDay(line.payments[line.payments.length - 1]?.date ?? line.due)}</span>;
+    else if (line.state !== 'paid') fallback = <button className="btn" onClick={() => setPay(true)}>Mark paid</button>;
   }
+  // Paid and nothing left to do (the receipt is sent): the pill says so, with the day it was paid.
+  const done = line?.state === 'paid' && !visible;
+  const meaning = done ? (line.payments.length ? 'Rent for this month is in, and the receipt was sent. Nothing left to do.' : 'Rent for this month counts as paid. Nothing left to do.') : undefined;
   return (
-    <>
-    <li className={`rent-row ${st.tone === 'late' ? 'late' : ''}${shared ? ' has-people' : ''}`}>
+    <li className={`rent-row${room ? ' room-row' : ''}${st.tone === 'late' ? ' late' : ''}`}>
       {tenant ? (
         <Link to={`/rent/tenant/${tenant.id}`} className="who-link">
           <Avatar name={tenant.names.join(' & ')} size={42} />
@@ -158,8 +170,7 @@ function RentLine({ unit, lease, card, free }: { unit: Unit; lease?: Lease; card
           <span className="who-text" title={`${prop?.nickname} · ${free ? roomsLine(state, unit, today) : 'empty'}`}><span className="who">{free ? `${unit.label} · ${free} free` : `Unit ${unit.label}`}</span></span>
         </Link>
       )}
-      {/* All caught up for the month (paid, nothing left to do): no pill, the paid date on the right says it. */}
-      {line?.state === 'paid' && st.label === 'Rent paid' && !visible ? <span className="status-gap" aria-hidden /> : <StatusPill tone={st.tone}>{st.tone === 'paid' && <Icon name="check" size={16} />}{st.label}</StatusPill>}
+      <StatusPill tone={st.tone} meaning={meaning}>{st.tone === 'paid' && <Icon name="check" size={16} />}{st.label}</StatusPill>
       <span className="row-act">
         {visible ? <StepButton c={visible} /> : fallback}
         {visible && <RowMenu k={prefKey(visible)} />}
@@ -167,8 +178,6 @@ function RentLine({ unit, lease, card, free }: { unit: Unit; lease?: Lease; card
       {pay && lease && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}
       {late && lease && <LateRentDrawer lease={lease} onClose={() => setLate(false)} />}
     </li>
-    {shared && lease && line && <PeopleRows lease={lease} line={line} look="home" />}
-    </>
   );
 }
 
