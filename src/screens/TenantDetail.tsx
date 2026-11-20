@@ -8,8 +8,7 @@ import { leaseBalance, leaseLedger, leasePlace } from '../lib/finance';
 import { tenantPeople, withPeople } from '../lib/people';
 import { fmt } from '../lib/money';
 import { Letterhead, ReceiptLetter, methodLabel, ordinal } from '../components/domain';
-import { PaymentForm, ShareFields } from '../components/forms';
-import { rentShares, shareProblem } from '../lib/shares';
+import { PaymentForm } from '../components/forms';
 import { LateRentDrawer, RaiseRent } from './Rentals';
 import { SituationPicker } from '../components/FormWizard';
 import { Drawer, Empty, Field, SlideToConfirm, Stamp, embedded } from '../components/ui';
@@ -39,8 +38,6 @@ export function TenantDetail() {
   const msgs = state.messages.filter((m) => m.tenantId === t.id && m.status === 'sent').sort((a, b) => (b.sentAt ?? '').localeCompare(a.sentAt ?? ''));
   const voided = state.payments.filter((p) => p.leaseId === lease?.id && p.voided);
   const people = tenantPeople(t);
-  const shares = lease && people.length > 1 && !lease.room ? rentShares(t, lease.rent) : undefined;
-  const firstOf = (i?: number) => (i !== undefined ? people[i]?.name.split(' ')[0] : undefined);
 
   return (
     <div className="page">
@@ -49,7 +46,7 @@ export function TenantDetail() {
         <div>
           <div className="eyebrow">{prop?.nickname} · {leasePlace(unit, lease)}</div>
           <h1 className="title-ic"><Avatar name={t.names.join(' & ')} size={52} />{t.names.join(' & ')}</h1>
-          <div className="soft small">{people.length > 1 ? `Shared lease: ${people.length} people, one rent. Each pays their share; a receipt goes to whoever paid.` : `${t.email || 'No email'} · ${t.phone || 'No phone'}`}</div>
+          <div className="soft small">{people.length > 1 ? `Shared lease: ${people.length} people, one rent. Receipts and reminders go to everyone.` : `${t.email || 'No email'} · ${t.phone || 'No phone'}`}</div>
         </div>
         <div className="btn-row">
           <button className="btn" onClick={() => setStatement(true)}><Icon name="print" size={16} />Statement</button>
@@ -87,7 +84,7 @@ export function TenantDetail() {
                             const r = state.receipts.find((x) => x.paymentId === p.id && x.status !== 'superseded');
                             return (
                               <div key={p.id} className="spread" style={{ gap: 6, justifyContent: 'flex-start' }}>
-                                <span className="mono">{fmtDate(p.date)}</span><span className="soft">{firstOf(p.person) ? `${firstOf(p.person)} · ` : ''}{methodLabel(p.method)}{p.source !== 'manual' ? ` · ${p.source === 'bank' ? 'bank' : 'email'}` : ''}</span>
+                                <span className="mono">{fmtDate(p.date)}</span><span className="soft">{methodLabel(p.method)}{p.source !== 'manual' ? ` · ${p.source === 'bank' ? 'bank' : 'email'}` : ''}</span>
                                 {r && <button className="btn small ghost" onClick={() => setReceipt(r)}>#{r.number}{r.status === 'draft' ? ' (draft)' : ''}</button>}
                                 <button className="btn small ghost" onClick={() => setCorrect(p)} aria-label="Correct payment"><Icon name="edit" size={14} /></button>
                               </div>
@@ -112,7 +109,7 @@ export function TenantDetail() {
               {msgs.length === 0 ? <p className="soft small">Nothing sent yet. Receipts and reminders appear here.</p> : (
                 <ul className="rows">{msgs.slice(0, 12).map((m) => (
                   <li key={m.id} className="row"><span className="margin">{fmtDate(m.sentAt!.slice(0, 10))}</span>
-                    <span><span className="title">{m.kind === 'receipt' ? 'Rent receipt' : `${m.tone ?? ''} reminder`}</span><span className="sub" style={{ display: 'block' }}>{m.period ? fmtPeriod(m.period) : ''}{m.to?.length ? ` · to ${m.to.map(firstOf).filter(Boolean).join(' & ')}` : ''} · sent {fmtTime(m.sentAt!)}</span></span>
+                    <span><span className="title">{m.kind === 'receipt' ? 'Rent receipt' : `${m.tone ?? ''} reminder`}</span><span className="sub" style={{ display: 'block' }}>{m.period ? fmtPeriod(m.period) : ''} · sent {fmtTime(m.sentAt!)}</span></span>
                     <Stamp kind="sent">Sent</Stamp></li>
                 ))}</ul>
               )}
@@ -124,7 +121,7 @@ export function TenantDetail() {
           <div className="sheet">
             <h2 style={{ marginBottom: 12 }}>{people.length > 1 ? 'People on the lease' : 'Contact'}</h2>
             <ul className="people-list">{people.map((p, i) => (
-              <li key={i}><Avatar name={p.name} size={36} /><span><strong>{p.name}</strong><span className="small soft">{p.email || 'No email'}</span><span className="small soft">{p.phone || 'No phone'}</span>{shares && <span className="small">{fmt(shares[i])} a month</span>}</span></li>
+              <li key={i}><Avatar name={p.name} size={36} /><span><strong>{p.name}</strong><span className="small soft">{p.email || 'No email'}</span><span className="small soft">{p.phone || 'No phone'}</span></span></li>
             ))}</ul>
             <div className="btn-row" style={{ marginTop: 12 }}><button className="btn small" onClick={() => setEditContact(true)}>{people.length > 1 ? 'Edit people' : 'Edit contact'}</button></div>
           </div>
@@ -198,19 +195,16 @@ export function TenantDetail() {
   );
 
   function ContactDrawer({ onClose }: { onClose: () => void }) {
-    // `from`: each row's place before this edit, so payments that say who paid follow the person.
-    const [ps, setPs] = useState<(Person & { from?: number })[]>(() => tenantPeople(t!).map((p, i) => ({ ...p, from: i })));
+    const [ps, setPs] = useState<Person[]>(() => tenantPeople(t!).map((p) => ({ ...p })));
     const [consent, setConsent] = useState(t!.emailConsent);
     const set = (i: number, x: Partial<Person>) => setPs((all) => all.map((p, j) => (j === i ? { ...p, ...x } : p)));
     const email = ps[0]?.email.trim();
-    const rent = lease?.rent;
     const save = () => {
-      const kept = ps.filter((p) => p.name.trim());
-      act.saveTenant({ ...withPeople(t!, ps), emailConsent: consent && !!email, emailConsentDate: consent && !t!.emailConsent ? today : t!.emailConsentDate, noticeMethod: consent && email ? 'email' : 'hand' }, kept.map((p) => p.from));
+      act.saveTenant({ ...withPeople(t!, ps), emailConsent: consent && !!email, emailConsentDate: consent && !t!.emailConsent ? today : t!.emailConsentDate, noticeMethod: consent && email ? 'email' : 'hand' });
       onClose();
     };
     return (
-      <Drawer title={ps.length > 1 ? 'People on the lease' : 'Contact details'} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!ps[0]?.name.trim() || !!shareProblem(ps, rent)} onClick={save}>Save</button></>}>
+      <Drawer title={ps.length > 1 ? 'People on the lease' : 'Contact details'} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!ps[0]?.name.trim()} onClick={save}>Save</button></>}>
         {ps.map((p, i) => (
           <fieldset key={i} className="person-fields">
             <legend>{ps.length > 1 ? `Person ${i + 1}` : 'Tenant'}{i > 0 && <button type="button" className="btn small ghost" onClick={() => setPs(ps.filter((_, j) => j !== i))} aria-label={`Remove person ${i + 1}`}><Icon name="close" size={14} />Remove</button>}</legend>
@@ -222,7 +216,6 @@ export function TenantDetail() {
           </fieldset>
         ))}
         <button className="btn small ghost" onClick={() => setPs([...ps, { name: '', email: '', phone: '' }])} style={{ marginBottom: 16 }}><Icon name="plus" size={14} />Add another person</button>
-        {lease && !lease.room && <ShareFields people={ps} rent={rent} idp="cd" onChange={(i, share) => set(i, { share })} />}
         <label className="check"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /><span>{ps.length > 1 ? 'Everyone on the lease consents' : 'Consents'} to notices by email<span className="tiny soft" style={{ display: 'block' }}>Without consent, legal notices go on paper.</span></span></label>
       </Drawer>
     );

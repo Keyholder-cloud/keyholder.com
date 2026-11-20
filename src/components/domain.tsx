@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import type { AppState, Message, Receipt, Unit } from '../data/types';
 import { currentLine, unitTenant, useStore } from '../data/store';
 import { addPeriods, daysBetween, fmtDate, fmtMonthShort, fmtPeriod, periodOf } from '../lib/dates';
-import { leaseLedger, type ChargeState } from '../lib/finance';
+import { byRoom, leaseLedger, type ChargeState } from '../lib/finance';
 import { fmt, fmt0 } from '../lib/money';
 import { messageBody } from '../lib/templates';
-import { tenantEmails, tenantPeople, toLine } from '../lib/people';
+import { tenantEmails, toLine } from '../lib/people';
 import { Icon } from './Icon';
 import { Stamp, embedded } from './ui';
 import { Link } from 'react-router-dom';
@@ -100,14 +100,20 @@ export function RentRoll({ propertyId }: { propertyId?: string }) {
   return (
     <div className="rentroll" role="table" aria-label="Rent roll, last 12 months">
       <div className="rr-row rr-head" role="row"><span role="columnheader" /> {months.map((m) => <span key={m} role="columnheader">{fmtMonthShort(m)[0]}</span>)}</div>
-      {units.map((u) => {
-        const leases = state.leases.filter((l) => l.unitId === u.id);
+      {units.flatMap((u) => {
+        const all = state.leases.filter((l) => l.unitId === u.id);
+        // A unit rented by the room: a row per room (each room's rent is its own); otherwise one row for the unit.
+        const tracks = byRoom(u)
+          ? [...new Set(all.map((l) => l.room ?? l.id))].map((k) => ({ key: k, room: all.find((l) => (l.room ?? l.id) === k)?.room, leases: all.filter((l) => (l.room ?? l.id) === k) }))
+          : [{ key: u.id, room: undefined as string | undefined, leases: all }];
+        const prop = state.properties.find((p) => p.id === u.propertyId);
+        const name = propertyId ? `Unit ${u.label}` : `${prop?.nickname.split(' ')[0]} ${u.label}`;
+        return tracks.map(({ key, room, leases }) => {
         const lines = new Map<string, { state: ChargeState; tenantId: string }>();
         for (const l of leases) for (const line of leaseLedger(l, state.payments, today)) lines.set(line.period, { state: line.state, tenantId: l.tenantId });
-        const prop = state.properties.find((p) => p.id === u.propertyId);
         return (
-          <div className="rr-row" role="row" key={u.id}>
-            <span className="rr-label" role="rowheader">{propertyId ? `Unit ${u.label}` : `${prop?.nickname.split(' ')[0]} ${u.label}`}</span>
+          <div className="rr-row" role="row" key={`${u.id}-${key}`}>
+            <span className="rr-label" role="rowheader">{byRoom(u) ? `${name} · ${room ?? state.tenants.find((t) => t.id === leases[0]?.tenantId)?.names[0].split(' ')[0] ?? ''}` : name}</span>
             {months.map((m) => {
               const c = lines.get(m);
               if (!c) return <span key={m} className="cell none" role="cell" aria-label={`${fmtPeriod(m)}: no lease`} />;
@@ -115,6 +121,7 @@ export function RentRoll({ propertyId }: { propertyId?: string }) {
             })}
           </div>
         );
+        });
       })}
       <div className="legend">
         <span><i style={{ background: 'var(--pine)' }} />Paid</span>
@@ -161,7 +168,7 @@ export function ReceiptLetter({ receipt }: { receipt: Receipt }) {
       </div>
       <table>
         <tbody>
-          <tr><td>Received from</td><td>{(pay.person !== undefined && tenantPeople(tenant)[pay.person]?.name) || tenant.names.join(' & ')}</td></tr>
+          <tr><td>Received from</td><td>{tenant.names.join(' & ')}</td></tr>
           <tr><td>Rental unit</td><td>Unit {unit.label}, {prop.address}, {prop.city}</td></tr>
           <tr><td>For the period</td><td>{fmtPeriod(pay.period)}</td></tr>
           <tr><td>Amount</td><td>{fmt(pay.amount)}</td></tr>
@@ -186,10 +193,10 @@ export function MessageEditor({ message, onDone }: { message: Message; onDone: (
   const tenant = state.tenants.find((t) => t.id === message.tenantId);
   const receipt = message.receiptId ? state.receipts.find((r) => r.id === message.receiptId) : undefined;
   const changed = subject !== base.subject || body !== base.body;
-  const canEmail = !!tenant && tenantEmails(tenant, message.to).length > 0;
+  const canEmail = !!tenant && tenantEmails(tenant).length > 0;
   return (
     <div className="stack">
-      <div className="small soft to-line">To: {toLine(tenant, message.to)}</div>
+      <div className="small soft to-line">To: {toLine(tenant)}</div>
       <div className="letter">
         <Letterhead state={state} />
         {editing ? (

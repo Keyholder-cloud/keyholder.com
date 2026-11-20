@@ -39,6 +39,31 @@ export interface LedgerLine {
   before?: boolean;
 }
 
+/**
+ * The month a new payment is for: this month while it is not fully paid, else the oldest month still owing.
+ * (Filling the oldest month first left this month unpaid, so the row kept asking to mark rent paid.)
+ */
+export function defaultPeriod(state: AppState, lease: Lease, today: ISODate): Period {
+  const lines = leaseLedger(lease, state.payments, today, periodOf(addMonths(today, 1)));
+  const now = periodOf(today);
+  const cur = lines.find((l) => l.period === now);
+  if (cur && cur.paid < cur.charge) return now;
+  return lines.find((l) => l.paid < l.charge)?.period ?? now;
+}
+
+/** The day a month's rent was paid (the last payment toward it); none when it was paid before Keyholder. */
+export function paidOn(line: LedgerLine): ISODate | undefined {
+  return line.payments.map((p) => p.date).sort().pop();
+}
+
+/** A unit rented by the room: how many rooms are rented, how many have paid this month, how many are late. */
+export function roomsPaid(state: AppState, unit: Unit, today: ISODate): { rented: number; paid: number; late: number } {
+  const now = periodOf(today);
+  const lines = activeLeases(state, unit.id, today).filter((l) => l.start <= today)
+    .map((l) => leaseLedger(l, state.payments, today).find((x) => x.period === now)).filter((x): x is LedgerLine => !!x);
+  return { rented: lines.length, paid: lines.filter((x) => x.state === 'paid').length, late: lines.filter((x) => x.daysLate > 0 && x.paid < x.charge).length };
+}
+
 /** Periods the lease charges for, from its start through `through` (inclusive). */
 export function leasePeriods(lease: Lease, through: Period): Period[] {
   const last = lease.end && periodOf(lease.end) < through ? periodOf(lease.end) : through;
@@ -93,8 +118,9 @@ export function activeLeases(state: AppState, unitId: string, today: ISODate): L
   const unit = state.units.find((u) => u.id === unitId);
   if (unit?.rentedBy !== 'room') return running.slice(0, 1);
   const seen = new Set<string>();
+  // One lease per room (the newest); a lease with no room number (from before the unit was rented by the room) is its own.
   return running
-    .filter((l) => { const k = l.room ?? ''; if (seen.has(k)) return false; seen.add(k); return true; })
+    .filter((l) => { const k = l.room ?? l.id; if (seen.has(k)) return false; seen.add(k); return true; })
     .sort((a, b) => (a.room ?? '').localeCompare(b.room ?? '', undefined, { numeric: true }));
 }
 

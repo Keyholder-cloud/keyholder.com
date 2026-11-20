@@ -40,15 +40,15 @@ const MEANING: Record<string, string> = {
   vacant: 'Nobody lives here right now. Share the application link to find a tenant.',
 };
 
-/** A status pill that explains itself when tapped. */
-export function StatusPill({ tone, children }: { tone: string; children: React.ReactNode }) {
+/** A status pill that explains itself when tapped (a "?" pointer on hover). `meaning` replaces the usual words. */
+export function StatusPill({ tone, children, meaning }: { tone: string; children: React.ReactNode; meaning?: string }) {
   const [open, setOpen] = useState(false);
-  const text = MEANING[tone];
+  const text = meaning ?? MEANING[tone];
   if (!text) return <span className={`status ${tone}`}>{children}</span>;
   return (
     <span className="pill-wrap">
       <button type="button" className={`status ${tone} pill-btn`} aria-expanded={open} onClick={() => setOpen((o) => !o)} onBlur={() => setOpen(false)} title="What does this mean?">{children}</button>
-      {open && <span className="pill-tip" role="tooltip">{text}</span>}
+      {open && <span className={`pill-tip ${tone}`} role="tooltip">{text}</span>}
     </span>
   );
 }
