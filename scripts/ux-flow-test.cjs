@@ -709,6 +709,23 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.waitForSelector('.drawer >> text=Novak Plumbing'); await pg.waitForSelector('.drawer >> text=City of Hamilton'); await pg.waitForSelector('.drawer >> text=Household income');
       await pg.keyboard.press('Escape');
     });
+    await step(tag, 'H8 Rentals ⋯ menu: End lease and Delete tenant; deleting someone with payments suggests ending the lease instead', async () => {
+      await go(pg, 'rent/property/p-birch'); await pg.locator('.unit-row', { hasText: 'Sam Okafor' }).locator('.dots').click();
+      for (const t of ['Raise rent', 'End lease', 'Delete tenant']) if (!(await pg.locator(`[role=menuitem]:has-text("${t}")`).count())) throw new Error('menu has no ' + t);
+      await pg.locator('[role=menuitem]:has-text("Delete tenant")').click();
+      await pg.waitForSelector('.drawer >> text=Did Sam live there?'); await pg.locator('.drawer >> text=End lease instead').click();
+      await pg.waitForSelector('.drawer h2:has-text("End lease")'); await approve(pg);
+      const l = (await state(pg)).leases.find((x) => x.id === 'l-sam'); if (!l.end) throw new Error('lease not ended');
+      return 'Sam\'s lease ends ' + l.end;
+    });
+    await step(tag, 'H9 Tenant page: Delete tenant removes the tenant, their lease and payments, and goes back to the property', async () => {
+      await go(pg, 'rent/tenant/t-grace'); await pg.click('#td-delete'); await pg.waitForSelector('.drawer h2:has-text("Delete Grace Liu?")'); await approve(pg);
+      await pg.waitForSelector('.page-head, .prop-hero, h1'); const h = await pg.evaluate(() => location.hash);
+      if (!h.includes('/rent/property/p-birch')) throw new Error('went to ' + h);
+      const st = await state(pg);
+      if (st.tenants.some((t) => t.id === 't-grace') || st.leases.some((l) => l.id === 'l-grace') || st.payments.some((p) => p.leaseId === 'l-grace')) throw new Error('Grace is still there');
+      if (!st.audit.some((a) => a.action === 'Tenant deleted')) throw new Error('not in the history');
+    });
     ok(tag, 'H errors', errsH.length === 0, errsH.slice(0, 3).join(' | '));
 
     // ---------------- I. Logo, and never the same buttons twice ----------------

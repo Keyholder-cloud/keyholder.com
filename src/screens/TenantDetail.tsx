@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StandingCheck } from '../components/Standing';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { DeleteTenantDrawer, EndLeaseDrawer } from '../components/TenantActions';
 import type { Payment, Person, Receipt } from '../data/types';
 import { useStore } from '../data/store';
 import { fmtDate, fmtPeriod, fmtTime } from '../lib/dates';
@@ -11,7 +12,7 @@ import { Letterhead, ReceiptLetter, methodLabel, ordinal } from '../components/d
 import { PaymentForm } from '../components/forms';
 import { LateRentDrawer, RaiseRent } from './Rentals';
 import { SituationPicker } from '../components/FormWizard';
-import { Drawer, Empty, Field, SlideToConfirm, Stamp, embedded } from '../components/ui';
+import { Drawer, Empty, Field, Stamp, embedded } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { Avatar } from '../components/Art';
 
@@ -24,6 +25,8 @@ export function TenantDetail() {
   const [statement, setStatement] = useState(false);
   const [pause, setPause] = useState(false);
   const [end, setEnd] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const nav = useNavigate();
   const [editContact, setEditContact] = useState(false);
   const [late, setLate] = useState(false);
   const [forms, setForms] = useState(false);
@@ -54,6 +57,8 @@ export function TenantDetail() {
           {lease && <button className="btn" onClick={() => setForms(true)}>Forms and notices</button>}
           {bal > 0 && lease && !lease.end && <button className="btn danger" onClick={() => setLate(true)}>Late rent options</button>}
           {lease && !lease.end && <button className="btn primary" onClick={() => setPay(true)}><Icon name="check" size={16} />Confirm rent</button>}
+          {lease && !lease.end && <button className="btn ghost" id="td-end" onClick={() => setEnd(true)}>End lease</button>}
+          <button className="btn ghost danger" id="td-delete" onClick={() => setDeleting(true)}>Delete tenant</button>
         </div>
       </div>
 
@@ -139,7 +144,7 @@ export function TenantDetail() {
                 <div>Email notices</div><div>{t.emailConsent ? `Consented ${t.emailConsentDate ? fmtDate(t.emailConsentDate) : ''}` : 'Not consented'}</div>
               </div>
             )}
-            {lease && !lease.end && <div className="btn-row" style={{ marginTop: 12 }}><button className="btn small ghost danger" onClick={() => setEnd(true)}>End tenancy</button></div>}
+
           </div>
           <div className="sheet">
             <h2 style={{ marginBottom: 8 }}>Reminders</h2>
@@ -184,8 +189,9 @@ export function TenantDetail() {
         </Drawer>
       )}
       {pause && <PauseDrawer onClose={() => setPause(false)} onSave={(r) => { act.setPause(t.id, r); setPause(false); }} />}
+      {deleting && <DeleteTenantDrawer tenant={t} onClose={() => setDeleting(false)} onDeleted={() => nav(prop ? `/rent/property/${prop.id}` : '/rentals')} onEndInstead={lease && !lease.end ? () => { setDeleting(false); setEnd(true); } : undefined} />}
       {end && lease && (
-        <EndDrawer onClose={() => setEnd(false)} onConfirm={(d) => { act.endTenancy(lease.id, d); setEnd(false); }} name={t.names.join(' & ')} />
+        <EndLeaseDrawer lease={lease} onClose={() => setEnd(false)} />
       )}
       {editContact && <ContactDrawer onClose={() => setEditContact(false)} />}
       {late && lease && <LateRentDrawer lease={lease} onClose={() => setLate(false)} />}
@@ -232,16 +238,3 @@ function PauseDrawer({ onClose, onSave }: { onClose: () => void; onSave: (reason
   );
 }
 
-function EndDrawer({ onClose, onConfirm, name }: { onClose: () => void; onConfirm: (d: string) => void; name: string }) {
-  const { today } = useStore();
-  const [d, setD] = useState(today);
-  return (
-    <Drawer title="End tenancy" onClose={onClose}>
-      <Field label="Last day of the tenancy" htmlFor="et-d"><input id="et-d" type="date" className="input" value={d} onChange={(e) => setD(e.target.value)} /></Field>
-      <div className="callout warn">
-        <strong>What happens:</strong> no further rent is charged to {name} after this date, the unit is marked vacant and the vacancy counter starts. The ledger and all receipts are kept.
-      </div>
-      <SlideToConfirm label="Slide to end tenancy" onConfirm={() => onConfirm(d)} />
-    </Drawer>
-  );
-}

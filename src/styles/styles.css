@@ -619,3 +619,5 @@ html body .drawer { z-index: 126; }
 .two-step-nudge { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 14px 16px; }
 .two-step-nudge > div:first-of-type { flex: 1; min-width: 220px; display: flex; flex-direction: column; }
 @media (max-width: 480px) { .two-step-scan { grid-template-columns: minmax(0, 1fr); } .two-step-qr { margin: 0 auto; } }
+/* "Delete tenant" in the unit's ⋯ menu. */
+.row-menu-pop button.danger { color: var(--rust); border-top: 1px solid var(--rule); }

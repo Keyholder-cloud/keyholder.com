@@ -1,3 +1,4 @@
+import { DeleteTenantDrawer, EndLeaseDrawer } from '../components/TenantActions';
 import { PageSub, StatusPill } from '../components/Guide';
 import { OfficialPdfButton } from '../components/OfficialForm';
 import { useEffect, useRef, useState } from 'react';
@@ -6,7 +7,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import type { Applicant, Lease, Listing, Notice, Tenant, Unit } from '../data/types';
 import { currentLine, unitTenant, useStore } from '../data/store';
-import { activeLeases, byRoom, hasSpace, openRooms, paidOn, roomsLine, roomsPaid } from '../lib/finance';
+import { activeLeases, byRoom, hasSpace, openRooms, paidOn, roomsLine, roomsPaid, roomsPill } from '../lib/finance';
 import { applicantPeople } from '../lib/people';
 import { addDays, daysBetween, fmtDate, fmtDay, fmtPeriod } from '../lib/dates';
 import { arrears, earliestIncrease, nextNotice, propertyOf } from '../lib/notices';
@@ -75,15 +76,13 @@ export function UnitRow({ unit }: { unit: Unit }) {
   }
   const free = openRooms(state, unit, today);
   const sum = roomsPaid(state, unit, today);
-  const tone = sum.rented && sum.paid === sum.rented ? 'paid' : sum.late ? 'late' : 'due';
+  const pill = roomsPill(sum, fmtDay);
   return (
     <>
       <li className={`unit-row unit-head${sum.late ? ' late' : ''}`}>
         <span className={`unit-label${unit.label.length > 2 ? ' long' : ''}`}>{unit.label}</span>
         <span className="unit-who"><strong>By the room</strong><span>{roomsLine(state, unit, today)}</span></span>
-        <span className="unit-state">{sum.rented > 0
-          ? <StatusPill tone={tone} meaning="Each room's rent is tracked on its own row underneath.">{tone === 'paid' && <Icon name="check" size={16} />}{sum.paid} of {sum.rented} paid</StatusPill>
-          : <StatusPill tone="vacant">No rooms rented</StatusPill>}</span>
+        <span className="unit-state"><StatusPill tone={pill.tone} meaning={sum.rented ? "Each room's rent is tracked on its own row underneath." : undefined}>{pill.tone === 'paid' && <Icon name="check" size={16} />}{pill.label}</StatusPill></span>
         <span className="row-act" />
       </li>
       {activeLeases(state, unit.id, today).map((l) => {
@@ -125,6 +124,8 @@ function LeaseRow({ unit, lease, tenant, room }: { unit: Unit; lease: Lease; ten
   const [pay, setPay] = useState(false);
   const [late, setLate] = useState<Lease | null>(null);
   const [raise, setRaise] = useState(false);
+  const [ending, setEnding] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const line = currentLine(state, lease, today)!;
   // A deposit waiting to be confirmed for this tenant: show it instead of "late".
   const found = trayItems(state, today).some((t) => t.kind === 'match' && t.suggestion?.leaseId === lease.id);
@@ -144,9 +145,11 @@ function LeaseRow({ unit, lease, tenant, room }: { unit: Unit; lease: Lease; ten
       <span className="row-act">
         {found && line.state !== 'paid' ? <button className="btn primary" onClick={() => nav('/today')}>Confirm</button> : isLate ? <button className="btn primary" onClick={() => setLate(lease)}>Late rent options</button>
           : line.state !== 'paid' ? <button className="btn" onClick={() => setPay(true)}>Mark paid</button> : null}
-        <UnitMenu onRaise={() => setRaise(true)} />
+        <UnitMenu onRaise={() => setRaise(true)} onEnd={lease.end ? undefined : () => setEnding(true)} onDelete={() => setDeleting(true)} />
       </span>
       <RaiseRentSuggestion lease={lease} unit={unit} onRaise={() => setRaise(true)} />
+      {ending && <EndLeaseDrawer lease={lease} onClose={() => setEnding(false)} />}
+      {deleting && <DeleteTenantDrawer tenant={tenant} onClose={() => setDeleting(false)} onEndInstead={() => { setDeleting(false); setEnding(true); }} />}
       {raise && <RaiseRent lease={lease} onClose={() => setRaise(false)} />}
       {pay && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}
       {late && <LateRentDrawer lease={late} onClose={() => setLate(null)} />}
@@ -533,7 +536,7 @@ export function RaiseRent({ lease, onClose }: { lease: Lease; onClose: () => voi
  * scrolls. Escape, a click elsewhere, or the button leaving the screen closes it.
  */
 type MenuPos = { top?: number; bottom?: number; right: number };
-function UnitMenu({ onRaise }: { onRaise: () => void }) {
+function UnitMenu({ onRaise, onEnd, onDelete }: { onRaise: () => void; onEnd?: () => void; onDelete?: () => void }) {
   const [pos, setPos] = useState<MenuPos | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -565,6 +568,8 @@ function UnitMenu({ onRaise }: { onRaise: () => void }) {
       {pos && createPortal(
         <div ref={menu} className="row-menu-pop floating" role="menu" style={pos}>
           <button role="menuitem" onClick={() => { setPos(null); onRaise(); }}>Raise rent</button>
+          {onEnd && <button role="menuitem" onClick={() => { setPos(null); onEnd(); }}>End lease</button>}
+          {onDelete && <button role="menuitem" className="danger" onClick={() => { setPos(null); onDelete(); }}>Delete tenant</button>}
         </div>, document.body)}
     </span>
   );
