@@ -304,7 +304,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     }
     if (want('C')) ok(tag, 'C Every internal link lands on a real page', bad.length === 0, bad.slice(0, 6).join(' | ') || `${pages.length} pages swept`);
     // Navigation bars
-    await step(tag, 'C2 Menu: Home, Portfolio, Rentals, Income, Expenses, Paperwork, Help at the bottom; Settings at the top right, a small Sign out icon there on Settings only; Settings starts Profile, then one Preferences card (Appearance, Two-step, Rent tracking) (phones: Home, Income, Rentals raised in the middle, Expenses, More)', async () => {
+    await step(tag, 'C2 Menu: Home, Portfolio, Rentals, Income, Expenses, Paperwork, Help at the bottom; Settings at the top right, a small Sign out icon there on Settings only; Settings starts with one Preferences card (Appearance, Two-step, Rent tracking), then Profile (phones: Home, Income, Rentals raised in the middle, Expenses, More)', async () => {
       const labels = tag === 'phone' ? ['Home', 'Income', 'Rentals', 'Expenses', 'More'] : ['Home', 'Portfolio', 'Rentals', 'Income', 'Expenses', 'Paperwork'];
       const order = (await pg.locator(tag === 'phone' ? '.bottombar a' : '.rail .nav-link').allTextContents()).join(' ').replace(/\d+/g, '');
       if (!(tag === 'phone' ? /Home.*Income.*Rentals.*Expenses.*More/ : /Home.*Portfolio.*Rentals.*Income.*Expenses.*Paperwork/).test(order)) throw new Error('order: ' + order);
@@ -316,7 +316,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if (!(await pg.locator(`${top} .signout-icon`).isVisible())) throw new Error('no small Sign out icon at the top right of Settings');
       if (await pg.locator('.page > .page-head >> text=Sign out').count()) throw new Error('a big Sign out button is still by the title');
       const order2 = (await pg.locator('.section-title').allTextContents()).join(' | ');
-      if (!/^Your profile \| Preferences \| Receipts and reminders/.test(order2)) throw new Error('Settings order: ' + order2);
+      if (!/^Preferences \| Your profile \| Receipts and reminders/.test(order2)) throw new Error('Settings order: ' + order2);
       const prefs = (await pg.locator('#preferences .pref-t').allTextContents()).join(' | ');
       if (prefs !== 'Appearance | Two-step sign-in | Rent tracking') throw new Error('Preferences: ' + prefs);
       if (tag === 'phone') { const hub = pg.locator('.bottombar a').nth(2); if (!(await hub.evaluate((a) => a.classList.contains('hub') && a.textContent.includes('Rentals')))) throw new Error('Rentals is not the raised middle button'); }
@@ -747,7 +747,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     });
     await step(tag, 'H10 Settings profile: changes wait for Save (button off until something changes)', async () => {
       await go(pg, 'settings'); if (!(await pg.locator('#st-save').isDisabled())) throw new Error('Save is on with nothing changed');
-      await pg.fill('#st-ph', '416-555-0199'); await pg.waitForSelector('text=You have changes that are not saved yet.');
+      await pg.fill('#st-ph', '416-555-0199'); await pg.waitForSelector('.profile-save >> text=Not saved yet');
       if ((await state(pg)).profile.phone === '416-555-0199') throw new Error('saved before Save');
       await pg.click('#st-save'); await pg.waitForSelector('.profile-save >> text=Saved');
       if ((await state(pg)).profile.phone !== '416-555-0199') throw new Error('not saved');
@@ -820,6 +820,20 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'today'); const dots = pg.locator('.rent-list .dots, .prop-line .dots').first(); await dots.scrollIntoViewIfNeeded(); await dots.click();
       const ok = await pg.evaluate(() => { const m = document.querySelector('.row-menu-pop'); if (!m || m.parentElement !== document.body) return false; const r = m.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + 10); return !!top && !!top.closest('.row-menu-pop'); });
       if (!ok) throw new Error('menu hidden or inside the card'); await pg.keyboard.press('Escape');
+    });
+    await step(tag, 'H20 Home: a unit rented by the room with free rooms has Add tenant on its own row; Find a tenant is its own page', async () => {
+      await go(pg, 'today'); const btn = pg.locator('.unit-head .add-tenant-quick').first(); await btn.waitFor();
+      await btn.click(); await pg.waitForSelector('#vacant-units');
+      await go(pg, 'rent/property/p-maple'); if ((await pg.locator('.tabs a:has-text("Find a tenant")').count())) throw new Error('Find a tenant is still a tab');
+      await go(pg, 'rent/property/p-maple/find'); await pg.waitForSelector('.find-page h1:has-text("Find a tenant")'); await pg.waitForSelector('.find-page .crumb:has-text("Back to Maple triplex")');
+      await go(pg, 'find'); await pg.waitForSelector('.find-page h1:has-text("Find a tenant")');
+    });
+    await step(tag, 'H21 Rent tracking: switching to "I mark it" with banks connected asks first and names the banks it disconnects', async () => {
+      await go(pg, 'settings'); const n = (await state(pg)).banks.length; if (!n) return 'no bank connected';
+      await pg.click('#rt-manual'); await pg.waitForSelector('#rt-confirm >> text=disconnects');
+      await pg.locator('#rt-confirm >> text=Keep my bank').click(); if ((await state(pg)).banks.length !== n) throw new Error('disconnected without confirming');
+      await pg.click('#rt-manual'); await pg.click('#rt-manual-confirm'); await pg.waitForTimeout(250);
+      if ((await state(pg)).banks.length !== 0) throw new Error('banks still connected');
     });
     ok(tag, 'H errors', errsH.length === 0, errsH.slice(0, 3).join(' | '));
 

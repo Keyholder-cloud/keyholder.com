@@ -174,9 +174,8 @@ export function SignIn() {
     <div className="acct-page">
       <div className="acct-top"><Link to="/welcome" aria-label="Keyholder home"><Brand size={28} /></Link><Link className="btn ghost" to="/welcome"><Icon name="back" size={16} />Back<span className="hide-xs"> to website</span></Link></div>
       <div className="acct-card">
-        <div className="acct-art" aria-hidden><SceneWelcome /></div>
-        <h1>Welcome back</h1>
-        <p className="soft">Sign in to see your rent, bills and paperwork.</p>
+        {!ticket && <div className="acct-art" aria-hidden><SceneWelcome /></div>}
+        {!ticket && <><h1>Welcome back</h1><p className="soft">Sign in to see your rent, bills and paperwork.</p></>}
         {ticket ? (
           <TwoStepCode ticket={ticket} onSignedIn={(u) => afterSignIn(u, act, nav)} onBack={() => { setTicket(''); nav('/signin'); }} />
         ) : unknown ? (

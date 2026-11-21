@@ -114,7 +114,7 @@ async function teamIn(email: string, password: string): Promise<string> {
   const body = r.json();
   if (body.twoStep) {
     const v = await app.inject({ method: 'POST', url: '/api/auth/two-step', headers: { 'x-keyholder': '1' }, payload: { ticket: body.ticket, code: me!.backup.shift(), trust: true } });
-    me!.trust = cookieOf(v, 'kh_trust');
+    me!.trust = cookieOf(v, 'kh_device');
     return cookieOf(v, 'kh_session')!;
   }
   const cookie = cookieOf(r, 'kh_session')!;
@@ -601,7 +601,7 @@ describe('bank data (Plaid)', () => {
   it('remembered devices (two-step): right after the second step a browser can be remembered; it is listed and can be forgotten', async () => {
     const r = await app.inject({ method: 'POST', url: '/api/auth/remember-device', headers: { 'x-keyholder': '1', cookie: sup, 'user-agent': 'Mozilla/5.0 (Macintosh) Chrome/130.0 Safari/537.36' } });
     expect(r.statusCode).toBe(200);
-    const trust = cookieOf(r, 'kh_trust')!;
+    const trust = cookieOf(r, 'kh_device')!;
     expect(trust).toBeTruthy();
     const list = await call('GET', '/api/auth/devices', { cookie: `${sup}; ${trust}` });
     const mine = (list.body as { name: string; thisDevice: boolean; id: string }[]).find((x) => x.thisDevice)!;
@@ -634,6 +634,34 @@ describe('Google sign-in', () => {
     const cookie = ([cb.headers['set-cookie']].flat() as string[]).find((c) => c.startsWith('kh_session='))!.split(';')[0];
     expect((await call('GET', '/api/session', { cookie })).body.user).toMatchObject({ email: 'gina@gmail.com', google: true, emailVerified: true });
     expect(googleCalls.filter((u) => u.includes('oauth2.googleapis.com') || u.includes('openidconnect')).length).toBe(2);
+  });
+
+  it('with two-step on: "Remember this device" skips the second step at the next Google sign-in on that browser', async () => {
+    const google = async (cookies: string[]) => {
+      const start = await app.inject({ method: 'GET', url: '/api/auth/google/start?intent=signin' });
+      const state = new URL(start.headers.location as string).searchParams.get('state')!;
+      const oauth = ([start.headers['set-cookie']].flat() as string[]).find((c) => c.startsWith('kh_oauth='))!.split(';')[0];
+      return app.inject({ method: 'GET', url: `/api/auth/google/callback?code=abc&state=${state}`, headers: { cookie: [oauth, ...cookies].join('; ') } });
+    };
+    const first = await google([]);
+    const session = ([first.headers['set-cookie']].flat() as string[]).find((c) => c?.startsWith('kh_session='))!.split(';')[0];
+    const s = await call('POST', '/api/auth/two-step/setup', { cookie: session });
+    const secret = fromBase32(s.body.secret);
+    expect((await call('POST', '/api/auth/two-step/enable', { cookie: session, body: { code: codeAt(secret, stepNow()) } })).status).toBe(200);
+    // Next Google sign-in: the second step is asked, then this browser is remembered.
+    const again = await google([]);
+    const ticket = new URL((again.headers.location as string).replace('#/', '')).searchParams.get('twostep')!;
+    expect(ticket).toBeTruthy();
+    const two = await app.inject({ method: 'POST', url: '/api/auth/two-step', headers: { 'x-keyholder': '1' }, payload: { ticket, code: codeAt(secret, stepNow() + 1) } });
+    expect(two.statusCode).toBe(200);
+    const sess2 = cookieOf(two, 'kh_session')!;
+    const rem = await app.inject({ method: 'POST', url: '/api/auth/remember-device', headers: { 'x-keyholder': '1', cookie: sess2 } });
+    expect(rem.statusCode).toBe(200);
+    const trust = cookieOf(rem, 'kh_device')!;
+    expect(trust).toBeTruthy();
+    // And the time after: straight in.
+    const third = await google([trust]);
+    expect(third.headers.location).toBe('http://localhost:8080/#/auth/google?intent=signin');
   });
 
   it('refuses a callback with the wrong state', async () => {
@@ -715,7 +743,7 @@ describe('two-step sign-in (authenticator app)', () => {
     const v = await app.inject({ method: 'POST', url: '/api/auth/two-step', headers: { 'x-keyholder': '1' }, payload: { ticket: r2.body.ticket, code: backup[0].toUpperCase(), trust: true } });
     expect(v.statusCode).toBe(200);
     expect(v.json().user.backupCodesLeft).toBe(9);
-    const trust = cookieOf(v, 'kh_trust')!;
+    const trust = cookieOf(v, 'kh_device')!;
     const r3 = await call('POST', '/api/auth/login', { body: { email, password } });
     expect((await call('POST', '/api/auth/two-step', { body: { ticket: r3.body.ticket, code: backup[0] } })).status).toBe(401);
     // Trusted browser: straight in.

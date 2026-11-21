@@ -26,7 +26,7 @@ export function defaultProfile(): Profile {
     autoSend: false,
     approvedUnchanged: 0,
     autoSendOffered: false,
-    forwardingAddress: `rent-${Math.random().toString(36).slice(2, 8)}@in.keyholder.ca`,
+    forwardingAddress: `rent-${Math.random().toString(36).slice(2, 8)}@in.keyholder.cloud`,
     phase: 3,
     theme: 'system',
     paperGrain: true,

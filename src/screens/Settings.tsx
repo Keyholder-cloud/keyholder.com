@@ -8,9 +8,8 @@ import { RentTracking } from './Money';
 import { PACK_VERIFIED, PACK_VERSION, PROVINCES, province } from '../lib/jurisdiction';
 import { fmtDate } from '../lib/dates';
 import { TONES } from '../lib/templates';
-import { Field, Seg, SlideToConfirm } from '../components/ui';
+import { Field, SlideToConfirm } from '../components/ui';
 import { Icon } from '../components/Icon';
-import { Avatar } from '../components/Art';
 import { ServerAccount, ServerData } from '../components/ServerAccount';
 import { useConn } from '../data/api';
 
@@ -45,6 +44,7 @@ export function Settings() {
   const saved = { name: p.name, email: p.email, phone: p.phone ?? '', province: p.province, city: p.city, emailUpdates: !!p.emailUpdates };
   const [draft, setDraft] = useState(saved);
   const [justSaved, setJustSaved] = useState(false);
+  const [clearing, setClearing] = useState(false);
   // Changed elsewhere (another device, the questions): the form follows, unless you are in the middle of an edit.
   const lastSaved = useRef(JSON.stringify(saved));
   const savedKey = JSON.stringify(saved);
@@ -63,24 +63,37 @@ export function Settings() {
     <div className="page">
       <BackToMore /><div className="page-head"><div><div className="eyebrow">Settings</div><h1 className="title-ic"><span className="tile-ic mint" aria-hidden><Icon name="settings" size={22} /></span>Your Keyholder</h1><PageSub>Your profile, appearance, rent tracking, reminders</PageSub></div></div>
 
+      <section className="section" id="preferences">
+        <h2 className="section-title">Preferences</h2>
+        <div className="sheet prefs">
+          <Pref id="appearance" icon="sparkle" title="Appearance">
+            <span className="seg-icons" role="radiogroup" aria-label="Theme">
+              {THEMES.map((t) => <button key={t.id} role="radio" aria-checked={p.theme === t.id} title={t.title} onClick={() => act.setProfile({ theme: t.id })}><Icon name={t.icon} size={15} />{t.label}</button>)}
+            </span>
+            <button className="chip" role="switch" aria-checked={p.paperGrain} id="pref-grain" title="Paper grain texture" onClick={() => act.setProfile({ paperGrain: !p.paperGrain })}><Icon name={p.paperGrain ? 'check' : 'sparkle'} size={14} />Grain</button>
+          </Pref>
+          <Pref id="two-step" icon="lock" title="Two-step sign-in"><TwoStepSettings /></Pref>
+          <Pref id="rent-tracking" icon="bank" title="Rent tracking"><RentTracking /></Pref>
+        </div>
+      </section>
+
       <section className="section" id="profile">
         <h2 className="section-title">Your profile</h2>
         <div className="sheet">
-          <div className="profile-head"><Avatar name={p.name || p.account?.name || 'You'} size={56} /><div><strong>{p.name || p.account?.name || 'Your name'}</strong><div className="small soft">{p.email || p.account?.email || 'Add your email'}</div></div></div>
           <form id="profile-form" onSubmit={(e) => { e.preventDefault(); if (dirty) saveProfile(); }}>
-          <div className="grid2">
-            <Field label="Name on receipts" htmlFor="st-n" hint={draft.name.trim() && !/\s/.test(draft.name.trim()) ? 'Add your last name: receipts and letters show your full name' : 'First and last name'}><input id="st-n" className="input" value={draft.name} onChange={(e) => edit({ name: e.target.value })} /></Field>
-            <Field label="Email" htmlFor="st-e" hint="Tenant replies go here"><input id="st-e" type="email" className="input" value={draft.email} onChange={(e) => edit({ email: e.target.value })} /></Field>
-            <Field label="Phone" htmlFor="st-ph" hint="Optional: shown on receipts and letters"><input id="st-ph" type="tel" className="input" value={draft.phone} onChange={(e) => edit({ phone: e.target.value })} autoComplete="tel" /></Field>
-            <Field label="Province" htmlFor="st-p" hint={`Rules pack ${PACK_VERSION}, last verified ${fmtDate(PACK_VERIFIED)}`}>
-              <select id="st-p" className="input" value={draft.province} onChange={(e) => edit({ province: e.target.value as typeof p.province, city: province(e.target.value as typeof p.province).cities[0] })}>{PROVINCES.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select>
+          <div className="profile-grid">
+            <Field label="Name on receipts" htmlFor="st-n" hint={draft.name.trim() && !/\s/.test(draft.name.trim()) ? 'Add your last name' : undefined}><input id="st-n" className="input" value={draft.name} onChange={(e) => edit({ name: e.target.value })} /></Field>
+            <Field label="Email" htmlFor="st-e"><input id="st-e" type="email" className="input" value={draft.email} onChange={(e) => edit({ email: e.target.value })} /></Field>
+            <Field label="Phone (optional)" htmlFor="st-ph"><input id="st-ph" type="tel" className="input" value={draft.phone} onChange={(e) => edit({ phone: e.target.value })} autoComplete="tel" /></Field>
+            <Field label="Province" htmlFor="st-p">
+              <select id="st-p" className="input" title={`Rules pack ${PACK_VERSION}, last verified ${fmtDate(PACK_VERIFIED)}`} value={draft.province} onChange={(e) => edit({ province: e.target.value as typeof p.province, city: province(e.target.value as typeof p.province).cities[0] })}>{PROVINCES.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select>
             </Field>
             <Field label="City" htmlFor="st-c"><select id="st-c" className="input" value={draft.city} onChange={(e) => edit({ city: e.target.value })}>{province(draft.province).cities.map((c) => <option key={c}>{c}</option>)}</select></Field>
           </div>
-          <label className="check" style={{ marginTop: 14 }}><input type="checkbox" checked={draft.emailUpdates} onChange={(e) => edit({ emailUpdates: e.target.checked })} />{live ? 'Email me when something needs me (one short email a day at most)' : 'Email me on rent day, plus a monthly summary'} {!live ? <span className="soft small">(preview: no emails are sent yet)</span> : !conn.config?.emailDelivery && <span className="soft small">(email sending is not switched on yet)</span>}</label>
           <div className="profile-save">
+            <label className="check" title={live ? (conn.config?.emailDelivery ? 'One short email a day at most' : 'Email sending is not switched on yet') : 'Preview: no emails are sent'}><input type="checkbox" checked={draft.emailUpdates} onChange={(e) => edit({ emailUpdates: e.target.checked })} /><Icon name="mail" size={15} />{live ? 'Email me when something needs me' : 'Email me on rent day'}</label>
             <button type="submit" className="btn primary" id="st-save" disabled={!dirty}>Save</button>
-            {dirty ? <span className="small soft">You have changes that are not saved yet.</span> : justSaved ? <span className="small saved-note" role="status"><Icon name="check" size={14} /> Saved</span> : null}
+            {dirty ? <span className="small soft">Not saved yet</span> : justSaved ? <span className="small saved-note" role="status"><Icon name="check" size={14} /> Saved</span> : null}
           </div>
           </form>
           <div id="account" className="profile-account">
@@ -101,47 +114,39 @@ export function Settings() {
         </div>
       </section>
 
-      <section className="section" id="preferences">
-        <h2 className="section-title">Preferences</h2>
-        <div className="sheet prefs">
-          <Pref id="appearance" icon="sparkle" title="Appearance">
-            <span className="seg-icons" role="radiogroup" aria-label="Theme">
-              {THEMES.map((t) => <button key={t.id} role="radio" aria-checked={p.theme === t.id} title={t.title} onClick={() => act.setProfile({ theme: t.id })}><Icon name={t.icon} size={15} />{t.label}</button>)}
-            </span>
-            <button className="chip" role="switch" aria-checked={p.paperGrain} id="pref-grain" title="Paper grain texture" onClick={() => act.setProfile({ paperGrain: !p.paperGrain })}><Icon name={p.paperGrain ? 'check' : 'sparkle'} size={14} />Grain</button>
-          </Pref>
-          <Pref id="two-step" icon="lock" title="Two-step sign-in"><TwoStepSettings /></Pref>
-          <Pref id="rent-tracking" icon="bank" title="Rent tracking"><RentTracking /></Pref>
-        </div>
-      </section>
-
       <section className="section">
         <h2 className="section-title">Receipts and reminders</h2>
-        <div className="sheet">
-          <Field label="Reminder tone"><Seg label="Tone" value={p.reminderTone} onChange={(reminderTone) => act.setProfile({ reminderTone })} options={TONES.map((t) => ({ id: t.id, label: t.label }))} /></Field>
-          <Field label="Grace period (days)" htmlFor="st-g" hint="Rent is legally late the day after it's due. The firm reminder waits until this ends.">
-            <input id="st-g" type="number" min={1} max={15} className="input" style={{ maxWidth: 120 }} value={p.graceDays} onChange={(e) => act.setProfile({ graceDays: Math.max(1, Number(e.target.value) || 5) })} />
-          </Field>
-          <label className="check"><input type="checkbox" checked={p.autoSend} onChange={(e) => act.setAutoSend(e.target.checked)} />
-            <span>Send receipts and reminders automatically<span className="tiny soft" style={{ display: 'block' }}>Off: every message waits for you. Legal notices always do.</span></span>
-          </label>
+        <div className="sheet prefs" id="reminders">
+          <Pref id="tone" icon="message" title="Reminder tone">
+            <span className="seg-icons" role="radiogroup" aria-label="Tone">
+              {TONES.map((t) => <button key={t.id} role="radio" aria-checked={p.reminderTone === t.id} title={t.blurb} onClick={() => act.setProfile({ reminderTone: t.id })}>{t.label}</button>)}
+            </span>
+          </Pref>
+          <Pref id="grace" icon="clock" title="Grace period">
+            <span className="pref-inline" title="Rent is legally late the day after it's due. The firm reminder waits until this ends.">
+              <input id="st-g" type="number" min={1} max={15} className="input pref-num" aria-label="Grace period in days" value={p.graceDays} onChange={(e) => act.setProfile({ graceDays: Math.max(1, Number(e.target.value) || 5) })} />days before the firm reminder
+            </span>
+          </Pref>
+          <Pref id="auto" icon="send" title="Sending">
+            <button className="chip" role="switch" aria-checked={p.autoSend} id="st-auto" title="Off: every message waits for you. Legal notices always do." onClick={() => act.setAutoSend(!p.autoSend)}>
+              <Icon name={p.autoSend ? 'check' : 'pause'} size={14} />{p.autoSend ? 'Automatic' : 'I approve each one'}</button>
+            <span className="pref-note">Legal notices always wait for you.</span>
+          </Pref>
         </div>
       </section>
 
-
-
-      <section className="section">
+      <section className="section" id="data">
         <h2 className="section-title">Data</h2>
-        <div className="sheet stack">
-          {live ? <ServerData /> : <p className="small soft">Everything is saved in this browser. Clearing browser data clears Keyholder.</p>}
-          <div className="btn-row">
-            {admin && <button className="btn" onClick={act.resetDemo}>Restore sample data</button>}
-            {admin && <button className="btn" onClick={() => { act.signOut(); nav('/start'); }}>Replay the signup questions</button>}
-            <button className="btn" onClick={() => { act.setProfile({ tourDone: false }); nav('/today'); }}>Show the tour again</button>
-            <Link className="btn ghost" to="/welcome">What is Keyholder?</Link>
+        <div className="sheet data-sheet">
+          {live ? <ServerData /> : <p className="small soft" style={{ margin: 0 }}>Saved in this browser. Clearing browser data clears Keyholder.</p>}
+          <div className="pref-opts">
+            {admin && <button className="chip" onClick={act.resetDemo}><Icon name="sync" size={14} />Restore sample data</button>}
+            {admin && <button className="chip" onClick={() => { act.signOut(); nav('/start'); }}><Icon name="back" size={14} />Replay the signup questions</button>}
+            <button className="chip" onClick={() => { act.setProfile({ tourDone: false }); nav('/today'); }}><Icon name="play" size={14} />Show the tour again</button>
+            <Link className="chip" to="/welcome"><Icon name="info" size={14} />What is Keyholder?</Link>
+            <button className="chip danger" id="st-clear" aria-expanded={clearing} onClick={() => setClearing((x) => !x)}><Icon name="trash" size={14} />Clear all data</button>
           </div>
-          <div className="callout warn">This deletes every property, tenant, payment and expense. It can't be undone.</div>
-          <SlideToConfirm label="Slide to clear all data" onConfirm={act.clearAll} />
+          {clearing && <div className="clear-box"><div className="callout warn">This deletes every property, tenant, payment and expense. It can't be undone.</div><SlideToConfirm label="Slide to clear all data" onConfirm={act.clearAll} /></div>}
         </div>
       </section>
     </div>

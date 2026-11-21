@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { PLAID_PRIVACY_URL } from './Security';
 import { PageSub } from '../components/Guide';
 import { useMemo, useState } from 'react';
@@ -174,6 +175,7 @@ export function Expenses() {
 export function RentTracking() {
   const { state, act } = useStore();
   const [connect, setConnect] = useState(false);
+  const [confirmManual, setConfirmManual] = useState(false);
   const banks = state.banks ?? [];
   const manual = banks.length === 0;
   const soon = !banksOn();
@@ -182,7 +184,7 @@ export function RentTracking() {
   return (
     <>
       <span className="seg-icons" role="radiogroup" aria-label="How rent is tracked">
-        <button role="radio" id="rt-manual" aria-checked={manual} title="Tap Mark paid when rent comes in" onClick={() => !manual && act.useManualTracking()}><Icon name="hand" size={15} />I mark it</button>
+        <button role="radio" id="rt-manual" aria-checked={manual} title="Tap Mark paid when rent comes in" onClick={() => !manual && setConfirmManual(true)}><Icon name="hand" size={15} />I mark it</button>
         <button role="radio" id="rt-bank" aria-checked={!manual} disabled={soon} title={soon ? 'Bank checks are coming soon' : 'Keyholder spots rent, bills and mortgage payments in your bank (view only)'} onClick={() => manual && setConnect(true)}>
           <Icon name="bank" size={15} />My bank{soon && <span className="soon-tag">{serverMode() ? 'Coming soon' : 'Not available right now'}</span>}
         </button>
@@ -197,6 +199,19 @@ export function RentTracking() {
       {!manual && <button className="chip" id="rt-check" title="Check every bank now" onClick={() => act.syncBank()}><Icon name="sync" size={14} />Check now</button>}
       {!manual && <button className="chip" id="rt-add" title="Add another bank (view only: Keyholder can never move money)" onClick={() => setConnect(true)}><Icon name="plus" size={14} />Add bank</button>}
       {connect && (serverMode() ? <PlaidConnect onClose={() => setConnect(false)} /> : <ConnectBank onClose={() => setConnect(false)} />)}
+      {confirmManual && createPortal(
+        <div className="acct-modal" role="alertdialog" aria-modal="true" aria-labelledby="rt-confirm-h">
+          <div className="scrim" onClick={() => setConfirmManual(false)} />
+          <div className="acct-modal-card rt-confirm" id="rt-confirm">
+            <h2 id="rt-confirm-h"><Icon name="hand" size={20} />Mark rent yourself?</h2>
+            <p>This <strong>disconnects {banks.map((b) => `${b.bank}${b.accountMask ? ` ${b.accountMask}` : ''}`).join(' and ')}</strong>. Keyholder stops seeing new deposits and bills there, and you tap Mark paid when rent comes in.</p>
+            <p className="small soft">Rent, expenses and matches already made stay. You can connect your bank again any time.</p>
+            <div className="btn-row">
+              <button className="btn ghost" autoFocus onClick={() => setConfirmManual(false)}>Keep my bank</button>
+              <button className="btn danger" id="rt-manual-confirm" onClick={() => { setConfirmManual(false); act.useManualTracking(); }}><Icon name="close" size={16} />Disconnect and mark it myself</button>
+            </div>
+          </div>
+        </div>, document.body)}
     </>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as sync from './data/sync';
 import { resumePlaidOAuth } from './data/plaid';
+import { ApplyPage, applySlug } from './screens/Apply';
 import { HashRouter, MemoryRouter, Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { embedded } from './components/ui';
 import { StoreProvider, useStore } from './data/store';
@@ -14,7 +15,7 @@ import { Portfolio } from './screens/Portfolio';
 import { PropertyDetail } from './screens/PropertyDetail';
 import { TenantDetail } from './screens/TenantDetail';
 import { ExpensesPage } from './screens/Money';
-import { Rentals, TenantsPage } from './screens/Rentals';
+import { FindTenantPage, Rentals, TenantsPage } from './screens/Rentals';
 import { IncomePage, Paperwork } from './screens/Paperwork';
 import { Settings } from './screens/Settings';
 import { Landing } from './screens/Landing';
@@ -27,6 +28,9 @@ import { SampleBanner, Tour, PageSub, HelpButton } from './components/Guide';
 import { SetupCircle } from './components/Setup';
 
 export function App() {
+  // The public application form (keyholder.cloud/apply/<listing>): no account, no app around it.
+  const slug = applySlug();
+  if (slug) return <ApplyPage slug={slug} />;
   return (
     <StoreProvider>
       {embedded ? <MemoryRouter><Root /></MemoryRouter> : <HashRouter><Root /></HashRouter>}
@@ -137,6 +141,7 @@ function Shell() {
             <Route path="/portfolio/:tab" element={<Portfolio />} />
             <Route path="/rentals" element={<Rentals />} />
             <Route path="/tenants" element={<TenantsPage />} />
+            <Route path="/find" element={<FindTenantPage />} />
             <Route path="/rent" element={<Navigate to="/rentals" replace />} />
             <Route path="/income" element={<IncomePage />} />
             <Route path="/expenses" element={<ExpensesPage />} />

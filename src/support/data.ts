@@ -112,8 +112,8 @@ export function generateSupport(today: ISODate = todayISO()): SupportBase {
 
   const team: Member[] = [
     { id: 'm1', name: 'You', email: 'admin', role: 'Super user' },
-    { id: 'm2', name: 'Nadia Rahman', email: 'nadia@keyholder.ca', role: 'Admin' },
-    { id: 'm3', name: 'Leo Tremblay', email: 'leo@keyholder.ca', role: 'Support' },
+    { id: 'm2', name: 'Nadia Rahman', email: 'nadia@keyholder.cloud', role: 'Admin' },
+    { id: 'm3', name: 'Leo Tremblay', email: 'leo@keyholder.cloud', role: 'Support' },
   ];
   const platform: Platform = {
     unitCents: DEFAULT_UNIT_CENTS,

@@ -31,8 +31,21 @@ declare module 'fastify' {
   interface FastifyRequest { user: User | null; sessionToken: string | null }
 }
 
-/** The browser a person chose to trust after a two-step code (30 days). */
-const TRUST_COOKIE = 'kh_trust';
+/** A browser remembered after the second step ("Remember this device?"). Site-wide, so it always comes back. */
+const TRUST_COOKIE = 'kh_device';
+/** The earlier name (path /api/auth): still read, and cleared when a new one is set. */
+const OLD_TRUST_COOKIE = 'kh_trust';
+/** Every remembered-device token the browser sent (old and new names; a browser can hold more than one). */
+const trustTokens = (req: FastifyRequest): string[] => {
+  const raw = String(req.headers.cookie ?? '');
+  const out = new Set<string>();
+  for (const part of raw.split(';')) {
+    const i = part.indexOf('='); if (i < 0) continue;
+    const k = part.slice(0, i).trim();
+    if (k === TRUST_COOKIE || k === OLD_TRUST_COOKIE) { try { out.add(decodeURIComponent(part.slice(i + 1).trim())); } catch { /* not ours */ } }
+  }
+  return [...out].filter(Boolean);
+};
 /** The support dashboard asks the team for two-step sign-in; the app shows the set-up when it sees this. */
 export const TEAM_TWO_STEP = 'Two-step sign-in is required for the Keyholder team. Set it up to continue.';
 
@@ -153,17 +166,21 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   /** This browser was trusted for 30 days after a code (only for the same person). */
   // Each use keeps it for another 30 days (forgotten after 30 days unused, a new password, or Forget in Settings).
   const trustedDevice = async (req: FastifyRequest, u: User) => {
-    const t = req.cookies[TRUST_COOKIE]; if (!t) return false;
-    const hit = await db.query(`update trusted_devices set last_used_at = now(), expires_at = now() + interval '30 days'
-      where token_hash = $1 and user_id = $2 and expires_at > now() returning 1 as ok`, [sha256(t), u.id]);
+    const tokens = trustTokens(req);
+    const hit = tokens.length ? await db.query(`update trusted_devices set last_used_at = now(), expires_at = now() + interval '30 days'
+      where token_hash = any($1) and user_id = $2 and expires_at > now() returning 1 as ok`, [tokens.map(sha256), u.id]) : [];
+    // In the logs (no token): whether this browser said it was remembered, and whether that was found.
+    req.log.info({ rememberedDevice: { sent: tokens.length, found: hit.length > 0 } }, 'two-step: remembered device check');
     return hit.length > 0;
   };
   const rememberDevice = async (req: FastifyRequest, reply: FastifyReply, u: User) => {
     const token = newToken();
     await db.query(`insert into trusted_devices (token_hash, user_id, expires_at, id, name, last_used_at) values ($1, $2, now() + interval '30 days', $3, $4, now())`,
       [sha256(token), u.id, randomUUID(), deviceName(req.headers['user-agent']).slice(0, 60)]);
-    reply.setCookie(TRUST_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: cfg.cookieSecure, path: '/api/auth', maxAge: 30 * 86400 });
+    reply.setCookie(TRUST_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: cfg.cookieSecure, path: '/', maxAge: 30 * 86400 });
+    reply.clearCookie(OLD_TRUST_COOKIE, { path: '/api/auth' });
   };
+  const forgetDeviceCookie = (reply: FastifyReply) => { reply.clearCookie(TRUST_COOKIE, { path: '/' }); reply.clearCookie(OLD_TRUST_COOKIE, { path: '/api/auth' }); };
   /** The password (or Google) was right; the code comes next. A ticket for that, good for 10 minutes and 5 tries. */
   const twoStepTicket = async (u: User) => {
     const token = newToken();
@@ -326,17 +343,17 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   });
   app.get('/api/auth/devices', async (req) => {
     const u = need(req);
-    const mine = req.cookies[TRUST_COOKIE] ? sha256(req.cookies[TRUST_COOKIE]) : '';
+    const mine = new Set(trustTokens(req).map(sha256));
     const rows = await db.query<{ id: string; name: string; created_at: Date; last_used_at: Date | null; token_hash: string }>(
       'select id, name, created_at, last_used_at, token_hash from trusted_devices where user_id = $1 and expires_at > now() order by coalesce(last_used_at, created_at) desc', [u.id]);
-    return rows.map((r) => ({ id: r.id, name: r.name || 'Browser', added: new Date(r.created_at).toISOString().slice(0, 10), lastUsed: r.last_used_at ? new Date(r.last_used_at).toISOString().slice(0, 10) : null, thisDevice: r.token_hash === mine }));
+    return rows.map((r) => ({ id: r.id, name: r.name || 'Browser', added: new Date(r.created_at).toISOString().slice(0, 10), lastUsed: r.last_used_at ? new Date(r.last_used_at).toISOString().slice(0, 10) : null, thisDevice: mine.has(r.token_hash) }));
   });
   app.post('/api/auth/devices/forget', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
     const u = need(req);
     const { id, all } = z.object({ id: z.string().uuid().optional(), all: z.boolean().optional() }).parse(req.body);
     if (all) await db.query('delete from trusted_devices where user_id = $1', [u.id]);
     else await db.query('delete from trusted_devices where user_id = $1 and id = $2', [u.id, id ?? null]);
-    if (all || !(await db.one('select 1 as ok from trusted_devices where user_id = $1 and token_hash = $2', [u.id, sha256(req.cookies[TRUST_COOKIE] ?? '')]))) reply.clearCookie(TRUST_COOKIE, { path: '/api/auth' });
+    if (all || !(await db.one('select 1 as ok from trusted_devices where user_id = $1 and token_hash = any($2)', [u.id, trustTokens(req).map(sha256)]))) forgetDeviceCookie(reply);
     await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: all ? 'All remembered devices forgotten' : 'Remembered device forgotten', ip: ip(req) });
     return { ok: true };
   });
@@ -351,7 +368,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     await db.query(`update users set totp_secret = null, totp_pending = null, totp_enabled_at = null, totp_last_step = null, backup_codes = null where id = $1`, [u.id]);
     await db.query('delete from passkeys where user_id = $1', [u.id]);
     await db.query('delete from trusted_devices where user_id = $1', [u.id]);
-    reply.clearCookie(TRUST_COOKIE, { path: '/api/auth' });
+    forgetDeviceCookie(reply);
     await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Two-step sign-in turned off', ip: ip(req) });
     return { user: publicUser((await userById(db, u.id))!) };
   });
@@ -816,6 +833,63 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     };
   });
 
+  // ---------------- Public application form (/apply/<slug>): no account needed ----------------
+  // The listing a landlord saved under "Find a tenant". Only what a rental ad shows: the address, unit, rent, date.
+  const listingBySlug = async (slug: string) => {
+    const row = await db.one<{ account_id: string }>(`select account_id from account_state where data->'listings' @> $1::jsonb limit 1`, [JSON.stringify([{ slug }])]);
+    if (!row) return null;
+    const s = await readState(db, row.account_id);
+    const d = s.data; if (!d) return null;
+    const l = d.listings.find((x) => x.slug === slug); const unit = l && d.units.find((u) => u.id === l.unitId);
+    const prop = unit && d.properties.find((p) => p.id === unit.propertyId);
+    if (!l || !unit || !prop || prop.archived) return null;
+    return { accountId: row.account_id, state: s, listing: l, unit, prop, landlord: (d.profile.name || '').split(' ')[0] || 'The landlord', ownerEmail: d.profile.email };
+  };
+  const Slug = z.object({ slug: z.string().regex(/^[a-z0-9-]{3,80}$/) });
+  app.get('/api/apply/:slug', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req) => {
+    const { slug } = Slug.parse(req.params);
+    const f = await listingBySlug(slug); if (!f) fail(404, 'This listing is closed or the link is not right. Ask the landlord for a new link.');
+    const { listing, unit, prop, landlord } = f!;
+    return { unit: unit.label, rooms: unit.rentedBy === 'room', address: prop.address, city: prop.city, province: prop.province, rent: listing.askingRent, available: listing.available, notes: listing.notes ?? '', landlord, bedrooms: unit.bedrooms ?? null };
+  });
+  const money = z.number().int().min(0).max(100_000_00);
+  const short = (n: number) => z.string().trim().max(n);
+  const Application = z.object({
+    people: z.array(z.object({ name: short(120).min(2), email: z.string().trim().email().max(200).or(z.literal('')), phone: short(40), employer: short(120), jobTitle: short(80).optional(), monthlyIncome: money })).min(1).max(6),
+    occupants: z.number().int().min(1).max(20), moveIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    currentAddress: short(200).min(3), yearsAtAddress: z.number().min(0).max(80), currentRent: money.optional(), landlordName: short(120).optional(), landlordPhone: short(40).optional(), reasonLeaving: short(300).optional(),
+    employedYears: z.number().min(0).max(60).optional(), employerContact: short(160).optional(), otherIncome: money.optional(), otherIncomeSource: short(120).optional(),
+    leaseTerm: short(60).optional(), vehicles: z.number().int().min(0).max(10).optional(), pets: z.boolean(), petsWhat: short(120).optional(), smoking: z.boolean().optional(),
+    emergencyContact: short(200).optional(), references: short(500).optional(), notes: short(1000).optional(),
+    consentReferences: z.literal(true), creditConsent: z.boolean().optional(), website: z.string().max(0).optional(),
+  });
+  app.post('/api/apply/:slug', { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } }, async (req, reply) => {
+    const { slug } = Slug.parse(req.params);
+    const b = Application.parse(req.body);
+    if (!b.people[0].email) fail(400, 'Add an email so the landlord can reach you.');
+    const f = await listingBySlug(slug); if (!f) fail(404, 'This listing is closed or the link is not right. Ask the landlord for a new link.');
+    const d = structuredClone(f!.state.data!) as AppState;
+    const id = randomUUID();
+    const today = new Date().toISOString().slice(0, 10);
+    const people = b.people.map((p) => ({ name: p.name, email: p.email, phone: p.phone, employer: p.employer, jobTitle: p.jobTitle, monthlyIncome: p.monthlyIncome }));
+    d.applicants.push({
+      id: `ap-${id.slice(0, 12)}`, unitId: f!.unit.id, names: people.map((p) => p.name), email: people[0].email, phone: people[0].phone, submitted: today, moveIn: b.moveIn,
+      currentAddress: b.currentAddress, yearsAtAddress: b.yearsAtAddress, employer: people.map((p) => p.employer).filter(Boolean).join('; '),
+      monthlyIncome: people.reduce((a, p) => a + p.monthlyIncome, 0), references: b.references ?? '', pets: b.pets,
+      notes: [b.petsWhat ? `Pets: ${b.petsWhat}` : '', b.notes ?? ''].filter(Boolean).join(' · '), status: 'new',
+      occupants: b.occupants, emergencyContact: b.emergencyContact, currentRent: b.currentRent, landlordName: b.landlordName, landlordPhone: b.landlordPhone,
+      reasonLeaving: b.reasonLeaving, jobTitle: people[0].jobTitle, employedYears: b.employedYears, employerContact: b.employerContact, otherIncome: b.otherIncome,
+      otherIncomeSource: b.otherIncomeSource, leaseTerm: b.leaseTerm, vehicles: b.vehicles, smoking: b.smoking, creditConsent: !!b.creditConsent, people,
+    });
+    d.audit.unshift({ id: randomUUID(), at: new Date().toISOString(), action: 'Application received', detail: `${people.map((p) => p.name).join(' & ')} for Unit ${f!.unit.label}, ${f!.prop.nickname}` });
+    await writeState(db, f!.accountId, f!.state.revision, d, 'Application form');
+    if (f!.ownerEmail) {
+      await queueMail(db, { accountId: f!.accountId, kind: 'application', to: f!.ownerEmail, subject: `New application for Unit ${f!.unit.label}, ${f!.prop.nickname}`,
+        text: `${people.map((p) => p.name).join(' & ')} applied for Unit ${f!.unit.label} at ${f!.prop.address}.\n\nReview it in Keyholder: ${cfg.appUrl}/#/rent/property/${f!.prop.id}/find\n`, dedupeKey: `application-${id}` }).catch(() => null);
+    }
+    return reply.code(201).send({ ok: true });
+  });
+
   // ---------------- Start fresh for real bank data (super user only) ----------------
   app.post('/api/admin/start-fresh', { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } }, async (req) => {
     const me = needSuper(req);
@@ -883,7 +957,8 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   const dir = staticDir === undefined ? resolve(process.cwd(), 'dist') : staticDir;
   const indexFile = dir ? join(dir, 'index.html') : '';
   const page = indexFile && existsSync(indexFile)
-    ? readFileSync(indexFile, 'utf8').replace(/<head>/i, '<head>\n    <meta name="keyholder-server" content="1" />')
+    // <base href="/">: pages at deeper addresses (/apply/<listing>, /plaid-oauth) load the app's files from the root.
+    ? readFileSync(indexFile, 'utf8').replace(/<head>/i, '<head>\n    <base href="/" />\n    <meta name="keyholder-server" content="1" />')
     : null;
   if (page) build = createHash('sha256').update(page).digest('hex').slice(0, 12);
   if (dir && page) {

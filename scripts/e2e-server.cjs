@@ -634,6 +634,27 @@ function watch(pg, errors, label) {
         const me = (await api(p, '/api/session')).body.user; if (!me.twoStep || me.passkeys !== 0) throw new Error('session: ' + JSON.stringify(me));
         await ctx.close();
       });
+      await step(tag, 'E35 The application link works: anyone opens it on a phone (no account), applies, and the landlord gets it under that unit', async () => {
+        const cur = (await api(pg, '/api/state')).body; const d = cur.data;
+        const slug = `e2e-${tag}-${Date.now().toString(36)}`;
+        d.units.push({ id: `u-ap-${tag}`, propertyId: d.properties[0].id, label: 'Z', rent: 180000, bedrooms: 2, utilitiesIncluded: [], status: 'vacant' });
+        d.listings.push({ unitId: `u-ap-${tag}`, askingRent: 180000, available: '2026-12-15', notes: 'Bright 2-bedroom', vacantSince: '2026-11-01', slug });
+        const put = await pg.evaluate(async (body) => (await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Keyholder': '1' }, body: JSON.stringify(body) })).status, { baseRevision: cur.revision, data: d });
+        if (put !== 200) throw new Error('save ' + put);
+        // The link on Find a tenant is this site's own address.
+        await pg.reload(); await go(pg, `rent/property/${d.properties[0].id}/find`); await pg.waitForSelector(`text=${BASE}apply/${slug}`);
+        const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); const p = await ctx.newPage(); watch(p, errors, 'apply');
+        await p.goto(`${BASE}apply/${slug}`); await p.waitForSelector('text=Apply for Unit Z');
+        await p.fill('#ap-n0', 'Sam Applicant'); await p.fill('#ap-e0', `sam.${tag}@tenant-e2e.ca`); await p.fill('#ap-p0', '416-555-0101');
+        await p.fill('#ap-w0', 'City Hospital'); await p.fill('#ap-i0', '5200'); await p.fill('#ap-addr', '10 King St W, Toronto');
+        if (!(await p.locator('#ap-send').isDisabled())) throw new Error('sent without consent');
+        await p.check('#ap-consent'); await p.click('#ap-send'); await p.waitForSelector('#apply-sent');
+        const got = await until(async () => (await api(pg, '/api/state')).body.data.applicants.find((a) => a.unitId === `u-ap-${tag}`), 8000, 'the application reached the landlord');
+        if (got.names[0] !== 'Sam Applicant' || got.monthlyIncome !== 520000 || got.status !== 'new') throw new Error(JSON.stringify(got).slice(0, 200));
+        // A wrong link says so.
+        await p.goto(`${BASE}apply/not-a-listing`); await p.waitForSelector('text=This listing is closed');
+        await ctx.close();
+      });
       await step(tag, 'E18 No preview on the live site: admin / admin is refused', async () => {
         const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); const p = await ctx.newPage();
         await signIn(p, 'admin', 'admin'); await p.waitForSelector('.acct-error');
