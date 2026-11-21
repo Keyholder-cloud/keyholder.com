@@ -41,8 +41,10 @@ function Reset({ token, invite }: { token: string; invite: boolean }) {
     if (pass.length < 8 || busy) return;
     setBusy(true); setErr('');
     try {
-      const r = await api<{ user: ServerUser }>('POST', '/api/auth/reset', { token, password: pass });
-      await afterSignIn(r.user, act, nav);
+      const r = await api<{ user?: ServerUser; twoStep?: boolean; ticket?: string }>('POST', '/api/auth/reset', { token, password: pass });
+      // Two-step sign-in is on: the new password is saved; the code from the app comes next.
+      if (r.twoStep && r.ticket) { nav(`/signin?twostep=${r.ticket}`); return; }
+      await afterSignIn(r.user!, act, nav);
     } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   };
   return (

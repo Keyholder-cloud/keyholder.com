@@ -1,3 +1,4 @@
+import { TwoStepSettings } from '../components/TwoStep';
 import { BackToMore, PageSub } from '../components/Guide';
 import { useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -58,6 +59,11 @@ export function Settings() {
           </div>
           <label className="check" style={{ marginTop: 14 }}><input type="checkbox" checked={!!p.emailUpdates} onChange={(e) => act.setProfile({ emailUpdates: e.target.checked })} />{live ? 'Email me when something needs me (one short email a day at most)' : 'Email me on rent day, plus a monthly summary'} {!live ? <span className="soft small">(preview: no emails are sent yet)</span> : !conn.config?.emailDelivery && <span className="soft small">(email sending is not switched on yet)</span>}</label>
         </div>
+      </section>
+
+      <section className="section" id="two-step">
+        <h2 className="section-title">Two-step sign-in</h2>
+        <TwoStepSettings />
       </section>
 
       <section className="section">
