@@ -36,8 +36,8 @@ export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; on
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  // Done: "Remember this device?" before going in.
-  const [done, setDone] = useState<ServerUser | null>(null);
+  // "Remember this device": this browser skips the second step next time.
+  const [remember, setRemember] = useState(false);
   // Which ways this account can do the second step.
   const [ways, setWays] = useState<{ passkey: boolean; app: boolean }>({ passkey: false, app: true });
   useEffect(() => {
@@ -48,38 +48,23 @@ export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; on
     setBusy(true); setErr('');
     try {
       const passkey = await confirmWithBiometrics(ticket);
-      const r = await api<{ user: ServerUser }>('POST', '/api/auth/two-step', { ticket, passkey });
-      setDone(r.user); setBusy(false);
+      const r = await api<{ user: ServerUser }>('POST', '/api/auth/two-step', { ticket, passkey, trust: remember });
+      await onSignedIn(r.user);
     } catch (x) { setErr((x as Error).message); setBusy(false); }
   };
   const submit = async (e: FormEvent) => {
     e.preventDefault(); if (!code.trim() || busy) return;
     setBusy(true); setErr('');
     try {
-      const r = await api<{ user: ServerUser }>('POST', '/api/auth/two-step', { ticket, code: code.trim() });
-      setDone(r.user); setBusy(false);
+      const r = await api<{ user: ServerUser }>('POST', '/api/auth/two-step', { ticket, code: code.trim(), trust: remember });
+      await onSignedIn(r.user);
     } catch (x) { setErr((x as Error).message); setBusy(false); }
   };
-  const finish = async (remember: boolean) => {
-    if (!done) return;
-    setBusy(true);
-    if (remember) await api('POST', '/api/auth/remember-device', {}).catch(() => {});
-    await onSignedIn(done);
-  };
-  if (done) return (
-    <div className="acct-login two-step-form" id="ts-remember">
-      <div className="two-step-head"><span className="tile-ic mint" aria-hidden><Icon name="check" size={20} /></span>
-        <div><strong>Remember this device?</strong><p className="small soft">Skip this step here next time.</p></div></div>
-      <div className="two-step-choice">
-        <button type="button" className="btn primary" id="ts-remember-yes" disabled={busy} onClick={() => finish(true)}><Icon name="check" size={16} />Remember</button>
-        <button type="button" className="btn ghost" id="ts-remember-no" disabled={busy} title="Best on a shared computer" onClick={() => finish(false)}>Not now</button>
-      </div>
-    </div>
-  );
   return (
     <form className="acct-login two-step-form" onSubmit={submit}>
       <div className="two-step-head"><span className="tile-ic lilac" aria-hidden><Icon name="lock" size={20} /></span>
         <div><strong>Confirm it's you</strong></div></div>
+      <label className="check" title="Skip this step on this browser next time. Not on a shared computer."><input id="ts-remember" type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />Remember this device</label>
       {ways.passkey && <>
         <button type="button" className="btn primary acct-login-btn" id="ts-biometric" disabled={busy} onClick={biometric}><Icon name="fingerprint" size={18} />Use fingerprint or face</button>
         <div className="acct-or"><span>or a code</span></div>

@@ -357,3 +357,7 @@ Status: ☐ to do · ◐ in progress · ☑ done
   says how many are waiting. Replying in the support inbox shows "Email is off ... sent once email is switched on".
 - Settings: Receipts and reminders and Data on one line each like Preferences; profile compact; "I mark it" asks
   before disconnecting banks.
+- Owner, 2026-11-21: "Remember this device should be a check box not a new page during login": a "Remember this
+  device" checkbox on the second-step screen (applies to the code and to fingerprint/face).
+- Owner, 2026-11-21: "The margin/space above all the pages too big, cut down to 1/3": on computers Setup and
+  Settings sit at the top right beside the page title, and pages start 8px from the top.
