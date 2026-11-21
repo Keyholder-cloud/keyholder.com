@@ -555,6 +555,60 @@ describe('bank data (Plaid)', () => {
     expect(after.banks.some((b) => b.id === id)).toBe(false);
     expect(after.txns.some((t) => t.bankId === id && t.status === 'new')).toBe(false);
   });
+
+  it('banks that sign in on their own site (RBC…) come back to /plaid-oauth; a failed connection keeps Plaid’s exact code for support', async () => {
+    const create = plaidCalls.filter((c) => c.path === '/link/token/create').at(-1)!.body;
+    expect(create.redirect_uri).toBe('http://localhost:8080/plaid-oauth');
+    const r = await call('POST', '/api/bank/link-error', { cookie: alex, body: { error_code: 'INSTITUTION_REGISTRATION_REQUIRED', error_type: 'INSTITUTION_ERROR', request_id: 'req-42', institution: 'RBC Royal Bank' } });
+    expect(r.status).toBe(200);
+    const err = (await db.query<{ message: string }>(`select message from system_errors where area = 'Bank connections'`)).map((x) => x.message).join(' | ');
+    expect(err).toContain('RBC Royal Bank: INSTITUTION_REGISTRATION_REQUIRED');
+    expect(err).toContain('request req-42');
+  });
+
+  it('start fresh (super user, password and "START FRESH"): every expense, bank transaction and bank-matched rent goes; tenants, leases and rent marked by hand stay', async () => {
+    const before = (await call('GET', '/api/state', { cookie: alex })).body;
+    const d = before.data as AppState;
+    const lease = d.leases[0];
+    d.expenses.push({ id: 'exp-x', propertyId: d.properties[0].id, date: '2026-11-02', amount: 5000, vendor: 'Home Depot', category: 'repairs', kind: 'current', scope: 'direct', createdAt: new Date().toISOString() });
+    d.payments.push({ id: 'pay-bank', leaseId: lease.id, date: '2026-11-01', amount: lease.rent, method: 'etransfer', period: '2026-11', source: 'bank', createdAt: new Date().toISOString() });
+    d.payments.push({ id: 'pay-hand', leaseId: lease.id, date: '2026-10-01', amount: lease.rent, method: 'etransfer', period: '2026-10', source: 'manual', createdAt: new Date().toISOString() });
+    d.receipts.push({ id: 'rc-bank', number: 990, paymentId: 'pay-bank', status: 'sent', createdAt: new Date().toISOString() });
+    d.txns.push({ id: 'pl-zz', source: 'bank', date: '2026-11-01', amount: lease.rent, payer: 'X', memo: '', status: 'matched', paymentId: 'pay-bank' });
+    d.profile.vendorRules = { 'HOME DEPOT': { propertyId: d.properties[0].id, category: 'repairs' } };
+    d.profile.notRentPayers = ['MOM'];
+    expect((await call('PUT', '/api/state', { cookie: alex, body: { baseRevision: before.revision, data: d } })).status).toBe(200);
+    expect((await call('POST', '/api/admin/start-fresh', { cookie: alex, body: { password: 'x', confirm: 'START FRESH' } })).status).toBe(403);
+    expect((await call('POST', '/api/admin/start-fresh', { cookie: sup, body: { password: ADMIN.password, confirm: 'start' } })).status).toBe(400);
+    expect((await call('POST', '/api/admin/start-fresh', { cookie: sup, body: { password: 'wrong', confirm: 'START FRESH' } })).status).toBe(400);
+    const r = await call('POST', '/api/admin/start-fresh', { cookie: sup, body: { password: ADMIN.password, confirm: 'START FRESH' } });
+    expect(r.status).toBe(200);
+    expect(r.body.accounts).toBeGreaterThan(0);
+    const after = (await call('GET', '/api/state', { cookie: alex })).body.data as AppState;
+    expect(after.expenses).toEqual([]);
+    expect(after.txns).toEqual([]);
+    expect(after.banks).toEqual([]);
+    expect(after.payments.some((p) => p.id === 'pay-bank')).toBe(false);
+    expect(after.receipts.some((x) => x.id === 'rc-bank')).toBe(false);
+    expect(after.payments.some((p) => p.id === 'pay-hand')).toBe(true);
+    expect(after.tenants.length).toBe(d.tenants.length);
+    expect(after.leases.length).toBe(d.leases.length);
+    expect(after.profile.vendorRules).toBeUndefined();
+    expect(after.profile.notRentPayers).toBeUndefined();
+    expect((await db.query('select 1 from bank_items')).length).toBe(0);
+  });
+
+  it('remembered devices (two-step): right after the second step a browser can be remembered; it is listed and can be forgotten', async () => {
+    const r = await app.inject({ method: 'POST', url: '/api/auth/remember-device', headers: { 'x-keyholder': '1', cookie: sup, 'user-agent': 'Mozilla/5.0 (Macintosh) Chrome/130.0 Safari/537.36' } });
+    expect(r.statusCode).toBe(200);
+    const trust = cookieOf(r, 'kh_trust')!;
+    expect(trust).toBeTruthy();
+    const list = await call('GET', '/api/auth/devices', { cookie: `${sup}; ${trust}` });
+    const mine = (list.body as { name: string; thisDevice: boolean; id: string }[]).find((x) => x.thisDevice)!;
+    expect(mine.name).toBe('Chrome on Mac');
+    expect((await call('POST', '/api/auth/devices/forget', { cookie: `${sup}; ${trust}`, body: { id: mine.id } })).status).toBe(200);
+    expect(((await call('GET', '/api/auth/devices', { cookie: `${sup}; ${trust}` })).body as { id: string }[]).some((x) => x.id === mine.id)).toBe(false);
+  });
 });
 
 describe('no property estimates', () => {

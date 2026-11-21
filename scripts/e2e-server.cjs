@@ -125,13 +125,15 @@ async function finishSetUp(pg, key) {
   apps.get(key).backup = (await pg.locator('#ts-backup code').allTextContents());
   await pg.click('#ts-done');
 }
+/** After the second step: "Remember this device?" → Not now (the tests sign in fresh each time). */
+async function notNow(pg) { await pg.waitForSelector('#ts-remember-no'); await pg.click('#ts-remember-no'); }
 /** The Keyholder team signs in: password, then two-step (set up the first time, as the dashboard asks). */
 async function teamSignIn(pg, user, password) {
   await signIn(pg, user, password);
   const key = personKey(user);
   await pg.waitForSelector('.sp-page, #ts-code, #ts-start, #ts-way-app', { timeout: 15000 });
   if (await pg.locator('#ts-start, #ts-way-app').count()) { await finishSetUp(pg, key); }
-  else if (await pg.locator('#ts-code').count()) { await pg.fill('#ts-code', await nextCode(key)); await pg.click('.two-step-form >> text=Continue'); }
+  else if (await pg.locator('#ts-code').count()) { await pg.fill('#ts-code', await nextCode(key)); await pg.click('.two-step-form >> text=Continue'); await notNow(pg); }
   await pg.waitForSelector('.sp-page', { timeout: 15000 });
 }
 function watch(pg, errors, label) {
@@ -232,7 +234,7 @@ function watch(pg, errors, label) {
         const log = JSON.stringify(after.audit); if (!/Practice bank connection removed/.test(log) || !/Rent un-marked/.test(log)) throw new Error('not in the history');
         // Banks off: "Coming soon". Once Plaid is on (the phone run comes after E27), the real connection is offered instead.
         const banksOn = (await (await fetch(`${BASE}api/session`)).json()).config.banks;
-        await go(pg, 'settings');
+        await go(pg, 'settings#rent-tracking');
         if (!banksOn) {
           await pg.waitForSelector('#rent-tracking >> text=Coming soon');
           if (!(await pg.locator('#rent-tracking .choice.soon').isDisabled())) throw new Error('the bank choice can still be clicked');
@@ -481,7 +483,7 @@ function watch(pg, errors, label) {
         await pg.addInitScript(stubPlaidLink); await pg.reload();
         if (!(await api(pg, '/api/session')).body.user) await signIn(pg, email, password);
         await go(pg, 'today'); await pg.waitForSelector('.rent-row');
-        await go(pg, 'settings'); await pg.locator('#rent-tracking .choice:has-text("Check my banks for me")').click();
+        await go(pg, 'settings#rent-tracking'); await pg.locator('#rent-tracking .choice:has-text("Check my banks for me")').click();
         await pg.waitForSelector('#plaid-go'); await pg.click('#plaid-go');
         await pg.waitForSelector('#rent-tracking >> text=RBC Royal Bank');
         await until(async () => { const d = (await api(pg, '/api/state')).body.data; const mine = d.txns.filter((t) => t.id.startsWith('pl-')); return mine.length >= 2 && mine.every((t) => t.checked || t.status !== 'new'); }, 10000, 'bank transactions saved and looked at');
@@ -536,7 +538,7 @@ function watch(pg, errors, label) {
       });
       await step(tag, 'E31 Disconnect removes the bank at Plaid (no more billing) and from Settings', async () => {
         const removes = mock.calls.filter((c) => c.path === '/item/remove').length;
-        await go(pg, 'settings'); await pg.locator('#rent-tracking li:has-text("RBC Royal Bank") >> text=Disconnect').click();
+        await go(pg, 'settings#rent-tracking'); await pg.locator('#rent-tracking li:has-text("RBC Royal Bank") >> text=Disconnect').click();
         await until(async () => !(await api(pg, '/api/state')).body.data.banks.some((b) => b.bank === 'RBC Royal Bank'), 6000, 'bank removed');
         if (mock.calls.filter((c) => c.path === '/item/remove').length !== removes + 1) throw new Error('not removed at Plaid');
       });
@@ -582,14 +584,23 @@ function watch(pg, errors, label) {
         const ctx = await b.newContext({ viewport: vp }); const p = await ctx.newPage(); watch(p, errors, 'two-step');
         await signIn(p, email, password); await p.waitForSelector('#ts-code');
         await p.fill('#ts-code', '000000'); await p.click('.two-step-form >> text=Continue'); await p.waitForSelector('.two-step-form .acct-error >> text=not right');
-        await p.fill('#ts-code', await nextCode(email.toLowerCase())); await p.click('.two-step-form >> text=Continue');
+        await p.fill('#ts-code', await nextCode(email.toLowerCase())); await p.click('.two-step-form >> text=Continue'); await notNow(p);
         await p.waitForSelector('.rent-row, .rent-card, .start-steps');
-        // A backup code works as well (once).
+        // A backup code works as well (once), and "Remember this device" skips the second step next time.
         const q = await (await b.newContext({ viewport: vp })).newPage(); watch(q, errors, 'two-step-backup');
         await signIn(q, email, password); await q.waitForSelector('#ts-code');
-        await q.fill('#ts-code', apps.get(email.toLowerCase()).backup[0]); await q.check('#ts-trust'); await q.click('.two-step-form >> text=Continue');
+        await q.fill('#ts-code', apps.get(email.toLowerCase()).backup[0]); await q.click('.two-step-form >> text=Continue');
+        await q.waitForSelector('#ts-remember >> text=Remember this device?'); await q.click('#ts-remember-yes');
         await q.waitForSelector('.rent-row, .rent-card, .start-steps');
         const me = (await api(q, '/api/session')).body.user; if (!me.twoStep || me.backupCodesLeft !== 9) throw new Error('session: ' + JSON.stringify(me));
+        const devs = (await api(q, '/api/auth/devices')).body; if (!Array.isArray(devs) || devs.length !== 1 || !devs[0].thisDevice) throw new Error('remembered: ' + JSON.stringify(devs));
+        // Signed out and in again on that browser: no second step.
+        await q.evaluate(() => fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
+        await q.evaluate(() => localStorage.clear()); await q.goto(BASE + '#/welcome'); await q.reload(); await q.waitForSelector('.lp-hero-h');
+        await signIn(q, email, password); await q.waitForSelector('.rent-row, .rent-card, .start-steps', { timeout: 15000 });
+        if (await q.locator('#ts-code').count()) throw new Error('asked for the code on a remembered device');
+        // Forget it in Settings: the next sign-in asks again.
+        await go(q, 'settings#two-step'); await q.locator('#ts-remembered li >> text=Forget').click(); await q.waitForSelector('#ts-remembered >> text=None.');
         await q.context().close(); await ctx.close();
       });
       await step(tag, 'E34 Fingerprint or face: added in Settings, then used at sign-in instead of a code', async () => {
@@ -599,19 +610,26 @@ function watch(pg, errors, label) {
         await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
         await signIn(p, email, password); await p.waitForSelector('#ts-code');
         if (await p.locator('#ts-biometric').count()) throw new Error('fingerprint offered before any device was added');
-        await p.fill('#ts-code', await nextCode(email.toLowerCase())); await p.click('.two-step-form >> text=Continue');
+        await p.fill('#ts-code', await nextCode(email.toLowerCase())); await p.click('.two-step-form >> text=Continue'); await notNow(p);
         await p.waitForSelector('.rent-row, .rent-card, .start-steps');
-        await go(p, 'settings'); await p.waitForSelector('#ts-devices >> text=No device yet');
+        await go(p, 'settings#two-step'); await p.waitForSelector('#ts-devices >> text=No device yet');
         await p.click('#ts-add-device'); await p.waitForSelector('#ts-devices .two-step-devices li');
         await p.waitForSelector('#ts-app >> text=Set up.');
         // Signed out, then back in: fingerprint or face instead of the code.
         await p.evaluate(() => fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
         await p.evaluate(() => localStorage.clear()); await p.goto(BASE + '#/welcome'); await p.reload(); await p.waitForSelector('.lp-hero-h');
         await signIn(p, email, password);
-        await p.waitForSelector('#ts-biometric'); await p.click('#ts-biometric');
+        await p.waitForSelector('#ts-biometric'); if (!(await p.locator('#ts-code').count())) throw new Error('no code box next to fingerprint');
+        await p.click('#ts-biometric'); await notNow(p);
+        await p.waitForSelector('.rent-row, .rent-card, .start-steps', { timeout: 15000 });
+        // Both are set up: the app's code works too, whichever is at hand.
+        await p.evaluate(() => fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
+        await p.evaluate(() => localStorage.clear()); await p.goto(BASE + '#/welcome'); await p.reload(); await p.waitForSelector('.lp-hero-h');
+        await signIn(p, email, password); await p.waitForSelector('#ts-biometric');
+        await p.fill('#ts-code', await nextCode(email.toLowerCase())); await p.click('.two-step-form >> text=Continue'); await notNow(p);
         await p.waitForSelector('.rent-row, .rent-card, .start-steps', { timeout: 15000 });
         // Removing it leaves the app; two-step stays on.
-        await go(p, 'settings'); await p.locator('#ts-devices li >> text=Remove').click(); await p.waitForSelector('#ts-devices >> text=No device yet');
+        await go(p, 'settings#two-step'); await p.locator('#ts-devices li >> text=Remove').click(); await p.waitForSelector('#ts-devices >> text=No device yet');
         const me = (await api(p, '/api/session')).body.user; if (!me.twoStep || me.passkeys !== 0) throw new Error('session: ' + JSON.stringify(me));
         await ctx.close();
       });

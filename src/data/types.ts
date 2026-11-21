@@ -47,6 +47,10 @@ export interface Profile {
   paperGrain: boolean;
   /** Withdrawals the owner has filed before: payer → property and type, so future ones file themselves. */
   vendorRules?: Record<string, { propertyId: string; category: ExpenseCategory }>;
+  /** Senders whose deposits are not rent (the owner said so once): never asked about again. */
+  notRentPayers?: string[];
+  /** Vendors whose payments are personal, not a rental cost: never asked about again. */
+  personalVendors?: string[];
   /** Showing the sample properties (demo). */
   sample?: boolean;
   tourDone?: boolean;

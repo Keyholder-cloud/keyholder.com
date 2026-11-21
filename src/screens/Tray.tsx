@@ -64,11 +64,11 @@ export function MatchDrawer({ item, onClose }: { item: Extract<TrayItem, { kind:
   const markedPick = sel.startsWith('paid|') ? sel.slice(5) : '';
   return (
     <Drawer title={`${fmt(item.txn.amount)} from ${item.txn.payer}`} onClose={onClose} footer={<>
-      <button className="btn ghost" onClick={() => { act.ignoreTxn(item.txn.id); onClose(); }}>Not rent</button>
-      <button className="btn primary" disabled={!sel} onClick={() => { if (markedPick) act.linkDeposit(item.txn.id, markedPick); else act.confirmMatch(item.txn.id, leaseId, period, learn); onClose(); }}>This is their rent</button>
+      <button className={`btn ${options.length || marked.length ? 'ghost' : 'primary'}`} id="md-not-rent" onClick={() => { act.ignoreTxn(item.txn.id); onClose(); }}>Not rent</button>
+      {(options.length > 0 || marked.length > 0) && <button className="btn primary" disabled={!sel} onClick={() => { if (markedPick) act.linkDeposit(item.txn.id, markedPick); else act.confirmMatch(item.txn.id, leaseId, period, learn); onClose(); }}>This is their rent</button>}
     </>}>
       {!item.suggestion && (options.length > 1 || marked.length > 0) && <p className="small soft" style={{ marginTop: 0 }}>The sender's name doesn't say whose rent this is. Choose the tenant.</p>}
-      {options.length === 0 && !marked.length ? <Empty title="No unpaid rent to match against." /> : (
+      {options.length === 0 && !marked.length ? <Empty title="No rent is owed right now.">Money in is only ever rent, so this is not rent. Keyholder remembers the sender.</Empty> : (
         <div className="stack" role="radiogroup">
           {marked.map(({ p, l, t, u }) => {
             const v = `paid|${p.id}`;

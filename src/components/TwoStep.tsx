@@ -34,9 +34,10 @@ async function confirmWithBiometrics(ticket?: string) {
 /** The code step of signing in, after the password (or Google) was right. */
 export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; onSignedIn: (u: ServerUser) => Promise<void> | void; onBack: () => void }) {
   const [code, setCode] = useState('');
-  const [trust, setTrust] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // Done: "Remember this device?" before going in.
+  const [done, setDone] = useState<ServerUser | null>(null);
   // Which ways this account can do the second step.
   const [ways, setWays] = useState<{ passkey: boolean; app: boolean }>({ passkey: false, app: true });
   useEffect(() => {
@@ -47,18 +48,33 @@ export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; on
     setBusy(true); setErr('');
     try {
       const passkey = await confirmWithBiometrics(ticket);
-      const r = await api<{ user: ServerUser }>('POST', '/api/auth/two-step', { ticket, passkey, trust });
-      await onSignedIn(r.user);
+      const r = await api<{ user: ServerUser }>('POST', '/api/auth/two-step', { ticket, passkey });
+      setDone(r.user); setBusy(false);
     } catch (x) { setErr((x as Error).message); setBusy(false); }
   };
   const submit = async (e: FormEvent) => {
     e.preventDefault(); if (!code.trim() || busy) return;
     setBusy(true); setErr('');
     try {
-      const r = await api<{ user: ServerUser }>('POST', '/api/auth/two-step', { ticket, code: code.trim(), trust });
-      await onSignedIn(r.user);
+      const r = await api<{ user: ServerUser }>('POST', '/api/auth/two-step', { ticket, code: code.trim() });
+      setDone(r.user); setBusy(false);
     } catch (x) { setErr((x as Error).message); setBusy(false); }
   };
+  const finish = async (remember: boolean) => {
+    if (!done) return;
+    setBusy(true);
+    if (remember) await api('POST', '/api/auth/remember-device', {}).catch(() => {});
+    await onSignedIn(done);
+  };
+  if (done) return (
+    <div className="acct-login two-step-form" id="ts-remember">
+      <div className="two-step-head"><span className="tile-ic mint" aria-hidden><Icon name="check" size={20} /></span>
+        <div><strong>Remember this device?</strong><p className="small soft">Next time on this browser, Keyholder skips the second step. It forgets after 30 days unused, a new password, or Forget in Settings.</p></div></div>
+      <button type="button" className="btn primary acct-login-btn" id="ts-remember-yes" disabled={busy} onClick={() => finish(true)}>Yes, remember this device</button>
+      <button type="button" className="btn ghost acct-login-btn" id="ts-remember-no" disabled={busy} onClick={() => finish(false)}>Not now</button>
+      <p className="tiny soft" style={{ margin: 0 }}>Choose "Not now" on a shared or public computer.</p>
+    </div>
+  );
   return (
     <form className="acct-login two-step-form" onSubmit={submit}>
       <div className="two-step-head"><span className="tile-ic lilac" aria-hidden><Icon name="lock" size={20} /></span>
@@ -69,7 +85,6 @@ export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; on
       </>}
       <div className="field"><label htmlFor="ts-code">{ways.app ? 'Code from your app, or a backup code' : 'Backup code'}</label>
         <input id="ts-code" className="input two-step-input" value={code} onChange={(e) => { setCode(e.target.value); setErr(''); }} inputMode="text" autoComplete="one-time-code" autoFocus placeholder="123 456" maxLength={12} /></div>
-      <label className="check"><input id="ts-trust" type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} />Trust this browser for 30 days</label>
       {err && <p className="small acct-error" role="alert">{err}</p>}
       <button className={`btn ${ways.passkey ? '' : 'primary '}acct-login-btn`} disabled={!code.trim() || busy}>{busy ? 'Checking…' : 'Continue'}</button>
       <p className="tiny soft" style={{ margin: 0 }}>Lost your phone? Type one of your backup codes in the same box.</p>
@@ -250,6 +265,28 @@ function Devices({ user }: { user: ServerUser }) {
   );
 }
 
+type Remembered = { id: string; name: string; added: string; lastUsed: string | null; thisDevice: boolean };
+
+/** Browsers that skip the second step (chosen with "Remember this device?" at sign-in). */
+function RememberedDevices() {
+  const [list, setList] = useState<Remembered[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => api<Remembered[]>('GET', '/api/auth/devices').then(setList).catch(() => setList([]));
+  useEffect(() => { void load(); }, []);
+  const forget = async (body: object) => { setBusy(true); try { await api('POST', '/api/auth/devices/forget', body); await load(); } finally { setBusy(false); } };
+  return (
+    <div className="two-step-part" id="ts-remembered">
+      <div className="spread" style={{ width: '100%' }}><strong>Remembered devices</strong>
+        {list && list.length > 1 && <button className="btn small ghost" disabled={busy} onClick={() => forget({ all: true })}>Forget all</button>}</div>
+      {list && list.length > 0 ? (
+        <ul className="two-step-devices">{list.map((d) => (
+          <li key={d.id} className="spread"><span><Icon name="phone" size={14} /> {d.name}{d.thisDevice && <span className="tag">This device</span>}<span className="tiny soft"> · {d.lastUsed ? `last used ${fmtDate(d.lastUsed)}` : `added ${fmtDate(d.added)}`}</span></span>
+            <button className="btn small ghost" disabled={busy} onClick={() => forget({ id: d.id })}>Forget</button></li>))}</ul>
+      ) : <div className="small soft">None. After two-step sign-in, choose "Yes, remember this device" to skip it next time on that browser.</div>}
+    </div>
+  );
+}
+
 export function TwoStepSettings() {
   const { user, config } = useConn();
   const [open, setOpen] = useState<'setup' | 'app' | 'off' | 'codes' | null>(null);
@@ -274,6 +311,7 @@ export function TwoStepSettings() {
       )}
       {user.twoStep && <>
         <Devices user={user} />
+        <RememberedDevices />
         <div className="two-step-part spread" style={{ flexWrap: 'wrap', gap: 12 }} id="ts-app">
           <div><strong>Authenticator app</strong><div className="small soft">{user.twoStepApp ? 'Set up. Use its 6-digit code on any device.' : 'Not set up. Add it to sign in on devices without fingerprint or face.'}</div></div>
           {!user.twoStepApp && <button className="btn small" id="ts-add-app" onClick={() => setOpen('app')}>Set up the app</button>}

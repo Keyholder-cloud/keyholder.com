@@ -55,6 +55,7 @@ const shortLabel = (c: JourneyCard): string => {
     case 'review': return 'Review';
     case 'make-tenant': return 'Set up tenant';
     case 'mortgage': return 'See mortgage';
+    case 'not-rent': return 'Not rent';
   }
 };
 
@@ -68,6 +69,7 @@ export function StepButton({ c }: { c: JourneyCard }) {
   const run = () => {
     switch (s.kind) {
       case 'confirm-payment': if (s.leaseId) act.confirmMatch(s.txn.id, s.leaseId, s.period, true); else setMatch(true); break;
+      case 'not-rent': act.ignoreTxn(s.txn.id); break;
       case 'send-receipt': act.approveMessage(s.message.id); break;
       case 'reminder': act.sendReminder(s.lease, s.line.period, s.tone); break;
       case 'form': setForm(true); break;
@@ -79,6 +81,8 @@ export function StepButton({ c }: { c: JourneyCard }) {
   return (
     <>
       <button className={`btn ${c.urgent || s.kind !== 'mortgage' ? 'primary' : ''}`} onClick={run}>{shortLabel(c)}</button>
+      {/* A vacant unit or room: list it, or add the tenant you already found. */}
+      {s.kind === 'list-unit' && <button className="btn add-tenant-quick" onClick={() => nav(`/rent/property/${s.unit.propertyId}/add-tenant?unit=${s.unit.id}`)}><Icon name="plus" size={16} />Add tenant</button>}
       {form && s.kind === 'form' && <FormWizard lease={s.lease} formId={s.formId} onClose={() => setForm(false)} />}
       {match && s.kind === 'confirm-payment' && <MatchDrawer item={{ kind: 'match', id: s.txn.id, txn: s.txn, suggestion: null }} onClose={() => setMatch(false)} />}
     </>

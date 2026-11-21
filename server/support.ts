@@ -7,7 +7,7 @@ import type { Config } from './config';
 import type { Db, Q } from './db';
 import { queueMail } from './email';
 import { inviteMail, resetMail, ticketReplyMail } from './mails';
-import { audit, createLinkToken, createUser, isAdmin, userByEmail, type Role, type Summary, type User } from './services';
+import { audit, createLinkToken, createUser, isAdmin, readState, userByEmail, writeState, type Role, type Summary, type User } from './services';
 
 // The support dashboard on real data. The screens were built on sample data with one shape
 // (src/support/data.ts → SupportBase); the server fills the same shape from the database, so the
@@ -268,3 +268,34 @@ export async function customerState(q: Q, accountId: string): Promise<AppState |
 }
 
 export const trialEnd = (from = todayISO()) => addDays(from, 30);
+
+/**
+ * Start fresh with real bank data (super user, owner 2026-11-21): for every landlord, every expense, every bank
+ * transaction, every bank connection, the remembered "not rent" and category choices, and rent that was marked
+ * paid from a bank deposit (with its receipts) are removed. Properties, tenants, leases, rent marked paid by hand,
+ * notices and messages stay. Landlords connect their bank again; expenses come back from real transactions.
+ */
+export async function startFresh(db: Db, by: string): Promise<{ accounts: number; expenses: number; transactions: number; payments: number; banks: number }> {
+  const rows = await db.query<{ account_id: string }>('select account_id from account_state');
+  const total = { accounts: 0, expenses: 0, transactions: 0, payments: 0, banks: 0 };
+  for (const { account_id } of rows) {
+    const s = await readState(db, account_id);
+    if (!s.data || s.data.profile?.sample) continue;
+    const d = structuredClone(s.data) as AppState;
+    const gone = new Set(d.payments.filter((p) => p.source === 'bank').map((p) => p.id));
+    const receipts = new Set(d.receipts.filter((r) => gone.has(r.paymentId)).map((r) => r.id));
+    const n = { expenses: d.expenses.length, transactions: d.txns.length, payments: gone.size, banks: (d.banks ?? []).length };
+    if (!n.expenses && !n.transactions && !n.payments && !n.banks && !d.profile.vendorRules && !d.profile.notRentPayers?.length && !d.profile.personalVendors?.length) continue;
+    d.expenses = []; d.txns = []; d.banks = [];
+    d.payments = d.payments.filter((p) => !gone.has(p.id));
+    d.receipts = d.receipts.filter((r) => !receipts.has(r.id));
+    d.messages = d.messages.filter((m) => !(m.receiptId && receipts.has(m.receiptId)));
+    delete d.profile.vendorRules; delete d.profile.notRentPayers; delete d.profile.personalVendors;
+    if (d.profile.rentArrival === 'bank') d.profile.rentArrival = 'manual';
+    d.audit.unshift({ id: randomUUID(), at: new Date().toISOString(), action: 'Started fresh for real bank data', detail: `${n.expenses} expenses, ${n.transactions} bank transactions, ${n.payments} bank-matched rent payments removed by Keyholder` });
+    await writeState(db, account_id, s.revision, d, by);
+    total.accounts++; total.expenses += n.expenses; total.transactions += n.transactions; total.payments += n.payments; total.banks += n.banks;
+  }
+  await db.query('delete from bank_items');
+  return total;
+}

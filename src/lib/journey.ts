@@ -1,6 +1,7 @@
 import type { AppState, BankTxn, ISODate, Lease, Message, Mortgage, Tone, Unit } from '../data/types';
 import { addDays, daysBetween, fmtDate, periodOf } from './dates';
-import { activeLease, activeLeases, byRoom, leasePlace, openRooms, roomLabels, roomsLine } from './finance';
+import { activeLease, activeLeases, byRoom, currentLeases, leaseLedger, leasePlace, openRooms, roomLabels, roomsLine } from './finance';
+import { markedCandidates } from './matching';
 import { formById, formsFor } from './forms';
 import { arrears, nextNotice, propertyOf } from './notices';
 import { trayItems } from './tray';
@@ -31,7 +32,8 @@ export type Step =
   | { kind: 'send-form'; unit: Unit }
   | { kind: 'review'; unit: Unit; count: number }
   | { kind: 'make-tenant'; unit: Unit; applicantId: string; name: string }
-  | { kind: 'mortgage'; mortgage: Mortgage };
+  | { kind: 'mortgage'; mortgage: Mortgage }
+  | { kind: 'not-rent'; txn: BankTxn };
 
 export interface JourneyCard {
   /** Stable per tenant / unit / property. */
@@ -187,7 +189,13 @@ export function allJourneyCards(state: AppState, today: ISODate): JourneyCard[] 
   }
   for (const m of state.mortgages) { const c = mortgageCard(state, m, today); if (c) cards.push(c); }
   // Unmatched deposits that look like nobody's rent
+  // Money in is only ever rent: with no rent owed (and none marked paid it could be), it is "Not rent" in one tap.
+  const owed = currentLeases(state, today).some((l) => leaseLedger(l, state.payments, today).some((x) => x.paid < x.charge));
   for (const t of trayItems(state, today)) {
+    if (t.kind === 'match' && !t.suggestion && !owed && !markedCandidates(state, t.txn).length) {
+      cards.push({ id: `txn-${t.txn.id}`, stepKey: 'not-rent', title: 'Money came in', subtitle: t.txn.payer, stage: null, text: `${(t.txn.amount / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' })} from ${t.txn.payer}. No rent is owed right now, so it is not rent.`, priority: 1, step: { kind: 'not-rent', txn: t.txn } });
+      continue;
+    }
     if (t.kind === 'match' && !t.suggestion) cards.push({ id: `txn-${t.txn.id}`, stepKey: 'who', title: 'Money came in', subtitle: t.txn.payer, stage: null, text: `${(t.txn.amount / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' })} from ${t.txn.payer}. Whose rent is it?`, priority: 1, step: { kind: 'confirm-payment', txn: t.txn, leaseId: '', period: periodOf(today) } });
   }
   return cards.sort((a, b) => a.priority - b.priority);

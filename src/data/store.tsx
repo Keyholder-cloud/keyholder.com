@@ -475,8 +475,15 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
         for (const x of d.txns) {
           if (x.source !== 'bank' || x.status !== 'new' || x.checked) continue;
           x.checked = true;
-          if (x.amount > 0) { if (autoMatch(d, x)) matched++; continue; }
-          const rule = d.profile.vendorRules?.[vendorKey(x.payer)];
+          const key = vendorKey(x.payer);
+          if (x.amount > 0) {
+            if (autoMatch(d, x)) { matched++; continue; }
+            // A sender the owner said is not rent (and not a tenant's name): set aside without asking.
+            if (d.profile.notRentPayers?.includes(key) && !isTenantName(d, x.payer)) x.status = 'ignored';
+            continue;
+          }
+          if (d.profile.personalVendors?.includes(key)) { x.status = 'ignored'; continue; }
+          const rule = d.profile.vendorRules?.[key];
           if (!rule || !d.properties.some((p) => p.id === rule.propertyId)) continue;
           const e: Expense = { id: uid('exp'), propertyId: rule.propertyId, date: x.date, amount: -x.amount, vendor: x.payer, category: rule.category, kind: 'current', scope: CATEGORIES.find((c) => c.id === rule.category)?.sharedByDefault ? 'shared' : 'direct', createdAt: new Date().toISOString(), note: 'From your bank (filed automatically)' };
           d.expenses.unshift(e); x.status = 'expense'; x.expenseId = e.id; filed++;
@@ -525,8 +532,28 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
       });
       toast('Matched to the rent you already marked paid.');
     },
-    ignoreTxn(id: string) { mut((d) => { const t = d.txns.find((x) => x.id === id); if (t) t.status = 'ignored'; }); },
-    unignoreTxn(id: string) { mut((d) => { const t = d.txns.find((x) => x.id === id); if (t) t.status = 'new'; }); },
+    /**
+     * Money in that is not rent, or money out that is personal (not a rental cost): set aside, and remembered for
+     * that sender or vendor so it is never asked about again (on Home, Rentals or Expenses).
+     */
+    ignoreTxn(id: string) {
+      mut((d) => {
+        const t = d.txns.find((x) => x.id === id); if (!t) return;
+        t.status = 'ignored';
+        const key = vendorKey(t.payer); const list = t.amount > 0 ? 'notRentPayers' : 'personalVendors';
+        if (key && !(t.amount > 0 && isTenantName(d, t.payer))) d.profile[list] = [...new Set([...(d.profile[list] ?? []), key])];
+        audit(d, t.amount > 0 ? 'Deposit marked not rent' : 'Payment marked personal', `${fmt(Math.abs(t.amount))} ${t.amount > 0 ? 'from' : 'to'} ${t.payer}`);
+      });
+      toast('Got it. Keyholder remembers and won\'t ask again.');
+    },
+    unignoreTxn(id: string) {
+      mut((d) => {
+        const t = d.txns.find((x) => x.id === id); if (!t) return;
+        t.status = 'new'; const key = vendorKey(t.payer);
+        d.profile.notRentPayers = d.profile.notRentPayers?.filter((k) => k !== key);
+        d.profile.personalVendors = d.profile.personalVendors?.filter((k) => k !== key);
+      });
+    },
 
     // ---- Expenses ----
     saveExpense(e: Expense, fromTxn?: string) {
@@ -535,6 +562,9 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
         if (i >= 0) d.expenses[i] = e; else d.expenses.unshift(e);
         d.expenses.sort((a, b) => b.date.localeCompare(a.date));
         if (fromTxn) { const t = d.txns.find((x) => x.id === fromTxn); if (t) { t.status = 'expense'; t.expenseId = e.id; } }
+        // From the bank (now or earlier): the vendor's property and category are remembered for its next payments.
+        const t = d.txns.find((x) => x.expenseId === e.id);
+        if (t) d.profile.vendorRules = { ...(d.profile.vendorRules ?? {}), [vendorKey(t.payer)]: { propertyId: e.propertyId, category: e.category } };
         audit(d, i >= 0 ? 'Expense updated' : 'Expense filed', `${fmt(e.amount)} ${e.vendor}`);
       });
       toast(`Filed: ${fmt(e.amount)} at ${e.vendor || 'unknown vendor'}.`);
@@ -648,6 +678,11 @@ const OLD_ESTIMATE = new Set<Valuation['source']>(['avm', 'index', 'comparables'
 /** Live site: a bank connection made through Plaid, and a transaction that came from it ("pl-" + Plaid's id). */
 const realBank = (b: BankConnection) => b.via === 'plaid';
 const fakeTxn = (t: BankTxn) => t.source === 'bank' && !t.id.startsWith('pl-');
+/** The sender is one of the tenants (a name or a learned alias): their deposits are always asked about. */
+const isTenantName = (d: AppState, payer: string) => {
+  const p = payer.toLowerCase();
+  return d.tenants.some((t) => [...t.names, ...t.aliases].some((n) => n && (p.includes(n.toLowerCase()) || n.toLowerCase().includes(p))));
+};
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(load);

@@ -276,3 +276,41 @@ Status: ☐ to do · ◐ in progress · ☑ done
   the next".
 - One "Two steps to see your full picture" box: 1 Add what you paid, 2 Add your mortgage ("Do step 1 first" until
   done). The duplicate buttons are gone; "Use your own estimate instead" stays as a small link.
+
+### R33. Start fresh with real bank data ☑
+- Owner, 2026-11-21: "I have added live Plaid keys, reset expense data for all and get us started on using real
+  bank data" (confirmed: bank-matched rent payments go too).
+- Support → Banks (super user, live site): "Start fresh with real bank data" needs the password and START FRESH.
+  For every landlord it removes every expense, bank transaction and bank connection (also at Plaid), the remembered
+  "not rent", personal and category choices, and rent marked paid from a bank deposit with its receipts. Properties,
+  tenants, leases, rent marked paid by hand, notices and messages stay. In the audit log.
+
+### R34. Remember this device (two-step) ☑
+- Owner, 2026-11-21: "give the option to remember MFA on this device once it is completed for the first time";
+  "user can use either if both are registered".
+- After the second step (fingerprint/face, app code or backup code): "Remember this device?" Yes / Not now. A
+  remembered browser skips the second step; each use keeps it 30 more days; a new password forgets them all.
+- Settings → Preferences → Two-step sign-in lists remembered devices (this device marked) with Forget / Forget all.
+- With both fingerprint/face and an app, sign-in offers both on one screen.
+
+### R35. Bank transactions: money in is rent or not; money out is an expense ☑
+- Owner, 2026-11-21: "Only income are rent, debits have to be expenses. So if its an income and its not rent then
+  remember and remove"; "remember category regardless of where it is categorized".
+- Money in: matched to rent (Home and Rentals, "From your bank"), or "Not rent": set aside and the sender is
+  remembered (a tenant's name is always asked about). With no rent owed, Home's card is "Not rent" in one tap.
+- Money out: Expenses → "From your banks": property and type; the vendor's property and type are remembered whether
+  filed there, from the expense form, or edited later; "Personal" sets it aside and remembers the vendor.
+- "Rent found in your banks" is no longer in Settings.
+
+### R36. Settings → Preferences ☑
+- Owner, 2026-11-21: "Appearance, two step signin, rent tracking ... should be all in one pill called Preferences".
+- One card with a short row each showing what it is set to; tapping opens it there (links like /settings#two-step
+  open that row).
+
+### R37. Add tenant next to List unit; Plaid OAuth and errors ☑
+- Owner, 2026-11-21: "also have a quick button for Add Tenant by the side"; "Why did plaid not connect to my RBC?".
+- Vacant units and rooms: Add tenant next to List unit (Home) and Find a tenant (Rentals).
+- Link tokens carry redirect_uri APP_URL/plaid-oauth (OAuth banks: RBC, TD, Scotiabank…); register it in the Plaid
+  Dashboard (API → Allowed redirect URIs). If it is not registered, Link opens without it and Health says so.
+- When Plaid's window closes with an error, its code, type, request id and session id go to Platform → System
+  health and the audit log; the landlord sees the code.
