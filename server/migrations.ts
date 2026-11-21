@@ -244,4 +244,31 @@ drop table if exists valuation_cache;`,
     id: '006_close_property_value_errors',
     sql: `update system_errors set resolved_at = now() where area = 'Property values' and resolved_at is null;`,
   },
+  {
+    // Two-step sign-in with an authenticator app: the secret (encrypted), backup codes (hashed), trusted devices,
+    // and the short-lived "password was right, now the code" step.
+    id: '007_two_step_sign_in',
+    sql: `alter table users add column totp_secret text;
+alter table users add column totp_pending text;
+alter table users add column totp_enabled_at timestamptz;
+alter table users add column totp_last_step bigint;
+alter table users add column backup_codes jsonb;
+create table trusted_devices (
+  token_hash text primary key,
+  user_id uuid not null references users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+create index trusted_devices_user on trusted_devices (user_id);
+create table two_step_tickets (
+  token_hash text primary key,
+  user_id uuid not null references users(id) on delete cascade,
+  next text not null default '',
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  attempts int not null default 0,
+  used_at timestamptz
+);
+create index two_step_tickets_user on two_step_tickets (user_id);`,
+  },
 ];

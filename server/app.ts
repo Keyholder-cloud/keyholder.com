@@ -12,7 +12,8 @@ import type { Config } from './config';
 import type { Db } from './db';
 import { queueMail, recordError } from './email';
 import { newTicketAdminMail, resetMail, ticketAckMail, welcomeMail } from './mails';
-import { burnPasswordCheck, newToken, normEmail, passwordProblem, verifyPassword, hashPassword } from './security';
+import { burnPasswordCheck, newToken, normEmail, passwordProblem, sha256, verifyPassword, hashPassword } from './security';
+import { backupHash, checkCode, looksLikeBackup, newBackupCodes, newSecret, otpauthUri } from './totp';
 import {
   accountFor, audit, createLinkToken, createSession, createUser, endAllSessions, endSession, isTeam, publicUser, readState, sessionUser,
   SESSION_COOKIE, stateProblem, useLinkToken, userByEmail, userById, writeState, type User,
@@ -27,6 +28,11 @@ import { formById } from '../src/lib/forms';
 declare module 'fastify' {
   interface FastifyRequest { user: User | null; sessionToken: string | null }
 }
+
+/** The browser a person chose to trust after a two-step code (30 days). */
+const TRUST_COOKIE = 'kh_trust';
+/** The support dashboard asks the team for two-step sign-in; the app shows the set-up when it sees this. */
+export const TEAM_TWO_STEP = 'Two-step sign-in is required for the Keyholder team. Set it up to continue.';
 
 export const VERSION = '2.0.0';
 
@@ -105,8 +111,39 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
 
   const ip = (req: FastifyRequest) => req.ip;
   const need = (req: FastifyRequest): User => req.user ?? fail(401, 'Please sign in again.');
-  const needStaff = (req: FastifyRequest): User => { const u = need(req); if (!isTeam(u.role)) fail(403, 'Only the Keyholder team can open this.'); return u; };
+  const needStaff = (req: FastifyRequest): User => {
+    const u = need(req); if (!isTeam(u.role)) fail(403, 'Only the Keyholder team can open this.');
+    if (!u.totp_enabled_at && keys.canSave) fail(403, TEAM_TWO_STEP);
+    return u;
+  };
   const needSuper = (req: FastifyRequest): User => { const u = need(req); if (u.role !== 'super') fail(403, 'Only the super user can do this.'); return u; };
+  // ---------------- Two-step sign-in (authenticator app) ----------------
+  const twoStepOn = (u: User) => !!u.totp_enabled_at && !!u.totp_secret;
+  /** This browser was trusted for 30 days after a code (only for the same person). */
+  const trustedDevice = async (req: FastifyRequest, u: User) => {
+    const t = req.cookies[TRUST_COOKIE]; if (!t) return false;
+    return !!(await db.one('select 1 as ok from trusted_devices where token_hash = $1 and user_id = $2 and expires_at > now()', [sha256(t), u.id]));
+  };
+  /** The password (or Google) was right; the code comes next. A ticket for that, good for 10 minutes and 5 tries. */
+  const twoStepTicket = async (u: User) => {
+    const token = newToken();
+    await db.query(`insert into two_step_tickets (token_hash, user_id, expires_at) values ($1, $2, now() + interval '10 minutes')`, [sha256(token), u.id]);
+    return token;
+  };
+  /** Checks an authenticator code or a backup code (used once). Returns how, or null. */
+  const secondFactor = async (u: User, code: string): Promise<'app' | 'backup' | null> => {
+    if (looksLikeBackup(code)) {
+      const h = backupHash(code); const left = u.backup_codes ?? [];
+      if (!left.includes(h)) return null;
+      await db.query('update users set backup_codes = $2 where id = $1', [u.id, JSON.stringify(left.filter((x) => x !== h))]);
+      return 'backup';
+    }
+    if (!u.totp_secret) return null;
+    const step = checkCode(keys.decrypt(u.totp_secret), code, u.totp_last_step == null ? null : Number(u.totp_last_step));
+    if (step === null) return null;
+    await db.query('update users set totp_last_step = $2 where id = $1', [u.id, step]);
+    return 'app';
+  };
   const startSession = async (req: FastifyRequest, reply: FastifyReply, u: User) => {
     const token = await createSession(db, u.id, cfg.sessionDays, { ip: ip(req), ua: req.headers['user-agent'] });
     reply.setCookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: cfg.cookieSecure, path: '/', maxAge: cfg.sessionDays * 86400 });
@@ -120,7 +157,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   const publicConfig = async () => {
     await keys.refresh(db);
     const b = await bankSettings(db);
-    return { google: !!keys.google(), emailDelivery: keys.email().provider !== 'log', banks: b.enabled && plaid.ready(), banksOff: b.enabled ? b.off : [], addressLookup: !!keys.places(), benchmarks: await benchmarksNow(db), version: VERSION, build };
+    return { google: !!keys.google(), emailDelivery: keys.email().provider !== 'log', banks: b.enabled && plaid.ready(), banksOff: b.enabled ? b.off : [], addressLookup: !!keys.places(), benchmarks: await benchmarksNow(db), version: VERSION, build, twoStep: keys.canSave };
   };
   // Counted per address and email, after the body is read, so one person's typos never lock out another.
   const authLimit = { rateLimit: { hook: 'preHandler' as const, max: 10, timeWindow: '1 minute', keyGenerator: (r: FastifyRequest) => `${r.ip}:${normEmail(String((r.body as { email?: string })?.email ?? ''))}` } };
@@ -171,9 +208,80 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
       if (u) await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Sign-in failed', detail: 'Wrong password', ip: ip(req) });
       fail(401, u && !u.password_hash && u.google_sub ? 'This account signs in with Google.' : 'That email or password is not right.');
     }
+    if (twoStepOn(u!) && !(await trustedDevice(req, u!))) return { twoStep: true, ticket: await twoStepTicket(u!) };
     await startSession(req, reply, u!);
     await audit(db, { actor: u!.email, actorId: u!.id, scope: 'auth', action: 'Signed in', ip: ip(req) });
     return { user: publicUser(u!) };
+  });
+
+  // The second step: the code from the authenticator app, or a backup code. `trust`: skip the code here for 30 days.
+  // Limited per sign-in (each ticket allows 5 wrong codes); a new ticket needs the password again.
+  const ticketLimit = { rateLimit: { hook: 'preHandler' as const, max: 10, timeWindow: '1 minute', keyGenerator: (r: FastifyRequest) => `${r.ip}:${String((r.body as { ticket?: string })?.ticket ?? '').slice(0, 16)}` } };
+  app.post('/api/auth/two-step', { config: ticketLimit }, async (req, reply) => {
+    const b = z.object({ ticket: z.string().min(10).max(100), code: z.string().max(20), trust: z.boolean().optional() }).parse(req.body);
+    const t = await db.one<{ user_id: string; attempts: number }>(`select user_id, attempts from two_step_tickets where token_hash = $1 and used_at is null and expires_at > now()`, [sha256(b.ticket)]);
+    const u = t && t.attempts < 5 ? await userById(db, t.user_id) : undefined;
+    if (!u || u.disabled_at || !twoStepOn(u)) fail(400, 'This sign-in has expired. Please sign in again.');
+    const how = await secondFactor(u!, b.code);
+    if (!how) {
+      await db.query('update two_step_tickets set attempts = attempts + 1 where token_hash = $1', [sha256(b.ticket)]);
+      await audit(db, { actor: u!.email, actorId: u!.id, scope: 'auth', action: 'Sign-in failed', detail: 'Wrong two-step code', ip: ip(req) });
+      fail(401, 'That code is not right. Use the newest code in your app, or a backup code.');
+    }
+    await db.query('update two_step_tickets set used_at = now() where token_hash = $1', [sha256(b.ticket)]);
+    await startSession(req, reply, u!);
+    if (b.trust) {
+      const token = newToken();
+      await db.query(`insert into trusted_devices (token_hash, user_id, expires_at) values ($1, $2, now() + interval '30 days')`, [sha256(token), u!.id]);
+      reply.setCookie(TRUST_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: cfg.cookieSecure, path: '/api/auth', maxAge: 30 * 86400 });
+    }
+    await audit(db, { actor: u!.email, actorId: u!.id, scope: 'auth', action: 'Signed in', detail: how === 'backup' ? 'Two-step: backup code' : 'Two-step: authenticator code', ip: ip(req) });
+    return { user: publicUser((await userById(db, u!.id))!) };
+  });
+
+  // Turning it on: a new secret (shown as a QR code), then the first code from the app confirms it and gives backup codes.
+  app.post('/api/auth/two-step/setup', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
+    const u = need(req);
+    if (!keys.canSave) fail(400, 'Two-step sign-in needs KEYS_SECRET to be set in Render.');
+    const secret = newSecret();
+    await db.query('update users set totp_pending = $2 where id = $1', [u.id, keys.encrypt(secret)]);
+    return { secret, uri: otpauthUri(secret, u.email) };
+  });
+  app.post('/api/auth/two-step/enable', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
+    const u = need(req);
+    const { code } = z.object({ code: z.string().max(20) }).parse(req.body);
+    if (!u.totp_pending) fail(400, 'Start again: choose "Turn on two-step sign-in".');
+    const secret = keys.decrypt(u.totp_pending!);
+    const step = checkCode(secret, code);
+    if (step === null) fail(400, 'That code is not right. Check the time on your phone and use the newest code.');
+    const backup = newBackupCodes();
+    await db.query(`update users set totp_secret = totp_pending, totp_pending = null, totp_enabled_at = now(), totp_last_step = $2, backup_codes = $3 where id = $1`, [u.id, step, JSON.stringify(backup.hashes)]);
+    await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Two-step sign-in turned on', ip: ip(req) });
+    return { backupCodes: backup.codes, user: publicUser((await userById(db, u.id))!) };
+  });
+  // New backup codes (the old ones stop working); needs a current code.
+  app.post('/api/auth/two-step/backup-codes', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
+    const u = need(req);
+    const { code } = z.object({ code: z.string().max(20) }).parse(req.body);
+    if (!twoStepOn(u)) fail(400, 'Two-step sign-in is off.');
+    if (!(await secondFactor(u, code))) fail(400, 'That code is not right.');
+    const backup = newBackupCodes();
+    await db.query('update users set backup_codes = $2 where id = $1', [u.id, JSON.stringify(backup.hashes)]);
+    await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'New backup codes', ip: ip(req) });
+    return { backupCodes: backup.codes, user: publicUser((await userById(db, u.id))!) };
+  });
+  // Turning it off: a landlord's choice (needs a current code). The Keyholder team keeps it on.
+  app.post('/api/auth/two-step/disable', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const u = need(req);
+    const { code } = z.object({ code: z.string().max(20) }).parse(req.body);
+    if (isTeam(u.role)) fail(403, 'Two-step sign-in stays on for the Keyholder team.');
+    if (!twoStepOn(u)) return { user: publicUser(u) };
+    if (!(await secondFactor(u, code))) fail(400, 'That code is not right.');
+    await db.query(`update users set totp_secret = null, totp_pending = null, totp_enabled_at = null, totp_last_step = null, backup_codes = null where id = $1`, [u.id]);
+    await db.query('delete from trusted_devices where user_id = $1', [u.id]);
+    reply.clearCookie(TRUST_COOKIE, { path: '/api/auth' });
+    await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Two-step sign-in turned off', ip: ip(req) });
+    return { user: publicUser((await userById(db, u.id))!) };
   });
 
   app.post('/api/auth/logout', async (req, reply) => {
@@ -202,10 +310,12 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
       if (!t) fail(400, 'This link has expired or was already used. Ask for a new one.');
       await q.query('update users set password_hash = $2, email_verified_at = coalesce(email_verified_at, now()) where id = $1', [t!.userId, hash]);
       await endAllSessions(q, t!.userId);
+      await q.query('delete from trusted_devices where user_id = $1', [t!.userId]);
       const u = (await userById(q, t!.userId))!;
       await audit(q, { actor: u.email, actorId: u.id, scope: 'auth', action: t!.purpose === 'invite' ? 'Team invitation accepted' : 'Password reset', ip: ip(req) });
       return u;
     });
+    if (twoStepOn(u)) return { twoStep: true, ticket: await twoStepTicket(u) };
     await startSession(req, reply, u);
     return { user: publicUser(u) };
   });
@@ -233,6 +343,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     const bad = passwordProblem(b.next); if (bad) fail(400, bad);
     await db.query('update users set password_hash = $2 where id = $1', [u.id, await hashPassword(b.next)]);
     await endAllSessions(db, u.id, req.sessionToken ?? undefined);
+    await db.query('delete from trusted_devices where user_id = $1', [u.id]);
     await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Password changed', ip: ip(req) });
     return { ok: true };
   });
@@ -275,6 +386,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
       return u;
     });
     if (u.disabled_at) return reply.redirect(`${cfg.appUrl}/#/signin?error=google`);
+    if (twoStepOn(u) && !(await trustedDevice(req, u))) return reply.redirect(`${cfg.appUrl}/#/signin?twostep=${await twoStepTicket(u)}&intent=${intent === 'signup' ? 'signup' : 'signin'}`);
     await startSession(req, reply, u);
     return reply.redirect(`${cfg.appUrl}/#/auth/google?intent=${intent === 'signup' || isNew ? 'signup' : 'signin'}`);
   });
