@@ -242,3 +242,37 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Render: render.yaml asks for the Starter web plan (always on; the free plan sleeps after 15 minutes) and the
   basic-256mb database (backups). Emails are sent from admin@keyholder.cloud.
 
+
+### R28. Fingerprint or face for two-step sign-in ☑
+- Owner, 2026-11-21: "enable biometrics for 2FA instead of Google 2FA only".
+- Passkeys (WebAuthn, user verification required): Face ID, Touch ID, Windows Hello, Android fingerprint. Settings →
+  Two-step sign-in: turn it on with fingerprint/face or an authenticator app; add more devices; remove one; add the app
+  later. The first device turns two-step on and shows the backup codes.
+- At sign-in the code step shows "Use fingerprint or face" when the account has a device; the code box stays as a
+  fallback (app code or backup code). Turning off and new backup codes also accept fingerprint or face.
+- Counts as the team's required two-step. The only remaining method cannot be removed. Turning off removes devices.
+
+### R29. Profile changes wait for Save ☑
+- Owner, 2026-11-21: "when I update profile, e.g. add phone number there is no button to save".
+- Settings → Your profile: a Save button (off until something changes), "You have changes that are not saved yet.",
+  then "Saved".
+
+### R30. Units tab and Add tenant tab ☑
+- Owner, 2026-11-21: "Have a separate tab for 'Add Tenant'. Tenants can be added to vacant Units. Highlight that
+  landlord need a vacant unit."
+- A property has "Units" (units and rooms, Add a unit) and "Add tenant" (lists the vacant units and rooms and the
+  form; with none, "You need a vacant unit to add a tenant." with Add a unit). A vacant row's ⋯ has Add tenant.
+
+### R31. Delete a unit, end a lease, archive a property ☑
+- Owner, 2026-11-21: "Make it more intuitive to delete a unit, if it has not been populated, end lease for a tenant,
+  and archive a property in general (eg. if it is sold)."
+- Delete unit: in the unit's ⋯ menu and Edit unit, only if it never had a tenant (otherwise greyed with the reason).
+- End lease: in the ⋯ menu of every rented unit or room and on the tenant's page.
+- Archive property (top of the property page): Sold or No longer rented, a date; running leases end that day; it leaves
+  Home, Rentals and totals; records stay and taxes count it up to that date; Restore from the bottom of Rentals.
+
+### R32. Bronze: one clear two-step path ☑
+- Owner, 2026-11-21: "multiple paragraphs asking to Add what I paid ... make the progression more clear ... grey out
+  the next".
+- One "Two steps to see your full picture" box: 1 Add what you paid, 2 Add your mortgage ("Do step 1 first" until
+  done). The duplicate buttons are gone; "Use your own estimate instead" stays as a small link.

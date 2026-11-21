@@ -618,6 +618,41 @@ html body .drawer { z-index: 126; }
 .two-step-codes code { font-size: var(--t-16); letter-spacing: 0.05em; }
 .two-step-nudge { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; padding: 14px 16px; }
 .two-step-nudge > div:first-of-type { flex: 1; min-width: 220px; display: flex; flex-direction: column; }
+.two-step-ways { display: grid; gap: 10px; }
+.two-step-way { display: flex; gap: 12px; align-items: flex-start; text-align: left; padding: 14px 16px; border: 1px solid var(--rule); border-radius: 12px; background: var(--paper-raised); color: inherit; font: inherit; cursor: pointer; }
+.two-step-way:hover:not(:disabled) { border-color: var(--primary); }
+.two-step-way:disabled { opacity: 0.6; cursor: default; }
+.two-step-way svg { flex: none; margin-top: 2px; color: var(--primary); }
+.two-step-way > span { display: flex; flex-direction: column; gap: 2px; }
+.two-step-part { border-top: 1px solid var(--rule); margin-top: 14px; padding-top: 14px; display: grid; gap: 8px; justify-items: start; }
+.two-step-part.spread { display: flex; }
+.two-step-devices { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; width: 100%; }
+.two-step-devices li { gap: 8px; }
 @media (max-width: 480px) { .two-step-scan { grid-template-columns: minmax(0, 1fr); } .two-step-qr { margin: 0 auto; } }
 /* "Delete tenant" in the unit's ⋯ menu. */
 .row-menu-pop button.danger { color: var(--rust); border-top: 1px solid var(--rule); }
+/* Settings → Your profile: changes wait for Save. */
+.profile-save { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+.saved-note { color: var(--pine); display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+/* A property's steps up (Bronze → Silver → Gold): one path, the next step greyed until the one before is done. */
+.level-steps .ls-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.level-steps ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ls-step { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--rule); border-radius: 12px; }
+.ls-step p { margin: 2px 0 0; }
+.ls-step .ls-to { color: var(--ink-soft); font-size: var(--t-14); }
+.ls-n { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: var(--paper-sunk); color: var(--ink-soft); }
+.ls-step.now { border-color: var(--accent); background: var(--accent-tint); }
+.ls-step.now .ls-n { background: var(--accent); color: #fff; }
+.ls-step.done .ls-n { background: var(--pine-tint); color: var(--pine); }
+.ls-step.later { opacity: 0.55; }
+@media (max-width: 560px) { .ls-step { grid-template-columns: 32px minmax(0, 1fr); } .ls-step > .btn, .ls-step > .small { grid-column: 1 / -1; } }
+/* Property page: Edit details and Archive side by side; the Add tenant tab's notes; archived properties. */
+.prop-head-act { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+@media (max-width: 760px) { .prop-head-act { flex-direction: row; flex-wrap: wrap; } }
+.vacancy-note { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 16px; }
+.need-vacant { border-left: 4px solid var(--brass); }
+.need-vacant strong { font-size: var(--t-18); }
+.tenancy-inline .tenancy-foot { justify-content: flex-end; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.archived-row { grid-template-columns: minmax(0, 1fr) auto !important; }
+.row-menu-pop button[disabled] { color: var(--ink-faint, #98A2B3); cursor: default; }
+.row-menu-pop .menu-note { display: block; font-size: 12px; color: var(--ink-soft); margin-top: 2px; }

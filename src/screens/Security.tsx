@@ -105,7 +105,7 @@ const PARTS: Part[] = [
         <li><strong>Encrypted in transit:</strong> every page and connection uses HTTPS (TLS 1.2 or newer), and browsers are told to use HTTPS only.</li>
         <li><strong>Encrypted at rest:</strong> bank connection keys and service keys are encrypted with AES-256 before they are stored, with a key kept apart from the database.</li>
         <li><strong>Passwords:</strong> stored only as scrypt hashes, never in a readable form. Sign-in attempts are limited to stop guessing.</li>
-        <li><strong>Two-step sign-in:</strong> landlords can turn on a code from an authenticator app after their password (Settings), with backup codes; the Keyholder team must use it.</li>
+        <li><strong>Two-step sign-in:</strong> after their password, landlords can use their fingerprint or face (passkeys: Face ID, Touch ID, Windows Hello, Android) or a code from an authenticator app, with backup codes (Settings); the Keyholder team must use it.</li>
         <li><strong>Sessions:</strong> secure, http-only cookies; every change must come from the Keyholder app itself.</li>
         <li><strong>Plaid messages</strong> are checked to be really from Plaid (signed and recent) before they are used.</li>
         <li><strong>Access:</strong> only people who run Keyholder can reach production systems, each with their own sign-in; support can open an account read-only to help you, and every such view and team action is recorded.</li>

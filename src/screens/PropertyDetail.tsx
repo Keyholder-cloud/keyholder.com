@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Link, NavLink, useParams } from 'react-router-dom';
+import { Link, NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { hasSpace } from '../lib/finance';
-import { FindTenantTab, NoticesTab, UnitsTab } from './Rentals';
+import { AddTenantTab, FindTenantTab, NoticesTab, UnitsTab } from './Rentals';
+import { ArchivePropertyDrawer } from '../components/PropertyActions';
 import type { Property } from '../data/types';
 import { propertyLevel, atLeast } from '../lib/levels';
-import { LevelInvite, LevelUpForm, PropertyCard } from '../components/levels';
+import { LevelSteps, LevelUpForm, PropertyCard } from '../components/levels';
 import { daysBetween, fmtDate } from '../lib/dates';
 import { adjustedCostBase, amortization, mortgageBalanceAt, mortgagePaidBetween, owedAt, ownEstimate, propertyValue } from '../lib/finance';
 import { LENDER_MAX_LTV, SELLING_COST_PCT, borrowingRoom, gainSincePurchase, rentVsMarket, returnComparison, roughSale } from '../lib/silver';
@@ -17,8 +18,10 @@ import { Icon } from '../components/Icon';
 
 export function PropertyDetail() {
   const { id, tab = 'units' } = useParams();
-  const { state, today } = useStore();
+  const { state, act, today } = useStore();
+  const nav = useNavigate();
   const [edit, setEdit] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const p = state.properties.find((x) => x.id === id);
   if (!p) return <div className="page"><Empty title="That property isn't here." action={<Link to="/rentals" className="btn">Back to Rentals</Link>} /></div>;
   const hasEmpty = state.units.some((u) => u.propertyId === p.id && hasSpace(state, u, today));
@@ -29,12 +32,22 @@ export function PropertyDetail() {
     <div className="page">
       <Link to="/rentals" className="crumb"><Icon name="back" size={16} />Back to Rentals</Link>
       <h1 className="sr-only">{p.nickname}</h1>
+      {p.archived && (
+        <div className="callout warn archived-note" id="archived-note">
+          <strong>Archived{p.archivedOn ? ` · ${p.archivedReason === 'not-rented' ? 'no longer rented' : 'sold'} ${fmtDate(p.archivedOn)}` : ''}.</strong> It is hidden from Home, Rentals and your totals; its records are kept for your taxes.
+          <div className="btn-row" style={{ marginTop: 10 }}><button className="btn" onClick={() => act.restoreProperty(p.id)}>Restore</button></div>
+        </div>
+      )}
       <div className="prop-head">
         <PropertyCard property={p} active banner />
-        <button className="btn" onClick={() => setEdit(true)}><Icon name="edit" size={16} />Edit details</button>
+        <div className="prop-head-act">
+          <button className="btn" onClick={() => setEdit(true)}><Icon name="edit" size={16} />Edit details</button>
+          {!p.archived && <button className="btn ghost" id="archive-property" onClick={() => setArchiving(true)}>Archive property</button>}
+        </div>
       </div>
       <nav className="tabs" aria-label="Property sections">
-        <NavLink end to={base} className={cur === 'units' ? 'active' : ''}>Units and tenants</NavLink>
+        <NavLink end to={base} className={cur === 'units' ? 'active' : ''}>Units</NavLink>
+        <NavLink to={`${base}/add-tenant`}>Add tenant</NavLink>
         {hasEmpty && <NavLink to={`${base}/find`}>Find a tenant</NavLink>}
         <NavLink to={`${base}/notices`}>Late rent and notices</NavLink>
         <NavLink to={`${base}/value`}>Value</NavLink>
@@ -46,13 +59,13 @@ export function PropertyDetail() {
           {state.units.some((u) => u.propertyId === p.id) && <section className="section"><h2 className="section-title">Rent, last 12 months</h2><div className="sheet"><RentRoll propertyId={p.id} /></div></section>}
         </>
       )}
+      {cur === 'add-tenant' && <AddTenantTab propertyId={p.id} />}
       {cur === 'find' && <FindTenantTab propertyId={p.id} />}
       {cur === 'notices' && <NoticesTab propertyId={p.id} />}
       {cur === 'value' && <ValueTab id={p.id} />}
-      {cur === 'mortgage' && (atLeast(propertyLevel(state, p), 'gold') ? <MortgageTab id={p.id} /> : (
-        <LevelInvite property={p} to="gold" title="Track your mortgage" points={['See what you still owe and what you paid off this year', 'Get mortgage interest into your taxes', 'Full tax numbers with depreciation', 'Your gain if you sold']} />
-      ))}
+      {cur === 'mortgage' && (atLeast(propertyLevel(state, p), 'gold') ? <MortgageTab id={p.id} /> : <LevelSteps property={p} />)}
       {edit && <PropertyForm property={p} onClose={() => setEdit(false)} />}
+      {archiving && <ArchivePropertyDrawer property={p} onClose={() => setArchiving(false)} onDone={() => nav('/rentals')} />}
     </div>
   );
 }
@@ -79,11 +92,7 @@ function ValueTab({ id }: { id: string }) {
         {vi.basis === 'none' ? (
           <>
             <h3 style={{ marginTop: 0 }}>What it's worth to you</h3>
-            <p className="soft" style={{ marginTop: 0 }}>Add what you paid and what is still owed. Keyholder shows the property's value as what you paid (or your own estimate, for example from an appraisal), less what is owed.</p>
-            <div className="btn-row">
-              <button className="btn primary" id="add-paid" onClick={() => setForm('paid')}><Icon name="plus" size={16} />Add what you paid</button>
-              <button className="btn" id="add-own" onClick={() => setForm('owner')}><Icon name="edit" size={16} />Add my own estimate</button>
-            </div>
+            <p className="soft" style={{ marginTop: 0 }}>Worth is what you paid (or your own estimate), less what is still owed. Start with step 1 below.</p>
           </>
         ) : (
           <>
@@ -102,9 +111,9 @@ function ValueTab({ id }: { id: string }) {
         )}
       </div>
 
-      {p.purchasePrice && p.purchaseDate ? <SilverInsights p={p} /> : (
-        <LevelInvite property={p} to="silver" title="See what this property is doing for you" points={['What it is worth to you, less what is owed', 'What your money earns compared with savings, a GIC and stocks', 'Whether your rent is below what similar units rent for', 'How much you could borrow against it', 'Roughly what you would walk away with if you sold']} />
-      )}
+      {/* One path up: step 1 (what you paid) now, step 2 (the mortgage) greyed until then. */}
+      {!(p.purchasePrice && p.purchaseDate) && <LevelSteps property={p} onOwnEstimate={vi.basis === 'none' ? () => setForm('owner') : undefined} />}
+      {p.purchasePrice && p.purchaseDate && <SilverInsights p={p} />}
 
       {history.length > 0 && (
         <section className="section">

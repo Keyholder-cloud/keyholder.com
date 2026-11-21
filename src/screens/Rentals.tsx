@@ -1,9 +1,10 @@
+import { canDeleteUnit, DeleteUnitDrawer } from '../components/PropertyActions';
 import { DeleteTenantDrawer, EndLeaseDrawer } from '../components/TenantActions';
 import { PageSub, StatusPill } from '../components/Guide';
 import { OfficialPdfButton } from '../components/OfficialForm';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import type { Applicant, Lease, Listing, Notice, Tenant, Unit } from '../data/types';
 import { currentLine, unitTenant, useStore } from '../data/store';
@@ -39,8 +40,27 @@ export function Rentals() {
       </div>
       {!props.length && <div className="sheet"><Empty title="No properties yet." art={<SceneEmptyHome />} action={<button className="btn primary" onClick={() => setAddProp(true)}>Add your first property</button>}>Start with the address. Units and tenants come next.</Empty></div>}
       {props.map((p) => <PropertyBlock key={p.id} propertyId={p.id} />)}
+      <ArchivedList />
       {addProp && <PropertyForm onClose={() => setAddProp(false)} />}
     </div>
+  );
+}
+
+/** Sold or no longer rented: kept for the records, with Restore. */
+function ArchivedList() {
+  const { state, act } = useStore();
+  const gone = state.properties.filter((p) => p.archived);
+  if (!gone.length) return null;
+  return (
+    <section className="section" id="archived">
+      <h2 className="section-title">Archived properties</h2>
+      <ul className="rows sheet" style={{ padding: '0 16px' }}>{gone.map((p) => (
+        <li key={p.id} className="row archived-row">
+          <span><span className="title">{p.nickname}</span><span className="sub" style={{ display: 'block' }}>{p.address}{p.archivedOn ? ` · ${p.archivedReason === 'not-rented' ? 'no longer rented' : 'sold'} ${fmtDate(p.archivedOn)}` : ''}</span></span>
+          <span className="btn-row"><Link className="btn small ghost" to={`/rent/property/${p.id}`}>Open</Link><button className="btn small" onClick={() => act.restoreProperty(p.id)}>Restore</button></span>
+        </li>
+      ))}</ul>
+    </section>
   );
 }
 
@@ -79,12 +99,7 @@ export function UnitRow({ unit }: { unit: Unit }) {
   const pill = roomsPill(sum, fmtDay);
   return (
     <>
-      <li className={`unit-row unit-head${sum.late ? ' late' : ''}`}>
-        <span className={`unit-label${unit.label.length > 2 ? ' long' : ''}`}>{unit.label}</span>
-        <span className="unit-who"><strong>By the room</strong><span>{roomsLine(state, unit, today)}</span></span>
-        <span className="unit-state"><StatusPill tone={pill.tone} meaning={sum.rented ? "Each room's rent is tracked on its own row underneath." : undefined}>{pill.tone === 'paid' && <Icon name="check" size={16} />}{pill.label}</StatusPill></span>
-        <span className="row-act" />
-      </li>
+      <RoomsHead unit={unit} sum={sum} pill={pill} />
       {activeLeases(state, unit.id, today).map((l) => {
         const t = state.tenants.find((x) => x.id === l.tenantId);
         return t ? <LeaseRow key={l.id} unit={unit} lease={l} tenant={t} room /> : null;
@@ -94,6 +109,38 @@ export function UnitRow({ unit }: { unit: Unit }) {
   );
 }
 
+function RoomsHead({ unit, sum, pill }: { unit: Unit; sum: ReturnType<typeof roomsPaid>; pill: { label: string; tone: string } }) {
+  const { state, today } = useStore();
+  const tools = useUnitTools(unit);
+  return (
+    <>
+      <li className={`unit-row unit-head${sum.late ? ' late' : ''}`}>
+        <span className={`unit-label${unit.label.length > 2 ? ' long' : ''}`}>{unit.label}</span>
+        <span className="unit-who"><strong>By the room</strong><span>{roomsLine(state, unit, today)}</span></span>
+        <span className="unit-state"><StatusPill tone={pill.tone} meaning={sum.rented ? "Each room's rent is tracked on its own row underneath." : undefined}>{pill.tone === 'paid' && <Icon name="check" size={16} />}{pill.label}</StatusPill></span>
+        <span className="row-act"><UnitMenu items={tools.items} /></span>
+      </li>
+      {tools.drawers}
+    </>
+  );
+}
+
+/** Edit unit and Delete unit (only a unit that never had a tenant), for a row's ⋯ menu, with their drawers. */
+function useUnitTools(unit: Unit) {
+  const { state } = useStore();
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const items: MenuItem[] = [
+    { label: 'Edit unit', onClick: () => setEditing(true) },
+    canDeleteUnit(state, unit.id) ? { label: 'Delete unit', danger: true, onClick: () => setDeleting(true) } : { label: 'Delete unit', note: 'It has had tenants: its history stays for taxes' },
+  ];
+  const drawers = <>
+    {editing && <UnitForm propertyId={unit.propertyId} unit={unit} onClose={() => setEditing(false)} />}
+    {deleting && <DeleteUnitDrawer unit={unit} onClose={() => setDeleting(false)} />}
+  </>;
+  return { items, drawers };
+}
+
 /** The left column of a room's row: a dot under the unit's label, so rooms read as part of their unit. */
 const RoomMark = () => <span className="unit-label room-mark" aria-hidden><span /></span>;
 
@@ -101,6 +148,7 @@ const RoomMark = () => <span className="unit-label room-mark" aria-hidden><span 
 function VacantRow({ unit, free, room }: { unit: Unit; free?: string[]; room?: boolean }) {
   const { state, today } = useStore();
   const nav = useNavigate();
+  const tools = useUnitTools(unit);
   const listing = state.listings.find((l) => l.unitId === unit.id);
   const apps = state.applicants.filter((a) => a.unitId === unit.id && (a.status === 'new' || a.status === 'shortlisted' || a.status === 'offered'));
   const since = listing?.vacantSince ?? state.leases.filter((l) => l.unitId === unit.id && l.end).map((l) => l.end!).sort().pop();
@@ -112,7 +160,11 @@ function VacantRow({ unit, free, room }: { unit: Unit; free?: string[]; room?: b
       {room ? <RoomMark /> : <span className={`unit-label${unit.label.length > 2 ? ' long' : ''}`}>{unit.label}</span>}
       <span className="unit-who"><strong>{what}{days ? ` for ${days} days` : ''}</strong><span>{free ? `${roomsLine(state, unit, today)} · ` : ''}{listing ? `Asking ${fmt0(listing.askingRent)}` : `Last rent ${fmt0(unit.rent)}`}{days ? ` · about ${fmt0(lost)} rent lost` : ''}</span></span>
       <span className="unit-state">{apps.length ? <span className="status due">{apps.length} application{apps.length > 1 ? 's' : ''}</span> : <span className="status vacant">No applications</span>}</span>
-      <button className="btn primary" onClick={() => nav(`/rent/property/${unit.propertyId}/find`)}>Find a tenant</button>
+      <span className="row-act">
+        <button className="btn primary" onClick={() => nav(`/rent/property/${unit.propertyId}/find`)}>Find a tenant</button>
+        <UnitMenu items={[{ label: 'Add tenant', onClick: () => nav(`/rent/property/${unit.propertyId}/add-tenant?unit=${unit.id}`) }, ...(room ? [] : tools.items)]} />
+      </span>
+      {tools.drawers}
     </li>
   );
 }
@@ -126,6 +178,7 @@ function LeaseRow({ unit, lease, tenant, room }: { unit: Unit; lease: Lease; ten
   const [raise, setRaise] = useState(false);
   const [ending, setEnding] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editUnit, setEditUnit] = useState(false);
   const line = currentLine(state, lease, today)!;
   // A deposit waiting to be confirmed for this tenant: show it instead of "late".
   const found = trayItems(state, today).some((t) => t.kind === 'match' && t.suggestion?.leaseId === lease.id);
@@ -145,10 +198,16 @@ function LeaseRow({ unit, lease, tenant, room }: { unit: Unit; lease: Lease; ten
       <span className="row-act">
         {found && line.state !== 'paid' ? <button className="btn primary" onClick={() => nav('/today')}>Confirm</button> : isLate ? <button className="btn primary" onClick={() => setLate(lease)}>Late rent options</button>
           : line.state !== 'paid' ? <button className="btn" onClick={() => setPay(true)}>Mark paid</button> : null}
-        <UnitMenu onRaise={() => setRaise(true)} onEnd={lease.end ? undefined : () => setEnding(true)} onDelete={() => setDeleting(true)} />
+        <UnitMenu items={[
+          { label: 'Raise rent', onClick: () => setRaise(true) },
+          ...(lease.end ? [] : [{ label: 'End lease', onClick: () => setEnding(true) }]),
+          { label: 'Delete tenant', danger: true, onClick: () => setDeleting(true) },
+          ...(room ? [] : [{ label: 'Edit unit', onClick: () => setEditUnit(true) }, { label: 'Delete unit', note: 'Has a tenant: end the lease first' }]),
+        ]} />
       </span>
       <RaiseRentSuggestion lease={lease} unit={unit} onRaise={() => setRaise(true)} />
       {ending && <EndLeaseDrawer lease={lease} onClose={() => setEnding(false)} />}
+      {editUnit && <UnitForm propertyId={unit.propertyId} unit={unit} onClose={() => setEditUnit(false)} />}
       {deleting && <DeleteTenantDrawer tenant={tenant} onClose={() => setDeleting(false)} onEndInstead={() => { setDeleting(false); setEnding(true); }} />}
       {raise && <RaiseRent lease={lease} onClose={() => setRaise(false)} />}
       {pay && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}
@@ -158,25 +217,57 @@ function LeaseRow({ unit, lease, tenant, room }: { unit: Unit; lease: Lease; ten
 }
 
 // =====================================================================================
-// Units and tenants tab (property page)
+// Units tab (property page): the units and who lives there. Edit, delete or end a lease from each row's ⋯.
 // =====================================================================================
 export function UnitsTab({ propertyId }: { propertyId: string }) {
-  const { state, today } = useStore();
-  const [unitEdit, setUnitEdit] = useState<string | 'new' | null>(null);
-  const [addTenant, setAddTenant] = useState(false);
+  const { state } = useStore();
+  const [adding, setAdding] = useState(false);
   const units = state.units.filter((u) => u.propertyId === propertyId);
   return (
     <>
       <section className="section">
-        <h2 className="section-title">Units and tenants <span className="btn-row"><button className="btn small ghost" onClick={() => setUnitEdit('new')}><Icon name="plus" size={14} />Add unit</button>{units.length > 0 && <button className="btn small" onClick={() => setAddTenant(true)}><Icon name="plus" size={14} />Add tenant</button>}</span></h2>
+        <h2 className="section-title">Units <span className="btn-row"><button className="btn small" id="add-unit" onClick={() => setAdding(true)}><Icon name="plus" size={14} />Add unit</button></span></h2>
         <div className="sheet tight">
-          {units.length ? <ul className="unit-list">{units.map((u) => <UnitRow key={u.id} unit={u} />)}</ul> : <Empty title="No units yet." action={<button className="btn" onClick={() => setUnitEdit('new')}>Add a unit</button>}>A whole house counts as one unit.</Empty>}
+          {units.length ? <ul className="unit-list">{units.map((u) => <UnitRow key={u.id} unit={u} />)}</ul> : <Empty title="No units yet." action={<button className="btn" onClick={() => setAdding(true)}>Add a unit</button>}>A whole house counts as one unit.</Empty>}
         </div>
-        {units.length > 0 && <div className="btn-row" style={{ marginTop: 8 }}>{units.map((u) => <button key={u.id} className="btn small ghost" onClick={() => setUnitEdit(u.id)}>Edit unit {u.label}</button>)}</div>}
+        {units.length > 0 && <p className="tiny soft" style={{ marginTop: 8 }}>⋯ on a unit: edit or delete the unit, end a lease, delete a tenant. New tenants: the Add tenant tab.</p>}
       </section>
-      {unitEdit && <UnitForm propertyId={propertyId} unit={unitEdit === 'new' ? undefined : state.units.find((u) => u.id === unitEdit)} onClose={() => setUnitEdit(null)} />}
-      {addTenant && <TenancyForm unitId={units.find((u) => hasSpace(state, u, today))?.id} onClose={() => setAddTenant(false)} />}
+      {adding && <UnitForm propertyId={propertyId} onClose={() => setAdding(false)} />}
     </>
+  );
+}
+
+// =====================================================================================
+// Add tenant tab (property page): tenants go into a vacant unit or room.
+// =====================================================================================
+export function AddTenantTab({ propertyId }: { propertyId: string }) {
+  const { state, today } = useStore();
+  const nav = useNavigate();
+  const loc = useLocation();
+  const [adding, setAdding] = useState(false);
+  const p = state.properties.find((x) => x.id === propertyId)!;
+  const units = state.units.filter((u) => u.propertyId === propertyId);
+  const vacant = units.filter((u) => hasSpace(state, u, today));
+  const want = new URLSearchParams(loc.search).get('unit');
+  const start = vacant.find((u) => u.id === want)?.id ?? vacant[0]?.id;
+  const place = (u: Unit) => (byRoom(u) ? `Unit ${u.label} (${openRooms(state, u, today).join(', ')})` : `Unit ${u.label}`);
+  return (
+    <section className="section">
+      <h2 className="section-title">Add a tenant</h2>
+      {vacant.length ? (
+        <>
+          <div className="callout vacancy-note" id="vacant-units"><Icon name="door" size={18} /> <span>Tenants are added to a <strong>vacant unit or room</strong>. Vacant here: {vacant.map(place).join(' · ')}.</span></div>
+          <TenancyForm key={start} inline propertyId={propertyId} unitId={start} onClose={() => nav(`/rent/property/${propertyId}`)} />
+        </>
+      ) : (
+        <div className="callout warn need-vacant" id="need-vacant">
+          <strong>You need a vacant unit to add a tenant.</strong>
+          <p style={{ margin: '6px 0 12px' }}>{units.length ? `Every unit at ${p.nickname} has a tenant.` : `${p.nickname} has no units yet.`} Add a unit, or end a lease when a tenant moves out (⋯ on the unit, in Units).</p>
+          <div className="btn-row"><button className="btn primary" onClick={() => setAdding(true)}><Icon name="plus" size={16} />Add a unit</button><Link className="btn" to={`/rent/property/${propertyId}`}>Go to Units</Link></div>
+        </div>
+      )}
+      {adding && <UnitForm propertyId={propertyId} onClose={() => setAdding(false)} />}
+    </section>
   );
 }
 
@@ -536,7 +627,9 @@ export function RaiseRent({ lease, onClose }: { lease: Lease; onClose: () => voi
  * scrolls. Escape, a click elsewhere, or the button leaving the screen closes it.
  */
 type MenuPos = { top?: number; bottom?: number; right: number };
-function UnitMenu({ onRaise, onEnd, onDelete }: { onRaise: () => void; onEnd?: () => void; onDelete?: () => void }) {
+type MenuItem = { label: string; onClick?: () => void; danger?: boolean; note?: string };
+/** The ⋯ menu of a unit or room row. An item without onClick is shown greyed, with its note (why not). */
+function UnitMenu({ items }: { items: MenuItem[] }) {
   const [pos, setPos] = useState<MenuPos | null>(null);
   const btn = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -567,9 +660,12 @@ function UnitMenu({ onRaise, onEnd, onDelete }: { onRaise: () => void; onEnd?: (
       <button ref={btn} className="btn ghost small dots" aria-label="More options" aria-haspopup="menu" aria-expanded={!!pos} onClick={toggle}>⋯</button>
       {pos && createPortal(
         <div ref={menu} className="row-menu-pop floating" role="menu" style={pos}>
-          <button role="menuitem" onClick={() => { setPos(null); onRaise(); }}>Raise rent</button>
-          {onEnd && <button role="menuitem" onClick={() => { setPos(null); onEnd(); }}>End lease</button>}
-          {onDelete && <button role="menuitem" className="danger" onClick={() => { setPos(null); onDelete(); }}>Delete tenant</button>}
+          {items.map((it) => (
+            <button key={it.label} role="menuitem" className={it.danger ? 'danger' : undefined} aria-disabled={!it.onClick || undefined} disabled={!it.onClick}
+              onClick={() => { if (!it.onClick) return; setPos(null); it.onClick(); }}>
+              {it.label}{it.note && <span className="menu-note">{it.note}</span>}
+            </button>
+          ))}
         </div>, document.body)}
     </span>
   );

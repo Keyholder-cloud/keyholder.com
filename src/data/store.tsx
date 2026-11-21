@@ -197,7 +197,41 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
         }
       });
     },
-    archiveProperty(id: string) { mut((d) => { const p = d.properties.find((x) => x.id === id); if (p) { p.archived = true; audit(d, 'Property archived', p.nickname); } }); },
+    /**
+     * Archive a property (sold, or no longer rented): leases still running end that day, its listings close, and it
+     * leaves Home, Rentals and the totals. Its records stay; taxes still count it up to that day. Restore undoes it.
+     */
+    archiveProperty(id: string, on: string, reason: 'sold' | 'not-rented') {
+      let name = '';
+      mut((d) => {
+        const p = d.properties.find((x) => x.id === id); if (!p) return;
+        name = p.nickname;
+        const unitIds = new Set(d.units.filter((u) => u.propertyId === id).map((u) => u.id));
+        let ended = 0;
+        for (const l of d.leases) if (unitIds.has(l.unitId) && (!l.end || l.end > on)) { l.end = on; ended++; const t = d.tenants.find((x) => x.id === l.tenantId); if (t && !t.movedOut) t.movedOut = on; }
+        d.listings = d.listings.filter((x) => !unitIds.has(x.unitId));
+        p.archived = true; p.archivedOn = on; p.archivedReason = reason;
+        audit(d, 'Property archived', `${p.nickname}: ${reason === 'sold' ? 'sold' : 'no longer rented'} on ${on}${ended ? `, ${ended} lease${ended === 1 ? '' : 's'} ended` : ''}`);
+      });
+      toast(`${name} archived. Its records are kept for your taxes.`);
+    },
+    restoreProperty(id: string) {
+      mut((d) => { const p = d.properties.find((x) => x.id === id); if (!p) return; p.archived = false; delete p.archivedOn; delete p.archivedReason; audit(d, 'Property restored', p.nickname); });
+      toast('Property restored.');
+    },
+    /** A unit that never had a tenant (added by mistake): removed with its listing and applications. */
+    deleteUnit(unitId: string) {
+      let label = '';
+      mut((d) => {
+        const u = d.units.find((x) => x.id === unitId); if (!u || d.leases.some((l) => l.unitId === unitId)) return;
+        label = u.label;
+        d.units = d.units.filter((x) => x.id !== unitId);
+        d.listings = d.listings.filter((x) => x.unitId !== unitId);
+        d.applicants = d.applicants.filter((a) => a.unitId !== unitId);
+        audit(d, 'Unit deleted', `Unit ${u.label}`);
+      });
+      if (label) toast(`Unit ${label} deleted.`);
+    },
     saveUnit(u: Unit) {
       mut((d) => {
         const i = d.units.findIndex((x) => x.id === u.id);
@@ -207,7 +241,6 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
         audit(d, i >= 0 ? 'Unit updated' : 'Unit added', u.label);
       });
     },
-    removeUnit(id: string) { mut((d) => { d.units = d.units.filter((u) => u.id !== id); audit(d, 'Unit removed', id); }); },
 
     // ---- Tenants & leases ----
     addTenancy(t: Tenant, l: Lease) {

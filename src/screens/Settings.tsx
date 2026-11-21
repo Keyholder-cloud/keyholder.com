@@ -1,6 +1,6 @@
 import { TwoStepSettings } from '../components/TwoStep';
 import { BackToMore, PageSub } from '../components/Guide';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { isPreviewUser, useStore } from '../data/store';
 
@@ -24,6 +24,23 @@ export function Settings() {
   // With the Keyholder server, a landlord's real account (not the demo or admin preview).
   const live = conn.mode === 'server' && !!conn.user && conn.user.role === 'owner' && !admin && !!p.account;
   useEffect(() => { if (loc.hash) document.getElementById(loc.hash.slice(1))?.scrollIntoView(); }, [loc.hash]);
+  // Your profile: changes wait in the form until Save.
+  const saved = { name: p.name, email: p.email, phone: p.phone ?? '', province: p.province, city: p.city, emailUpdates: !!p.emailUpdates };
+  const [draft, setDraft] = useState(saved);
+  const [justSaved, setJustSaved] = useState(false);
+  // Changed elsewhere (another device, the questions): the form follows, unless you are in the middle of an edit.
+  const lastSaved = useRef(JSON.stringify(saved));
+  const savedKey = JSON.stringify(saved);
+  useEffect(() => {
+    const before = lastSaved.current; lastSaved.current = savedKey;
+    setDraft((d) => (JSON.stringify(d) === before ? JSON.parse(savedKey) : d));
+  }, [savedKey]);
+  const dirty = (Object.keys(saved) as (keyof typeof saved)[]).some((k) => draft[k] !== saved[k]);
+  const edit = (x: Partial<typeof saved>) => { setDraft((d) => ({ ...d, ...x })); setJustSaved(false); };
+  const saveProfile = () => {
+    act.setProfile({ name: draft.name.trim(), email: draft.email.trim(), phone: draft.phone.trim() || undefined, province: draft.province, city: draft.city, emailUpdates: draft.emailUpdates });
+    setJustSaved(true);
+  };
 
   return (
     <div className="page">
@@ -33,15 +50,22 @@ export function Settings() {
         <h2 className="section-title">Your profile</h2>
         <div className="sheet">
           <div className="profile-head"><Avatar name={p.name || p.account?.name || 'You'} size={56} /><div><strong>{p.name || p.account?.name || 'Your name'}</strong><div className="small soft">{p.email || p.account?.email || 'Add your email'}</div></div></div>
+          <form id="profile-form" onSubmit={(e) => { e.preventDefault(); if (dirty) saveProfile(); }}>
           <div className="grid2">
-            <Field label="Name on receipts" htmlFor="st-n" hint={p.name.trim() && !/\s/.test(p.name.trim()) ? 'Add your last name: receipts and letters show your full name' : 'First and last name'}><input id="st-n" className="input" value={p.name} onChange={(e) => act.setProfile({ name: e.target.value })} /></Field>
-            <Field label="Email" htmlFor="st-e" hint="Tenant replies go here"><input id="st-e" type="email" className="input" value={p.email} onChange={(e) => act.setProfile({ email: e.target.value })} /></Field>
-            <Field label="Phone" htmlFor="st-ph" hint="Optional: shown on receipts and letters"><input id="st-ph" type="tel" className="input" value={p.phone ?? ''} onChange={(e) => act.setProfile({ phone: e.target.value || undefined })} autoComplete="tel" /></Field>
+            <Field label="Name on receipts" htmlFor="st-n" hint={draft.name.trim() && !/\s/.test(draft.name.trim()) ? 'Add your last name: receipts and letters show your full name' : 'First and last name'}><input id="st-n" className="input" value={draft.name} onChange={(e) => edit({ name: e.target.value })} /></Field>
+            <Field label="Email" htmlFor="st-e" hint="Tenant replies go here"><input id="st-e" type="email" className="input" value={draft.email} onChange={(e) => edit({ email: e.target.value })} /></Field>
+            <Field label="Phone" htmlFor="st-ph" hint="Optional: shown on receipts and letters"><input id="st-ph" type="tel" className="input" value={draft.phone} onChange={(e) => edit({ phone: e.target.value })} autoComplete="tel" /></Field>
             <Field label="Province" htmlFor="st-p" hint={`Rules pack ${PACK_VERSION}, last verified ${fmtDate(PACK_VERIFIED)}`}>
-              <select id="st-p" className="input" value={p.province} onChange={(e) => act.setProfile({ province: e.target.value as typeof p.province, city: province(e.target.value as typeof p.province).cities[0] })}>{PROVINCES.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select>
+              <select id="st-p" className="input" value={draft.province} onChange={(e) => edit({ province: e.target.value as typeof p.province, city: province(e.target.value as typeof p.province).cities[0] })}>{PROVINCES.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}</select>
             </Field>
-            <Field label="City" htmlFor="st-c"><select id="st-c" className="input" value={p.city} onChange={(e) => act.setProfile({ city: e.target.value })}>{province(p.province).cities.map((c) => <option key={c}>{c}</option>)}</select></Field>
+            <Field label="City" htmlFor="st-c"><select id="st-c" className="input" value={draft.city} onChange={(e) => edit({ city: e.target.value })}>{province(draft.province).cities.map((c) => <option key={c}>{c}</option>)}</select></Field>
           </div>
+          <label className="check" style={{ marginTop: 14 }}><input type="checkbox" checked={draft.emailUpdates} onChange={(e) => edit({ emailUpdates: e.target.checked })} />{live ? 'Email me when something needs me (one short email a day at most)' : 'Email me on rent day, plus a monthly summary'} {!live ? <span className="soft small">(preview: no emails are sent yet)</span> : !conn.config?.emailDelivery && <span className="soft small">(email sending is not switched on yet)</span>}</label>
+          <div className="profile-save">
+            <button type="submit" className="btn primary" id="st-save" disabled={!dirty}>Save</button>
+            {dirty ? <span className="small soft">You have changes that are not saved yet.</span> : justSaved ? <span className="small saved-note" role="status"><Icon name="check" size={14} /> Saved</span> : null}
+          </div>
+          </form>
           <div id="account" className="profile-account">
             {admin ? (
               <div className="spread" style={{ flexWrap: 'wrap', gap: 12 }}>
@@ -57,7 +81,6 @@ export function Settings() {
               </div>
             )}
           </div>
-          <label className="check" style={{ marginTop: 14 }}><input type="checkbox" checked={!!p.emailUpdates} onChange={(e) => act.setProfile({ emailUpdates: e.target.checked })} />{live ? 'Email me when something needs me (one short email a day at most)' : 'Email me on rent day, plus a monthly summary'} {!live ? <span className="soft small">(preview: no emails are sent yet)</span> : !conn.config?.emailDelivery && <span className="soft small">(email sending is not switched on yet)</span>}</label>
         </div>
       </section>
 

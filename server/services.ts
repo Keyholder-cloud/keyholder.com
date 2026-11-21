@@ -20,9 +20,12 @@ export interface User {
   id: string; email: string; name: string; role: Role; password_hash: string | null; google_sub: string | null; email_verified_at: Date | null; created_at: Date; disabled_at: Date | null;
   /** Two-step sign-in: the authenticator secret (encrypted), one being set up, since when it is on, the last code step used, backup code hashes. */
   totp_secret?: string | null; totp_pending?: string | null; totp_enabled_at?: Date | null; totp_last_step?: string | number | null; backup_codes?: string[] | null;
+  /** Fingerprint or face (passkeys): how many devices (filled in by the session lookup), and a challenge being answered. */
+  passkey_count?: number | string | null; webauthn_challenge?: string | null; webauthn_challenge_at?: Date | null;
 }
 export const publicUser = (u: User) => ({ id: u.id, email: u.email, name: u.name, role: u.role, emailVerified: !!u.email_verified_at, hasPassword: !!u.password_hash, google: !!u.google_sub,
-  twoStep: !!u.totp_enabled_at, twoStepSince: u.totp_enabled_at ? new Date(u.totp_enabled_at).toISOString().slice(0, 10) : null, backupCodesLeft: u.totp_enabled_at ? (u.backup_codes ?? []).length : 0 });
+  twoStep: !!u.totp_enabled_at, twoStepSince: u.totp_enabled_at ? new Date(u.totp_enabled_at).toISOString().slice(0, 10) : null, backupCodesLeft: u.totp_enabled_at ? (u.backup_codes ?? []).length : 0,
+  twoStepApp: !!u.totp_secret, passkeys: Number(u.passkey_count ?? 0) });
 
 // ---------------- Audit log ----------------
 export interface AuditIn { actor: string; actorId?: string | null; accountId?: string | null; scope: 'auth' | 'app' | 'admin' | 'system'; action: string; detail?: string; ip?: string | null }
@@ -32,8 +35,10 @@ export async function audit(q: Q, a: AuditIn) {
 }
 
 // ---------------- Users ----------------
-export const userByEmail = (q: Q, email: string) => q.one<User>('select * from users where lower(email) = $1', [normEmail(email)]);
-export const userById = (q: Q, id: string) => q.one<User>('select * from users where id = $1', [id]);
+// Each user with how many fingerprint/face devices they have (for two-step sign-in).
+const USER_COLS = 'u.*, (select count(*)::int from passkeys p where p.user_id = u.id) as passkey_count';
+export const userByEmail = (q: Q, email: string) => q.one<User>(`select ${USER_COLS} from users u where lower(u.email) = $1`, [normEmail(email)]);
+export const userById = (q: Q, id: string) => q.one<User>(`select ${USER_COLS} from users u where u.id = $1`, [id]);
 
 export async function createUser(q: Q, u: { email: string; name: string; password?: string; role?: Role; googleSub?: string; verified?: boolean }): Promise<User> {
   const id = randomUUID();
@@ -98,6 +103,7 @@ export async function resetAdminTwoStep(db: Db, cfg: Config): Promise<boolean> {
   const u = await userByEmail(db, cfg.admin.email); if (!u) return false;
   await db.query(`update users set totp_secret = null, totp_pending = null, totp_enabled_at = null, totp_last_step = null, backup_codes = null where id = $1`, [u.id]);
   await db.query('delete from trusted_devices where user_id = $1', [u.id]);
+  await db.query('delete from passkeys where user_id = $1', [u.id]);
   await audit(db, { actor: 'system', actorId: u.id, scope: 'system', action: 'Two-step sign-in reset', detail: 'ADMIN_RESET_TWO_STEP' });
   return true;
 }
@@ -116,7 +122,7 @@ export async function createSession(q: Q, userId: string, days: number, meta: { 
 export async function sessionUser(db: Q, token: string | undefined, days: number): Promise<User | undefined> {
   if (!token || token.length > 100) return undefined;
   const row = await db.one<User & { s_last: Date }>(
-    `select u.*, s.last_seen_at as s_last from sessions s join users u on u.id = s.user_id
+    `select u.*, (select count(*)::int from passkeys p where p.user_id = u.id) as passkey_count, s.last_seen_at as s_last from sessions s join users u on u.id = s.user_id
      where s.token_hash = $1 and s.expires_at > now() and u.disabled_at is null`, [sha256(token)]);
   if (!row) return undefined;
   // Write at most once every 10 minutes per session, not on every request.

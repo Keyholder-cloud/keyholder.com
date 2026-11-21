@@ -88,13 +88,18 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.waitForSelector('.unit-row:has-text("Main")');
     });
     await step(tag, 'A4 Add a tenant: two people on one lease, each with an email (lease from today)', async () => {
-      await pg.locator('text=Add tenant').first().click();
+      // The property's "Add tenant" tab: the form on the page, for its vacant unit.
+      await pg.locator('.tabs a:has-text("Add tenant"), [role=tab]:has-text("Add tenant")').first().click(); await pg.waitForSelector('#vacant-units');
       await pg.fill('#tf-n0', 'Rita Gomez'); await pg.fill('#tf-e0', 'rita@example.com');
-      await pg.locator('.drawer >> text=Add another person').click(); await pg.fill('#tf-n1', 'Luis Gomez'); await pg.fill('#tf-e1', 'luis@example.com');
+      await pg.locator('.tenancy-inline >> text=Add another person').click(); await pg.fill('#tf-n1', 'Luis Gomez'); await pg.fill('#tf-e1', 'luis@example.com');
       const today = await pg.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; });
       await pg.fill('#tf-s', today); await pg.fill('#tf-r', '2000');
-      await pg.locator('.drawer-foot >> text=Save tenant and lease').click(); await pg.waitForTimeout(300);
+      await pg.click('#tf-save'); await pg.waitForTimeout(300);
       await pg.waitForSelector('.unit-row:has-text("Rita Gomez")');
+      // Its only unit is rented now: the tab says a vacant unit is needed.
+      await pg.locator('.tabs a:has-text("Add tenant"), [role=tab]:has-text("Add tenant")').first().click();
+      await pg.waitForSelector('#need-vacant >> text=You need a vacant unit to add a tenant.');
+      await pg.locator('.tabs a:has-text("Units"), [role=tab]:has-text("Units")').first().click(); await pg.waitForSelector('.unit-row:has-text("Rita Gomez")');
     });
     let row = (who) => pg.locator('.rent-row', { hasText: who });
     await step(tag, 'A5 Home row for the new tenant says "Prepare lease"', async () => {
@@ -139,7 +144,9 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     });
     await step(tag, 'A13 Mortgage tab → add mortgage (Gold) with an extra payment', async () => {
       const id = (await state(pg)).properties[0].id; await go(pg, `rent/property/${id}/mortgage`);
-      await pg.locator('.invite >> button').click(); await pg.waitForTimeout(200);
+      // One path: step 2 (the mortgage) is the button now that step 1 is done.
+      if (!(await pg.locator('#level-steps .ls-step.done >> text=Add what you paid').count())) throw new Error('step 1 not shown as done');
+      await pg.click('#add-mortgage'); await pg.waitForTimeout(200);
       await pg.fill('#gd-cc', '3000'); await pg.fill('#gd-ltt', '8000'); await pg.fill('#mf-l', 'TD'); await pg.fill('#mf-p', '390000');
       await pg.locator('text=Add an extra payment').click();
       await pg.locator('.drawer-foot >> text=Save').click(); await pg.waitForTimeout(400);
@@ -468,7 +475,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await p.locator('text=Add tenant').first().click(); await p.fill('#tf-n0', 'Nora Bell'); await p.fill('#tf-s', '2024-03-01'); await p.fill('#tf-r', '1800');
       await p.waitForSelector('#tf-standing >> text=Are they in good standing?');
       if (!(await p.inputValue('#tf-paid'))) throw new Error('no last month chosen for "Yes"');
-      await p.locator('.drawer-foot >> text=Save tenant and lease').click(); await p.waitForSelector('.unit-row:has-text("Nora")');
+      await p.click('#tf-save'); await p.waitForSelector('.unit-row:has-text("Nora")');
       const st = await state(p); const l = st.leases.find((x) => x.start === '2024-03-01');
       if (!l || !l.paidThrough || !l.standingChecked) throw new Error('answer not saved: ' + JSON.stringify(l));
       await go(p, 'today'); await p.waitForSelector('.rent-row');
@@ -690,7 +697,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       return pill;
     });
     await step(tag, 'H6 Switch Unit C to "By the room": accepting one applicant keeps the others open', async () => {
-      await go(pg, 'rent/property/p-maple'); await pg.locator('text=Edit unit C').click();
+      await go(pg, 'rent/property/p-maple'); await pg.locator('.unit-row:has(.unit-label:text-is("C"))').locator('.dots').click(); await pg.locator('[role=menuitem]:has-text("Edit unit")').click();
       await pg.locator('.drawer [aria-label="How is it rented?"] >> text=By the room').click(); await pg.fill('#uf-rooms', '2');
       await pg.locator('.drawer-foot >> text=Save unit').click(); await pg.waitForTimeout(250);
       await go(pg, 'rent/property/p-maple/find'); await pg.waitForSelector('text=0 of 2 rooms rented');
@@ -725,6 +732,47 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       const st = await state(pg);
       if (st.tenants.some((t) => t.id === 't-grace') || st.leases.some((l) => l.id === 'l-grace') || st.payments.some((p) => p.leaseId === 'l-grace')) throw new Error('Grace is still there');
       if (!st.audit.some((a) => a.action === 'Tenant deleted')) throw new Error('not in the history');
+    });
+    await step(tag, 'H10 Settings profile: changes wait for Save (button off until something changes)', async () => {
+      await go(pg, 'settings'); if (!(await pg.locator('#st-save').isDisabled())) throw new Error('Save is on with nothing changed');
+      await pg.fill('#st-ph', '416-555-0199'); await pg.waitForSelector('text=You have changes that are not saved yet.');
+      if ((await state(pg)).profile.phone === '416-555-0199') throw new Error('saved before Save');
+      await pg.click('#st-save'); await pg.waitForSelector('.profile-save >> text=Saved');
+      if ((await state(pg)).profile.phone !== '416-555-0199') throw new Error('not saved');
+      if (!(await pg.locator('#st-save').isDisabled())) throw new Error('Save still on after saving');
+    });
+    await step(tag, 'H11 Property tabs: Units, then Add tenant listing the vacant units and rooms', async () => {
+      await go(pg, 'rent/property/p-maple'); const tabs = (await pg.locator('.tabs a, [role=tab]').allTextContents()).join(' ');
+      if (!/Units.*Add tenant/.test(tabs)) throw new Error('tabs: ' + tabs);
+      await pg.locator('.tabs a:has-text("Add tenant"), [role=tab]:has-text("Add tenant")').first().click();
+      await pg.waitForSelector('#vacant-units'); await pg.waitForSelector('#tf-save');
+    });
+    await step(tag, 'H12 Delete a unit that never had a tenant from its ⋯ menu; a rented unit cannot be deleted', async () => {
+      await go(pg, 'rent/property/p-maple'); await pg.click('#add-unit'); await pg.fill('#uf-l', 'Z');
+      await pg.locator('.drawer-foot >> text=Save unit').click(); await pg.waitForTimeout(300);
+      const row = pg.locator('.unit-row:has(.unit-label:text-is("Z"))'); await row.locator('.dots').click();
+      await pg.locator('[role=menuitem]:has-text("Delete unit")').click(); await pg.waitForSelector('.drawer h2:has-text("Delete Unit Z?")'); await approve(pg);
+      if ((await state(pg)).units.some((u) => u.label === 'Z')) throw new Error('unit Z still there');
+      await pg.keyboard.press('Escape');
+      await pg.locator('.unit-row:has(.unit-label:text-is("A"))').locator('.dots').first().click();
+      if (!(await pg.locator('text=end the lease first').count())) throw new Error('no reason shown for a rented unit');
+      await pg.keyboard.press('Escape');
+    });
+    await step(tag, 'H13 Bronze: one two-step path, step 2 greyed until step 1, no duplicate "Add what you paid"', async () => {
+      await go(pg, 'rent/property/p-birch/value'); await pg.waitForSelector('#level-steps .ls-step.now >> text=Add what you paid');
+      await pg.waitForSelector('#level-steps .ls-step.later >> text=Do step 1 first');
+      const n = await pg.locator('main button:has-text("Add what you paid"), main a:has-text("Add what you paid")').count();
+      if (n !== 1) throw new Error(n + ' "Add what you paid" buttons');
+    });
+    await step(tag, 'H14 Archive a property (sold): it leaves Rentals, leases end, records stay; Restore brings it back', async () => {
+      await go(pg, 'rent/property/p-birch'); await pg.click('#archive-property'); await pg.waitForSelector('.drawer h2:has-text("Archive")');
+      await approve(pg); await pg.waitForSelector('#archived');
+      let st = await state(pg); const p = st.properties.find((x) => x.id === 'p-birch');
+      if (p.archivedReason !== 'sold' || !p.archivedOn) throw new Error('not archived: ' + JSON.stringify(p).slice(0, 120));
+      if (await pg.locator('.prop-card:has-text("Home + basement suite"), .unit-list:has-text("Home + basement suite")').count()) throw new Error('still in Rentals');
+      if (!st.payments.some((x) => st.leases.find((l) => l.id === x.leaseId && st.units.find((u) => u.id === l.unitId)?.propertyId === 'p-birch'))) throw new Error('payments were removed');
+      await pg.locator('#archived >> text=Restore').first().click(); await pg.waitForTimeout(300);
+      st = await state(pg); if (st.properties.find((x) => x.id === 'p-birch').archivedOn) throw new Error('not restored');
     });
     ok(tag, 'H errors', errsH.length === 0, errsH.slice(0, 3).join(' | '));
 

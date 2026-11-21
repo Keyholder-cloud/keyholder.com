@@ -14,6 +14,8 @@ import { queueMail, recordError } from './email';
 import { newTicketAdminMail, resetMail, ticketAckMail, welcomeMail } from './mails';
 import { burnPasswordCheck, newToken, normEmail, passwordProblem, sha256, verifyPassword, hashPassword } from './security';
 import { backupHash, checkCode, looksLikeBackup, newBackupCodes, newSecret, otpauthUri } from './totp';
+import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from '@simplewebauthn/server';
+import type { AuthenticationResponseJSON, AuthenticatorTransport } from '@simplewebauthn/server';
 import {
   accountFor, audit, createLinkToken, createSession, createUser, endAllSessions, endSession, isTeam, publicUser, readState, sessionUser,
   SESSION_COOKIE, stateProblem, useLinkToken, userByEmail, userById, writeState, type User,
@@ -118,7 +120,32 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   };
   const needSuper = (req: FastifyRequest): User => { const u = need(req); if (u.role !== 'super') fail(403, 'Only the super user can do this.'); return u; };
   // ---------------- Two-step sign-in (authenticator app) ----------------
-  const twoStepOn = (u: User) => !!u.totp_enabled_at && !!u.totp_secret;
+  // On with an authenticator app, fingerprint or face (passkeys), or both; backup codes always.
+  const twoStepOn = (u: User) => !!u.totp_enabled_at;
+  // ---- Fingerprint or face (passkeys, WebAuthn) ----
+  const rp = (() => { const x = new URL(cfg.appUrl); return { id: x.hostname, origin: x.origin }; })();
+  type PasskeyRow = { id: string; public_key: string; counter: string | number; transports: string[] | null; name: string; created_at: Date; last_used_at: Date | null };
+  const passkeysOf = (userId: string) => db.query<PasskeyRow>('select * from passkeys where user_id = $1 order by created_at', [userId]);
+  /** Checks a fingerprint/face answer against the person's devices and the challenge they were given. */
+  const checkPasskey = async (u: User, response: AuthenticationResponseJSON, challenge: string | null | undefined): Promise<boolean> => {
+    if (!challenge || !response?.id) return false;
+    const row = (await passkeysOf(u.id)).find((x) => x.id === response.id); if (!row) return false;
+    try {
+      const v = await verifyAuthenticationResponse({ response, expectedChallenge: challenge, expectedOrigin: rp.origin, expectedRPID: rp.id, requireUserVerification: true,
+        credential: { id: row.id, publicKey: new Uint8Array(Buffer.from(row.public_key, 'base64url')), counter: Number(row.counter), transports: (row.transports ?? undefined) as AuthenticatorTransport[] | undefined } });
+      if (!v.verified) return false;
+      await db.query('update passkeys set counter = $2, last_used_at = now() where id = $1', [row.id, v.authenticationInfo.newCounter]);
+      return true;
+    } catch { return false; }
+  };
+  /** A short name for a new device, from the browser: "iPhone", "Mac", "Windows"… */
+  const deviceName = (ua = '') => /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows computer' : 'This device';
+  /** A second factor for a signed-in action (new backup codes, turning it off): a code, a backup code, or fingerprint/face. */
+  const confirmSecond = async (u: User, b: { code?: string; passkey?: AuthenticationResponseJSON }) => {
+    if (b.passkey) { const ok = await checkPasskey(u, b.passkey, u.webauthn_challenge); if (ok) await db.query('update users set webauthn_challenge = null where id = $1', [u.id]); return ok; }
+    return !!b.code && !!(await secondFactor(u, b.code));
+  };
+  const SecondBody = z.object({ code: z.string().max(20).optional(), passkey: z.any().optional() });
   /** This browser was trusted for 30 days after a code (only for the same person). */
   const trustedDevice = async (req: FastifyRequest, u: User) => {
     const t = req.cookies[TRUST_COOKIE]; if (!t) return false;
@@ -218,15 +245,15 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   // Limited per sign-in (each ticket allows 5 wrong codes); a new ticket needs the password again.
   const ticketLimit = { rateLimit: { hook: 'preHandler' as const, max: 10, timeWindow: '1 minute', keyGenerator: (r: FastifyRequest) => `${r.ip}:${String((r.body as { ticket?: string })?.ticket ?? '').slice(0, 16)}` } };
   app.post('/api/auth/two-step', { config: ticketLimit }, async (req, reply) => {
-    const b = z.object({ ticket: z.string().min(10).max(100), code: z.string().max(20), trust: z.boolean().optional() }).parse(req.body);
-    const t = await db.one<{ user_id: string; attempts: number }>(`select user_id, attempts from two_step_tickets where token_hash = $1 and used_at is null and expires_at > now()`, [sha256(b.ticket)]);
+    const b = z.object({ ticket: z.string().min(10).max(100), code: z.string().max(20).optional(), passkey: z.any().optional(), trust: z.boolean().optional() }).parse(req.body);
+    const t = await db.one<{ user_id: string; attempts: number; challenge: string | null }>(`select user_id, attempts, challenge from two_step_tickets where token_hash = $1 and used_at is null and expires_at > now()`, [sha256(b.ticket)]);
     const u = t && t.attempts < 5 ? await userById(db, t.user_id) : undefined;
     if (!u || u.disabled_at || !twoStepOn(u)) fail(400, 'This sign-in has expired. Please sign in again.');
-    const how = await secondFactor(u!, b.code);
+    const how = b.passkey ? ((await checkPasskey(u!, b.passkey, t!.challenge)) ? 'passkey' : null) : b.code ? await secondFactor(u!, b.code) : null;
     if (!how) {
       await db.query('update two_step_tickets set attempts = attempts + 1 where token_hash = $1', [sha256(b.ticket)]);
       await audit(db, { actor: u!.email, actorId: u!.id, scope: 'auth', action: 'Sign-in failed', detail: 'Wrong two-step code', ip: ip(req) });
-      fail(401, 'That code is not right. Use the newest code in your app, or a backup code.');
+      fail(401, b.passkey ? 'Fingerprint or face did not work. Try again, or use a code.' : 'That code is not right. Use the newest code in your app, or a backup code.');
     }
     await db.query('update two_step_tickets set used_at = now() where token_hash = $1', [sha256(b.ticket)]);
     await startSession(req, reply, u!);
@@ -235,7 +262,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
       await db.query(`insert into trusted_devices (token_hash, user_id, expires_at) values ($1, $2, now() + interval '30 days')`, [sha256(token), u!.id]);
       reply.setCookie(TRUST_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: cfg.cookieSecure, path: '/api/auth', maxAge: 30 * 86400 });
     }
-    await audit(db, { actor: u!.email, actorId: u!.id, scope: 'auth', action: 'Signed in', detail: how === 'backup' ? 'Two-step: backup code' : 'Two-step: authenticator code', ip: ip(req) });
+    await audit(db, { actor: u!.email, actorId: u!.id, scope: 'auth', action: 'Signed in', detail: how === 'backup' ? 'Two-step: backup code' : how === 'passkey' ? 'Two-step: fingerprint or face' : 'Two-step: authenticator code', ip: ip(req) });
     return { user: publicUser((await userById(db, u!.id))!) };
   });
 
@@ -254,6 +281,12 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     const secret = keys.decrypt(u.totp_pending!);
     const step = checkCode(secret, code);
     if (step === null) fail(400, 'That code is not right. Check the time on your phone and use the newest code.');
+    if (twoStepOn(u)) {
+      // Already on (fingerprint or face): the app is added; the backup codes stay as they are.
+      await db.query(`update users set totp_secret = totp_pending, totp_pending = null, totp_last_step = $2 where id = $1`, [u.id, step]);
+      await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Authenticator app added', ip: ip(req) });
+      return { backupCodes: null, user: publicUser((await userById(db, u.id))!) };
+    }
     const backup = newBackupCodes();
     await db.query(`update users set totp_secret = totp_pending, totp_pending = null, totp_enabled_at = now(), totp_last_step = $2, backup_codes = $3 where id = $1`, [u.id, step, JSON.stringify(backup.hashes)]);
     await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Two-step sign-in turned on', ip: ip(req) });
@@ -262,9 +295,9 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   // New backup codes (the old ones stop working); needs a current code.
   app.post('/api/auth/two-step/backup-codes', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
     const u = need(req);
-    const { code } = z.object({ code: z.string().max(20) }).parse(req.body);
+    const b = SecondBody.parse(req.body);
     if (!twoStepOn(u)) fail(400, 'Two-step sign-in is off.');
-    if (!(await secondFactor(u, code))) fail(400, 'That code is not right.');
+    if (!(await confirmSecond(u, b))) fail(400, 'That code is not right.');
     const backup = newBackupCodes();
     await db.query('update users set backup_codes = $2 where id = $1', [u.id, JSON.stringify(backup.hashes)]);
     await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'New backup codes', ip: ip(req) });
@@ -273,15 +306,84 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   // Turning it off: a landlord's choice (needs a current code). The Keyholder team keeps it on.
   app.post('/api/auth/two-step/disable', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const u = need(req);
-    const { code } = z.object({ code: z.string().max(20) }).parse(req.body);
+    const b = SecondBody.parse(req.body);
     if (isTeam(u.role)) fail(403, 'Two-step sign-in stays on for the Keyholder team.');
     if (!twoStepOn(u)) return { user: publicUser(u) };
-    if (!(await secondFactor(u, code))) fail(400, 'That code is not right.');
+    if (!(await confirmSecond(u, b))) fail(400, 'That code is not right.');
     await db.query(`update users set totp_secret = null, totp_pending = null, totp_enabled_at = null, totp_last_step = null, backup_codes = null where id = $1`, [u.id]);
+    await db.query('delete from passkeys where user_id = $1', [u.id]);
     await db.query('delete from trusted_devices where user_id = $1', [u.id]);
     reply.clearCookie(TRUST_COOKIE, { path: '/api/auth' });
     await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Two-step sign-in turned off', ip: ip(req) });
     return { user: publicUser((await userById(db, u.id))!) };
+  });
+
+  // ---- Fingerprint or face (passkeys) ----
+  // Adding this device: the browser asks for fingerprint or face, and the device's key is saved (the first one turns
+  // two-step sign-in on, with backup codes).
+  app.post('/api/auth/passkey/register-options', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
+    const u = need(req);
+    const existing = await passkeysOf(u.id);
+    const options = await generateRegistrationOptions({
+      rpName: 'Keyholder', rpID: rp.id, userName: u.email, userDisplayName: u.name || u.email, userID: new TextEncoder().encode(u.id),
+      attestationType: 'none', excludeCredentials: existing.map((x) => ({ id: x.id, transports: x.transports ?? undefined })),
+      authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'preferred', userVerification: 'required' },
+    });
+    await db.query('update users set webauthn_challenge = $2, webauthn_challenge_at = now() where id = $1', [u.id, options.challenge]);
+    return options;
+  });
+  app.post('/api/auth/passkey/register', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
+    const u = need(req);
+    const b = z.object({ response: z.any(), name: z.string().max(60).optional() }).parse(req.body);
+    const fresh = u.webauthn_challenge && u.webauthn_challenge_at && Date.now() - new Date(u.webauthn_challenge_at).getTime() < 5 * 60_000;
+    if (!fresh) fail(400, 'That took too long. Please try again.');
+    let info: Awaited<ReturnType<typeof verifyRegistrationResponse>>;
+    try { info = await verifyRegistrationResponse({ response: b.response, expectedChallenge: u.webauthn_challenge!, expectedOrigin: rp.origin, expectedRPID: rp.id, requireUserVerification: true }); }
+    catch { fail(400, 'This device could not be added. Please try again.'); }
+    if (!info!.verified) fail(400, 'This device could not be added. Please try again.');
+    const c = info!.registrationInfo!.credential;
+    const name = (b.name || deviceName(req.headers['user-agent'])).slice(0, 60);
+    await db.query('insert into passkeys (id, user_id, public_key, counter, transports, name) values ($1, $2, $3, $4, $5, $6) on conflict (id) do nothing',
+      [c.id, u.id, Buffer.from(c.publicKey).toString('base64url'), c.counter, JSON.stringify(c.transports ?? []), name]);
+    await db.query('update users set webauthn_challenge = null where id = $1', [u.id]);
+    let backupCodes: string[] | null = null;
+    if (!twoStepOn(u)) {
+      const backup = newBackupCodes(); backupCodes = backup.codes;
+      await db.query('update users set totp_enabled_at = now(), backup_codes = $2 where id = $1', [u.id, JSON.stringify(backup.hashes)]);
+      await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Two-step sign-in turned on', detail: 'Fingerprint or face', ip: ip(req) });
+    }
+    await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Fingerprint or face added', detail: name, ip: ip(req) });
+    return { backupCodes, user: publicUser((await userById(db, u.id))!) };
+  });
+  app.get('/api/auth/passkeys', async (req) => {
+    const u = need(req);
+    return (await passkeysOf(u.id)).map((x) => ({ id: x.id, name: x.name, added: new Date(x.created_at).toISOString().slice(0, 10), lastUsed: x.last_used_at ? new Date(x.last_used_at).toISOString().slice(0, 10) : null }));
+  });
+  app.post('/api/auth/passkey/remove', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
+    const u = need(req);
+    const { id } = z.object({ id: z.string().max(300) }).parse(req.body);
+    const mine = await passkeysOf(u.id);
+    if (!mine.some((x) => x.id === id)) fail(404, 'That device is not on your account.');
+    if (mine.length === 1 && !u.totp_secret) fail(400, isTeam(u.role) ? 'This is your only way to do two-step sign-in. Add an authenticator app first.' : 'This is your only way to do two-step sign-in. Add an authenticator app first, or turn two-step sign-in off.');
+    await db.query('delete from passkeys where id = $1 and user_id = $2', [id, u.id]);
+    await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Fingerprint or face removed', detail: mine.find((x) => x.id === id)?.name, ip: ip(req) });
+    return { user: publicUser((await userById(db, u.id))!) };
+  });
+  // Using it: at sign-in (with the ticket), or for a signed-in action (no ticket). Says whether an app code works too.
+  app.post('/api/auth/passkey/options', { config: ticketLimit }, async (req) => {
+    const { ticket } = z.object({ ticket: z.string().min(10).max(100).optional() }).parse(req.body ?? {});
+    let u: User | undefined;
+    if (ticket) {
+      const t = await db.one<{ user_id: string; attempts: number }>(`select user_id, attempts from two_step_tickets where token_hash = $1 and used_at is null and expires_at > now()`, [sha256(ticket)]);
+      u = t && t.attempts < 5 ? await userById(db, t.user_id) : undefined;
+      if (!u) fail(400, 'This sign-in has expired. Please sign in again.');
+    } else u = need(req);
+    const mine = await passkeysOf(u!.id);
+    if (!mine.length) return { options: null, app: !!u!.totp_secret };
+    const options = await generateAuthenticationOptions({ rpID: rp.id, allowCredentials: mine.map((x) => ({ id: x.id, transports: x.transports ?? undefined })), userVerification: 'required' });
+    if (ticket) await db.query('update two_step_tickets set challenge = $2 where token_hash = $1', [sha256(ticket), options.challenge]);
+    else await db.query('update users set webauthn_challenge = $2, webauthn_challenge_at = now() where id = $1', [u!.id, options.challenge]);
+    return { options, app: !!u!.totp_secret };
   });
 
   app.post('/api/auth/logout', async (req, reply) => {

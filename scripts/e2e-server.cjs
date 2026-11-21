@@ -115,6 +115,8 @@ async function nextCode(key) {
 }
 /** Finishes a set-up on screen (QR step): reads the key, types the code, keeps the backup codes. */
 async function finishSetUp(pg, key) {
+  // The first screen offers fingerprint or face, or the app: the test uses the app.
+  await pg.waitForSelector('#ts-way-app, #ts-start'); if (await pg.locator('#ts-way-app').count()) await pg.click('#ts-way-app');
   await pg.click('#ts-start'); await pg.waitForSelector('#ts-secret');
   const secret = (await pg.locator('#ts-secret').textContent()).replace(/\s/g, '');
   apps.set(key, { secret, last: stepNow() - 2, backup: [] });
@@ -127,8 +129,8 @@ async function finishSetUp(pg, key) {
 async function teamSignIn(pg, user, password) {
   await signIn(pg, user, password);
   const key = personKey(user);
-  await pg.waitForSelector('.sp-page, #ts-code, #ts-start', { timeout: 15000 });
-  if (await pg.locator('#ts-start').count()) { await finishSetUp(pg, key); }
+  await pg.waitForSelector('.sp-page, #ts-code, #ts-start, #ts-way-app', { timeout: 15000 });
+  if (await pg.locator('#ts-start, #ts-way-app').count()) { await finishSetUp(pg, key); }
   else if (await pg.locator('#ts-code').count()) { await pg.fill('#ts-code', await nextCode(key)); await pg.click('.two-step-form >> text=Continue'); }
   await pg.waitForSelector('.sp-page', { timeout: 15000 });
 }
@@ -194,7 +196,7 @@ function watch(pg, errors, label) {
         await pg.fill('#tf-n0', 'Rita Gomez'); await pg.fill('#tf-e0', `rita.${tag}@tenant-e2e.ca`);
         const first = await pg.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; });
         await pg.fill('#tf-s', first); await pg.fill('#tf-r', '2000');
-        await pg.locator('.drawer-foot >> text=Save tenant and lease').click(); await pg.waitForSelector('.unit-row:has-text("Rita Gomez")');
+        await pg.click('#tf-save'); await pg.waitForSelector('.unit-row:has-text("Rita Gomez")');
         const st = await until(async () => { const r = (await api(pg, '/api/state')).body; return r?.data?.tenants?.some((t) => t.names[0] === 'Rita Gomez') && r; }, 6000, 'tenant saved');
         return `${st.data.properties.length} property, ${st.data.tenants.length} tenant · revision ${st.revision}`;
       });
@@ -298,18 +300,20 @@ function watch(pg, errors, label) {
       });
       await step(tag, 'E10 A change on one device shows on the other', async () => {
         await signIn(pg, email, password); await pg.waitForSelector('.rent-row:has-text("Rita")');
-        await go(pgB, 'settings'); await pgB.locator('#profile > .sheet > label.check input').check();
-        await until(async () => (await api(pgB, '/api/state')).body.data.profile.emailUpdates === true, 6000, 'saved on B');
+        await go(pgB, 'settings'); const box = pgB.locator('#profile-form label.check input'); const want = !(await box.isChecked());
+        await box.setChecked(want); await pgB.click('#st-save');
+        await until(async () => (await api(pgB, '/api/state')).body.data.profile.emailUpdates === want, 6000, 'saved on B');
         await pg.evaluate(() => window.dispatchEvent(new Event('focus')));
-        await until(async () => (await pg.evaluate(() => JSON.parse(localStorage.getItem('keyholder:v1')))).profile.emailUpdates === true, 8000, 'device A updated');
+        await until(async () => (await pg.evaluate(() => JSON.parse(localStorage.getItem('keyholder:v1')))).profile.emailUpdates === want, 8000, 'device A updated');
       });
       await step(tag, 'E10b Signed out on the server mid-use: the change is kept and saved after signing in again', async () => {
         await go(pg, 'settings');
         await pg.evaluate(() => fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
-        await pg.locator('#profile > .sheet > label.check input').uncheck();
+        const box = pg.locator('#profile-form label.check input'); const want = !(await box.isChecked()); global.__e10b = want;
+        await box.setChecked(want); await pg.click('#st-save');
         await pg.waitForSelector('text=You were signed out', { timeout: 8000 });
         await signIn(pg, email, password); await pg.waitForSelector('.rent-row:has-text("Rita")');
-        await until(async () => (await api(pg, '/api/state')).body?.data?.profile?.emailUpdates === false, 8000, 'change saved after signing in');
+        await until(async () => (await api(pg, '/api/state')).body?.data?.profile?.emailUpdates === global.__e10b, 8000, 'change saved after signing in');
       });
       await step(tag, 'E11 Help (side menu; phones: More) → Write to us opens its own popup and reaches the support inbox', async () => {
         if (tag === 'phone') { await go(pg, 'more'); await pg.locator('.more-list .help-btn').click(); } else { await go(pg, 'today'); await pg.locator('.rail-foot .help-btn').click(); }
@@ -436,7 +440,7 @@ function watch(pg, errors, label) {
         const ctx = await b.newContext({ viewport: vp }); const p = await ctx.newPage(); watch(p, errors, 'admin-invite');
         await p.goto(invite.text_body.match(/https?:\/\/\S+/)[0]); await p.fill('#new-pass', 'ava-the-admin-2026'); await p.click('text=Save and sign in');
         // A new team member sets up two-step sign-in before the dashboard opens.
-        await p.waitForSelector('#ts-start'); await finishSetUp(p, mail.toLowerCase());
+        await p.waitForSelector('#ts-start, #ts-way-app'); await finishSetUp(p, mail.toLowerCase());
         await p.waitForSelector('.sp-page');
         if ((await p.locator('.sp-nav-group > p').allTextContents()).includes('Super user')) throw new Error('an Admin sees the Super user pages');
         await go(p, 'support/team'); await p.waitForSelector('text=Only the super user adds, changes or removes team members');
@@ -498,7 +502,10 @@ function watch(pg, errors, label) {
         await pg.reload(); if (!(await api(pg, '/api/session')).body.user) await signIn(pg, email, password);
         await go(pg, `rent/property/${prop.id}/value`);
         if (!prop.purchasePrice) {
-          await pg.waitForSelector('#worth >> text=Add what you paid'); await pg.click('#add-paid');
+          // One path: step 1 is the only button; step 2 waits, greyed.
+          await pg.waitForSelector('#level-steps .ls-step.now >> text=Add what you paid'); await pg.waitForSelector('#level-steps .ls-step.later >> text=Do step 1 first');
+          if ((await pg.locator('text=Add what you paid').count()) > 3) throw new Error('asked more than once');
+          await pg.click('#add-paid');
           await pg.fill('#sv-price', '500000'); await pg.fill('#sv-date', '2020-05-01'); await pg.fill('#sv-owed', '300000');
           await pg.locator('.drawer-foot .btn.primary').click();
         }
@@ -584,6 +591,29 @@ function watch(pg, errors, label) {
         await q.waitForSelector('.rent-row, .rent-card, .start-steps');
         const me = (await api(q, '/api/session')).body.user; if (!me.twoStep || me.backupCodesLeft !== 9) throw new Error('session: ' + JSON.stringify(me));
         await q.context().close(); await ctx.close();
+      });
+      await step(tag, 'E34 Fingerprint or face: added in Settings, then used at sign-in instead of a code', async () => {
+        const ctx = await b.newContext({ viewport: vp }); const p = await ctx.newPage(); watch(p, errors, 'passkey');
+        // A built-in fingerprint reader that always says yes (Chromium's virtual authenticator).
+        const cdp = await ctx.newCDPSession(p); await cdp.send('WebAuthn.enable');
+        await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+        await signIn(p, email, password); await p.waitForSelector('#ts-code');
+        if (await p.locator('#ts-biometric').count()) throw new Error('fingerprint offered before any device was added');
+        await p.fill('#ts-code', await nextCode(email.toLowerCase())); await p.click('.two-step-form >> text=Continue');
+        await p.waitForSelector('.rent-row, .rent-card, .start-steps');
+        await go(p, 'settings'); await p.waitForSelector('#ts-devices >> text=No device yet');
+        await p.click('#ts-add-device'); await p.waitForSelector('#ts-devices .two-step-devices li');
+        await p.waitForSelector('#ts-app >> text=Set up.');
+        // Signed out, then back in: fingerprint or face instead of the code.
+        await p.evaluate(() => fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
+        await p.evaluate(() => localStorage.clear()); await p.goto(BASE + '#/welcome'); await p.reload(); await p.waitForSelector('.lp-hero-h');
+        await signIn(p, email, password);
+        await p.waitForSelector('#ts-biometric'); await p.click('#ts-biometric');
+        await p.waitForSelector('.rent-row, .rent-card, .start-steps', { timeout: 15000 });
+        // Removing it leaves the app; two-step stays on.
+        await go(p, 'settings'); await p.locator('#ts-devices li >> text=Remove').click(); await p.waitForSelector('#ts-devices >> text=No device yet');
+        const me = (await api(p, '/api/session')).body.user; if (!me.twoStep || me.passkeys !== 0) throw new Error('session: ' + JSON.stringify(me));
+        await ctx.close();
       });
       await step(tag, 'E18 No preview on the live site: admin / admin is refused', async () => {
         const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); const p = await ctx.newPage();
