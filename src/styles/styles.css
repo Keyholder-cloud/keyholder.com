@@ -765,3 +765,10 @@ a.chip { text-decoration: none; }
 #profile .input { min-height: 42px; height: 42px; padding-top: 0; padding-bottom: 0; font-size: 15px; }
 #profile .profile-save .btn { min-height: 40px; }
 .sp-email-off { display: flex; gap: 6px; align-items: flex-start; color: var(--rust); margin: 0 0 8px; }
+/* Computers: Setup and Settings sit at the top right beside the page title, so pages start near the top
+   (owner, 2026-11-21: the space above every page ÷ 3). */
+@media (min-width: 861px) {
+  .top-tools.desk { float: right; padding: 8px 24px 0 12px; position: relative; z-index: 5; }
+  .page { padding-top: 8px; }
+}
+.title-ic-inline { display: inline-flex; align-items: center; gap: 8px; }

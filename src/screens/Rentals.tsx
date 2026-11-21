@@ -42,7 +42,7 @@ function BankDeposits() {
   const item = items.find((t) => t.id === open);
   return (
     <section className="section" id="bank-deposits">
-      <h2 className="section-title"><Icon name="bank" size={18} /> From your bank · {items.length} to check</h2>
+      <h2 className="section-title"><span className="title-ic-inline"><Icon name="bank" size={18} />From your bank · {items.length} to check</span></h2>
       <div className="sheet tight"><ul className="unit-list">{items.map((t) => {
         const who = t.suggestion ? state.tenants.find((x) => x.id === state.leases.find((l) => l.id === t.suggestion!.leaseId)?.tenantId)?.names[0] : undefined;
         return (

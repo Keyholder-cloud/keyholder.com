@@ -125,8 +125,8 @@ async function finishSetUp(pg, key) {
   apps.get(key).backup = (await pg.locator('#ts-backup code').allTextContents());
   await pg.click('#ts-done');
 }
-/** After the second step: "Remember this device?" → Not now (the tests sign in fresh each time). */
-async function notNow(pg) { await pg.waitForSelector('#ts-remember-no'); await pg.click('#ts-remember-no'); }
+/** The second step leaves "Remember this device" unticked: the tests sign in fresh each time. */
+async function notNow() {}
 /** The Keyholder team signs in: password, then two-step (set up the first time, as the dashboard asks). */
 async function teamSignIn(pg, user, password) {
   await signIn(pg, user, password);
@@ -589,8 +589,7 @@ function watch(pg, errors, label) {
         // A backup code works as well (once), and "Remember this device" skips the second step next time.
         const q = await (await b.newContext({ viewport: vp })).newPage(); watch(q, errors, 'two-step-backup');
         await signIn(q, email, password); await q.waitForSelector('#ts-code');
-        await q.fill('#ts-code', apps.get(email.toLowerCase()).backup[0]); await q.click('.two-step-form >> text=Continue');
-        await q.waitForSelector('#ts-remember >> text=Remember this device?'); await q.click('#ts-remember-yes');
+        await q.fill('#ts-code', apps.get(email.toLowerCase()).backup[0]); await q.check('#ts-remember'); await q.click('.two-step-form >> text=Continue');
         await q.waitForSelector('.rent-row, .rent-card, .start-steps');
         const me = (await api(q, '/api/session')).body.user; if (!me.twoStep || me.backupCodesLeft !== 9) throw new Error('session: ' + JSON.stringify(me));
         const devs = (await api(q, '/api/auth/devices')).body; if (!Array.isArray(devs) || devs.length !== 1 || !devs[0].thisDevice) throw new Error('remembered: ' + JSON.stringify(devs));
