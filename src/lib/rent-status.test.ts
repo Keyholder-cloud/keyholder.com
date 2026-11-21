@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seedState } from '../data/seed';
 import type { AppState, BankTxn, Payment } from '../data/types';
-import { activeLeases, defaultPeriod, leaseLedger, paidOn, roomsPaid } from './finance';
+import { activeLeases, defaultPeriod, leaseLedger, paidOn, roomsPaid, roomsPill } from './finance';
 import { journeyLeases } from './journey';
 import { markedCandidates, markedPayment, suggestMatch } from './matching';
 import { trayItems } from './tray';
@@ -83,10 +83,20 @@ describe('rent marked paid stays paid, for every kind of rental', () => {
   it('shows the day rent was paid, and how many rooms have paid', () => {
     const s = rooms();
     const unit = s.units.find((u) => u.id === 'u-bsmt')!;
-    expect(roomsPaid(s, unit, today)).toEqual({ rented: 2, paid: 0, late: 2 });
+    expect(roomsPaid(s, unit, today)).toEqual({ rented: 2, charged: 2, paid: 0, late: 2 });
     markPaid(s, 'l-sam', '2026-11-03');
     expect(paidOn(nov(s, 'l-sam'))).toBe('2026-11-03');
-    expect(roomsPaid(s, unit, today)).toEqual({ rented: 2, paid: 1, late: 1 });
+    expect(roomsPaid(s, unit, today)).toEqual({ rented: 2, charged: 2, paid: 1, late: 1 });
+  });
+
+  it('counts rooms rented before their rent starts (move-in later this month or next)', () => {
+    const s = rooms();
+    const unit = s.units.find((u) => u.id === 'u-bsmt')!;
+    for (const l of s.leases.filter((x) => x.unitId === unit.id)) l.start = '2026-12-01';
+    const sum = roomsPaid(s, unit, today);
+    expect(sum).toEqual({ rented: 2, charged: 0, paid: 0, late: 0, startsOn: '2026-12-01' });
+    expect(roomsPill(sum, (d) => d.slice(5)).label).toBe('2 rooms rented · rent starts 12-01');
+    expect(roomsPill(roomsPaid(rooms(), unit, today), (d) => d).label).toBe('0 of 2 paid');
   });
 
   it('keeps a room tenant whose lease has no room number (the unit was switched to by the room later)', () => {

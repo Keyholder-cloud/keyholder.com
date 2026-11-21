@@ -1,9 +1,12 @@
 import { useMemo } from 'react';
 import { StandingCheck } from '../components/Standing';
-import { banksOn } from '../data/api';
+import { banksOn, useConn } from '../data/api';
+import { twoStepToOffer } from '../components/TwoStep';
+import { isHidden } from '../lib/journey';
+import { Icon } from '../components/Icon';
 import { Link } from 'react-router-dom';
 import { useStore } from '../data/store';
-import { fmtDay, periodOf } from '../lib/dates';
+import { addDays, fmtDay, periodOf } from '../lib/dates';
 import { activeLeases, hasSpace, leaseLedger } from '../lib/finance';
 import { RentRows } from '../components/Journey';
 import { trayItems } from '../lib/tray';
@@ -16,7 +19,9 @@ import type { LedgerLine } from '../lib/finance';
 // Home answers one question first: "Am I okay this month?" Then: what to do next, and what's coming.
 
 export function Today() {
-  const { state, today } = useStore();
+  const { state, act, today } = useStore();
+  const { user, config } = useConn();
+  const offerTwoStep = twoStepToOffer(user, config?.twoStep);
   const p = periodOf(today);
   const todo = useMemo(() => trayItems(state, today), [state, today]);
   const pending = new Set(todo.flatMap((t) => (t.kind === 'match' && t.suggestion ? [t.suggestion.leaseId] : [])));
@@ -28,6 +33,8 @@ export function Today() {
       { done: state.properties.length > 0, title: 'Add your property', sub: 'The address and how many units.', to: '/rentals', btn: 'Add property', icon: 'home' },
       { done: state.tenants.length > 0, title: 'Add your tenant', sub: 'Their name, rent and the day it is due.', to: state.properties[0] ? `/rent/property/${state.properties[0].id}` : '/rentals', btn: 'Add tenant', icon: 'user' },
       { done: state.banks.some((b) => b.status === 'connected') || state.profile.rentArrival === 'manual', title: 'Choose how rent is tracked', sub: banksOn() ? 'Connect your banks, or tap "Mark paid" yourself.' : 'Tap "Mark paid" when rent comes in. Bank checks are coming soon.', to: '/settings#rent-tracking', btn: 'Choose', icon: 'bank' },
+      // Live accounts: two-step sign-in (optional; the step stays until it is on).
+      ...(offerTwoStep ? [{ done: false, title: 'Turn on two-step sign-in', sub: 'Optional: a code from an app on your phone after your password.', to: '/settings#two-step', btn: 'Turn on', icon: 'lock' }] : []),
     ];
     const n = steps.filter((x) => x.done).length;
     const next = steps.findIndex((x) => !x.done);
@@ -41,8 +48,8 @@ export function Today() {
           <div className="start-art" aria-hidden><SceneEmptyHome /></div>
         </div>
         <div className="sheet start-here" data-tour="start-here">
-          <div className="start-head"><h2>Start here</h2><span className="small soft">{n} of 3 done</span></div>
-          <div className="start-bar" role="progressbar" aria-valuemin={0} aria-valuemax={3} aria-valuenow={n}><i style={{ width: `${(n / 3) * 100}%` }} /></div>
+          <div className="start-head"><h2>Start here</h2><span className="small soft">{n} of {steps.length} done</span></div>
+          <div className="start-bar" role="progressbar" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={n}><i style={{ width: `${(n / steps.length) * 100}%` }} /></div>
           <ol className="start-steps">{steps.map((x, i) => (
             <li key={x.title} className={x.done ? 'done' : i === next ? 'now' : ''}>
               <span className="start-n">{x.done ? '✓' : i + 1}</span>
@@ -86,6 +93,13 @@ export function Today() {
           <StandingCheck />
           <RentCard headline={headline} />
           <div className="track-top"><BankStatus /></div>
+          {offerTwoStep && !isHidden(state, 'two-step', today) && (
+            <div className="sheet two-step-nudge" id="two-step-nudge">
+              <span className="tile-ic lilac" aria-hidden><Icon name="lock" size={18} /></span>
+              <div><strong>Turn on two-step sign-in</strong><span className="small soft">Optional: after your password, a code from an app on your phone. It keeps your tenants' information safe.</span></div>
+              <div className="btn-row"><Link className="btn primary" to="/settings#two-step">Turn on</Link><button className="btn ghost" onClick={() => act.setTodoPref('two-step', { hiddenUntil: addDays(today, 30) })}>Not now</button></div>
+            </div>
+          )}
           <NextStep />
           <RentRows />
         </div>

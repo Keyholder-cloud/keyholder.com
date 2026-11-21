@@ -56,12 +56,25 @@ export function paidOn(line: LedgerLine): ISODate | undefined {
   return line.payments.map((p) => p.date).sort().pop();
 }
 
-/** A unit rented by the room: how many rooms are rented, how many have paid this month, how many are late. */
-export function roomsPaid(state: AppState, unit: Unit, today: ISODate): { rented: number; paid: number; late: number } {
+/**
+ * A unit rented by the room: rooms with a tenant (`rented`, including leases that start later), rooms whose rent
+ * has started (`charged`), how many of those have paid this month and how many are late, and when the first of
+ * the rest starts (`startsOn`).
+ */
+export function roomsPaid(state: AppState, unit: Unit, today: ISODate): { rented: number; charged: number; paid: number; late: number; startsOn?: ISODate } {
   const now = periodOf(today);
-  const lines = activeLeases(state, unit.id, today).filter((l) => l.start <= today)
+  const leases = activeLeases(state, unit.id, today);
+  const lines = leases.filter((l) => l.start <= today)
     .map((l) => leaseLedger(l, state.payments, today).find((x) => x.period === now)).filter((x): x is LedgerLine => !!x);
-  return { rented: lines.length, paid: lines.filter((x) => x.state === 'paid').length, late: lines.filter((x) => x.daysLate > 0 && x.paid < x.charge).length };
+  const later = leases.filter((l) => l.start > today).map((l) => l.start).sort();
+  return { rented: leases.length, charged: lines.length, paid: lines.filter((x) => x.state === 'paid').length, late: lines.filter((x) => x.daysLate > 0 && x.paid < x.charge).length, ...(later.length ? { startsOn: later[0] } : {}) };
+}
+
+/** The unit row's pill for a unit rented by the room: "2 of 3 paid", "3 rooms rented · rent starts Dec 1", or none rented. */
+export function roomsPill(sum: ReturnType<typeof roomsPaid>, day: (d: ISODate) => string): { label: string; tone: string } {
+  if (!sum.rented) return { label: 'No rooms rented', tone: 'vacant' };
+  if (!sum.charged) return { label: `${sum.rented} room${sum.rented > 1 ? 's' : ''} rented${sum.startsOn ? ` · rent starts ${day(sum.startsOn)}` : ''}`, tone: 'due' };
+  return { label: `${sum.paid} of ${sum.charged} paid`, tone: sum.paid === sum.charged ? 'paid' : sum.late ? 'late' : 'due' };
 }
 
 /** Periods the lease charges for, from its start through `through` (inclusive). */

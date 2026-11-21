@@ -8,7 +8,7 @@ import { Icon } from '../components/Icon';
 // User Privacy Policy, encryption in transit and at rest, a retention and deletion policy, no selling of
 // consumer data, incident handling, and a way to reach the company. Each of those has a section here.
 
-export const PRIVACY_EMAIL = 'privacy@keyholder.cloud';
+export const PRIVACY_EMAIL = 'admin@keyholder.cloud';
 export const PLAID_PRIVACY_URL = 'https://plaid.com/legal/#end-user-privacy-policy';
 const UPDATED = 'November 20, 2026';
 
@@ -105,6 +105,7 @@ const PARTS: Part[] = [
         <li><strong>Encrypted in transit:</strong> every page and connection uses HTTPS (TLS 1.2 or newer), and browsers are told to use HTTPS only.</li>
         <li><strong>Encrypted at rest:</strong> bank connection keys and service keys are encrypted with AES-256 before they are stored, with a key kept apart from the database.</li>
         <li><strong>Passwords:</strong> stored only as scrypt hashes, never in a readable form. Sign-in attempts are limited to stop guessing.</li>
+        <li><strong>Two-step sign-in:</strong> landlords can turn on a code from an authenticator app after their password (Settings), with backup codes; the Keyholder team must use it.</li>
         <li><strong>Sessions:</strong> secure, http-only cookies; every change must come from the Keyholder app itself.</li>
         <li><strong>Plaid messages</strong> are checked to be really from Plaid (signed and recent) before they are used.</li>
         <li><strong>Access:</strong> only people who run Keyholder can reach production systems, each with their own sign-in; support can open an account read-only to help you, and every such view and team action is recorded.</li>

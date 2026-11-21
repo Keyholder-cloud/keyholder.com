@@ -54,7 +54,8 @@ Other hosts: the `Dockerfile` builds one container; give it `DATABASE_URL`, or a
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | — | The **super user**, created (or promoted) at start-up. Sign in with the email, or with the username `admin`, and this password (10+ characters). Changing `ADMIN_PASSWORD` changes the team password at the next start and signs out old sessions; a password changed in the dashboard (Team & settings → Your password) stays until `ADMIN_PASSWORD` is changed again. |
 | `EMAIL_PROVIDER` | `log` | `log` keeps emails in the outbox (visible to the team); `resend` or `postmark` sends them. |
 | `RESEND_API_KEY` / `POSTMARK_TOKEN` | — | Key for the chosen provider. |
-| `EMAIL_FROM` | `Keyholder <hello@keyholder.ca>` | Sender. The domain must be verified with the provider. |
+| `EMAIL_FROM` | `Keyholder <admin@keyholder.cloud>` | Sender. The domain must be verified with the provider. |
+| `ADMIN_RESET_TWO_STEP` | (none) | `true` turns off the super user's two-step sign-in at the next start (lost phone and backup codes). Remove it right after. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | — | Turns on "Continue with Google". Redirect URI: `APP_URL/api/auth/google/callback`. |
 | `KEYS_SECRET` | — (Render generates one) | Locks the API keys saved on the dashboard (Support → Connections), AES-256-GCM. Without it, keys can only be set here in Render. Never change it once keys are saved. |
 | `GOOGLE_PLACES_API_KEY` | — | Address suggestions when adding a property (Google Places API (New)). |

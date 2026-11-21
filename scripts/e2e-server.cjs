@@ -100,6 +100,38 @@ async function receiptImage(browser) {
 async function signIn(pg, email, password) {
   await go(pg, 'signin'); await pg.fill('#login-user', email); await pg.fill('#login-pass', password); await pg.click('.acct-login >> text=Sign in');
 }
+// ---- Two-step sign-in: an authenticator app (RFC 6238) for the test, per person ----
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+const fromB32 = (s) => { let bits = 0, v = 0; const out = []; for (const ch of s.replace(/[^A-Z2-7]/gi, '').toUpperCase()) { v = (v << 5) | B32.indexOf(ch); bits += 5; if (bits >= 8) { out.push((v >>> (bits - 8)) & 255); bits -= 8; } } return Buffer.from(out); };
+const totpAt = (secret, step) => { const m = Buffer.alloc(8); m.writeBigUInt64BE(BigInt(step)); const h = require('node:crypto').createHmac('sha1', fromB32(secret)).update(m).digest(); const o = h[h.length - 1] & 15; return String((((h[o] & 0x7f) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3]) % 1e6).padStart(6, '0'); };
+const stepNow = () => Math.floor(Date.now() / 30000);
+const apps = new Map(); // person → { secret, last, backup }
+const personKey = (u) => (u.toLowerCase() === 'admin' ? ADMIN.email : u).toLowerCase();
+/** The next code the app shows (never one already used; waits for the next 30 s step when needed). */
+async function nextCode(key) {
+  const a = apps.get(key); let s = Math.max(stepNow(), a.last + 1);
+  while (s > stepNow() + 1) await new Promise((r) => setTimeout(r, 1000));
+  a.last = s; return totpAt(a.secret, s);
+}
+/** Finishes a set-up on screen (QR step): reads the key, types the code, keeps the backup codes. */
+async function finishSetUp(pg, key) {
+  await pg.click('#ts-start'); await pg.waitForSelector('#ts-secret');
+  const secret = (await pg.locator('#ts-secret').textContent()).replace(/\s/g, '');
+  apps.set(key, { secret, last: stepNow() - 2, backup: [] });
+  await pg.fill('#ts-setup-code', await nextCode(key)); await pg.click('#ts-confirm');
+  await pg.waitForSelector('#ts-backup li');
+  apps.get(key).backup = (await pg.locator('#ts-backup code').allTextContents());
+  await pg.click('#ts-done');
+}
+/** The Keyholder team signs in: password, then two-step (set up the first time, as the dashboard asks). */
+async function teamSignIn(pg, user, password) {
+  await signIn(pg, user, password);
+  const key = personKey(user);
+  await pg.waitForSelector('.sp-page, #ts-code, #ts-start', { timeout: 15000 });
+  if (await pg.locator('#ts-start').count()) { await finishSetUp(pg, key); }
+  else if (await pg.locator('#ts-code').count()) { await pg.fill('#ts-code', await nextCode(key)); await pg.click('.two-step-form >> text=Continue'); }
+  await pg.waitForSelector('.sp-page', { timeout: 15000 });
+}
 function watch(pg, errors, label) {
   pg.on('pageerror', (e) => errors.push(`${label} ${e.message}`));
   pg.on('console', (m) => { if (m.type() === 'error' && !/fonts|401|403|409|400|Failed to load resource/.test(m.text())) errors.push(`${label} console: ${m.text()}`); });
@@ -312,7 +344,7 @@ function watch(pg, errors, label) {
       });
       const ctxC = await b.newContext({ viewport: vp }); const ad = await ctxC.newPage(); watch(ad, errors, 'admin');
       await step(tag, 'E15 A real admin signs in to the live support dashboard, and only sees that', async () => {
-        await signIn(ad, ADMIN.email, ADMIN.password); await ad.waitForSelector('.sp-page');
+        await teamSignIn(ad, ADMIN.email, ADMIN.password);
         if (tag === 'desktop') await ad.waitForSelector('.sp-sample.live');
         await go(ad, 'support/customers'); await ad.waitForSelector(`text=${email}`);
         for (const r of ['today', 'rentals', 'settings']) {
@@ -328,7 +360,7 @@ function watch(pg, errors, label) {
         };
         await change(ADMIN.password, 'new-team-password-9');
         const ctx = await b.newContext({ viewport: vp }); const p = await ctx.newPage();
-        await signIn(p, 'admin', 'new-team-password-9'); await p.waitForSelector('.sp-page'); await ctx.close();
+        await teamSignIn(p, 'admin', 'new-team-password-9'); await ctx.close();
         await change('new-team-password-9', ADMIN.password);
       });
       await step(tag, 'E16 The team replies to the request: the landlord gets the reply by email', async () => {
@@ -349,7 +381,7 @@ function watch(pg, errors, label) {
       });
       await step(tag, 'E17b The username "admin" with the team password opens the live dashboard', async () => {
         const ctx = await b.newContext({ viewport: vp }); const p = await ctx.newPage(); watch(p, errors, 'admin-username');
-        await signIn(p, 'admin', ADMIN.password); await p.waitForSelector('.sp-page');
+        await teamSignIn(p, 'admin', ADMIN.password);
         await go(p, 'support/customers'); await p.waitForSelector(`text=${email}`); await ctx.close();
       });
       // ---------------- The super user (ADMIN_EMAIL): price, promotions, banks, API keys, the team ----------------
@@ -403,6 +435,8 @@ function watch(pg, errors, label) {
         const invite = await until(async () => (await outbox(mail)).find((m) => m.kind === 'invite'), 5000, 'invite email');
         const ctx = await b.newContext({ viewport: vp }); const p = await ctx.newPage(); watch(p, errors, 'admin-invite');
         await p.goto(invite.text_body.match(/https?:\/\/\S+/)[0]); await p.fill('#new-pass', 'ava-the-admin-2026'); await p.click('text=Save and sign in');
+        // A new team member sets up two-step sign-in before the dashboard opens.
+        await p.waitForSelector('#ts-start'); await finishSetUp(p, mail.toLowerCase());
         await p.waitForSelector('.sp-page');
         if ((await p.locator('.sp-nav-group > p').allTextContents()).includes('Super user')) throw new Error('an Admin sees the Super user pages');
         await go(p, 'support/team'); await p.waitForSelector('text=Only the super user adds, changes or removes team members');
@@ -416,7 +450,7 @@ function watch(pg, errors, label) {
         await ad.waitForSelector('.sp-lmap-top >> text=Toronto, ON');
         if ((await ad.locator('.sp-lmap').textContent()).includes('Oak St')) throw new Error('a street address is shown');
         const ctx = await b.newContext({ viewport: vp }); const p = await ctx.newPage();
-        await signIn(p, 'admin', ADMIN.password); await p.waitForSelector('.sp-page');
+        await teamSignIn(p, 'admin', ADMIN.password);
         await p.locator('.sp-rail-foot >> text=Sign out').click(); await p.waitForSelector('.lp-hero-h'); await ctx.close();
       });
       await step(tag, 'E26 Without the Google Places key the address box stays a plain box (no suggestions, nothing sent anywhere)', async () => {
@@ -530,6 +564,26 @@ function watch(pg, errors, label) {
         if (!m || m.attached_form !== 'on-n4' || !/^N4 - Rita Gomez - .*\.pdf$/.test(m.attached_file)) throw new Error('email ' + JSON.stringify(m));
         // The served form can be opened again from the notice list.
         await go(pg, 'paperwork/notices'); await pg.waitForSelector('.row:has-text("N4") .official-pdf');
+      });
+      await step(tag, 'E33 Two-step sign-in (optional for landlords): Home suggests it; Settings turns it on with a QR code and backup codes; the next sign-in asks for the code; a wrong code is refused', async () => {
+        await go(pg, 'today'); await pg.waitForSelector('#two-step-nudge >> text=Turn on two-step sign-in');
+        await pg.locator('#two-step-nudge a.btn').click(); await pg.waitForSelector('#two-step #ts-turn-on');
+        await pg.click('#ts-turn-on'); await finishSetUp(pg, email.toLowerCase());
+        await pg.waitForSelector('#two-step >> text=10 backup codes left');
+        if (await pg.locator('#two-step-nudge').count()) throw new Error('nudge still shown');
+        await go(pg, 'today'); if (await pg.locator('#two-step-nudge').count()) throw new Error('Home still suggests it');
+        const ctx = await b.newContext({ viewport: vp }); const p = await ctx.newPage(); watch(p, errors, 'two-step');
+        await signIn(p, email, password); await p.waitForSelector('#ts-code');
+        await p.fill('#ts-code', '000000'); await p.click('.two-step-form >> text=Continue'); await p.waitForSelector('.two-step-form .acct-error >> text=not right');
+        await p.fill('#ts-code', await nextCode(email.toLowerCase())); await p.click('.two-step-form >> text=Continue');
+        await p.waitForSelector('.rent-row, .rent-card, .start-steps');
+        // A backup code works as well (once).
+        const q = await (await b.newContext({ viewport: vp })).newPage(); watch(q, errors, 'two-step-backup');
+        await signIn(q, email, password); await q.waitForSelector('#ts-code');
+        await q.fill('#ts-code', apps.get(email.toLowerCase()).backup[0]); await q.check('#ts-trust'); await q.click('.two-step-form >> text=Continue');
+        await q.waitForSelector('.rent-row, .rent-card, .start-steps');
+        const me = (await api(q, '/api/session')).body.user; if (!me.twoStep || me.backupCodesLeft !== 9) throw new Error('session: ' + JSON.stringify(me));
+        await q.context().close(); await ctx.close();
       });
       await step(tag, 'E18 No preview on the live site: admin / admin is refused', async () => {
         const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); const p = await ctx.newPage();

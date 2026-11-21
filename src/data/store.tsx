@@ -219,6 +219,31 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
       toast(`${t.names[0]} added. Rent of ${fmt(l.rent)} is now on the ledger.`);
     },
     saveTenant(t: Tenant) { mut((d) => { const i = d.tenants.findIndex((x) => x.id === t.id); if (i >= 0) d.tenants[i] = t; audit(d, 'Tenant updated', t.names.join(' & ')); }); },
+    /**
+     * A tenant added by mistake: removes them, their lease(s), payments, receipts, messages and notices. A bank
+     * deposit that had been matched to one of their payments goes back to the list to sort. (Someone who lived
+     * there should have their lease ended instead, so the records stay.)
+     */
+    deleteTenant(tenantId: string) {
+      let name = '';
+      mut((d) => {
+        const t = d.tenants.find((x) => x.id === tenantId); if (!t) return;
+        name = t.names.join(' & ');
+        const leaseIds = new Set(d.leases.filter((l) => l.tenantId === tenantId).map((l) => l.id));
+        const unitIds = new Set(d.leases.filter((l) => leaseIds.has(l.id)).map((l) => l.unitId));
+        const payIds = new Set(d.payments.filter((p) => leaseIds.has(p.leaseId)).map((p) => p.id));
+        d.receipts = d.receipts.filter((r) => !payIds.has(r.paymentId));
+        d.payments = d.payments.filter((p) => !leaseIds.has(p.leaseId));
+        d.messages = d.messages.filter((m) => m.tenantId !== tenantId && !leaseIds.has(m.leaseId));
+        d.notices = d.notices.filter((n) => !leaseIds.has(n.leaseId));
+        for (const x of d.txns) if (x.paymentId && payIds.has(x.paymentId)) { x.status = 'new'; delete x.paymentId; }
+        d.leases = d.leases.filter((l) => !leaseIds.has(l.id));
+        d.tenants = d.tenants.filter((x) => x.id !== tenantId);
+        for (const u of d.units) if (unitIds.has(u.id) && !d.leases.some((l) => l.unitId === u.id && (!l.end || l.end >= today()))) u.status = 'vacant';
+        audit(d, 'Tenant deleted', `${name}: lease and ${payIds.size} payment${payIds.size === 1 ? '' : 's'} removed`);
+      });
+      toast(`${name || 'Tenant'} deleted.`);
+    },
     saveLease(l: Lease) { mut((d) => { const i = d.leases.findIndex((x) => x.id === l.id); if (i >= 0) d.leases[i] = l; audit(d, 'Lease updated', l.id); }); },
     endTenancy(leaseId: string, end: string) {
       mut((d) => {

@@ -2,7 +2,7 @@ import { loadConfig } from './config';
 import { migrate, openDb } from './db';
 import { buildApp } from './app';
 import { startWorker } from './jobs';
-import { ensureAdmin } from './services';
+import { ensureAdmin, resetAdminTwoStep } from './services';
 import { Keys } from './keys';
 
 // Starts Keyholder: database (and its migrations), the first admin, the web server (API + website)
@@ -13,10 +13,12 @@ async function main() {
   const db = await openDb({ url: cfg.databaseUrl, pgliteDir: cfg.pgliteDir });
   const applied = await migrate(db);
   const admin = await ensureAdmin(db, cfg);
+  const reset = await resetAdminTwoStep(db, cfg);
   const keys = new Keys(cfg);
   await keys.refresh(db, true);
   const app = await buildApp({ cfg, db, keys });
   if (admin === 'updated') app.log.info('team password changed from ADMIN_PASSWORD; old sign-ins ended');
+  if (reset) app.log.warn('ADMIN_RESET_TWO_STEP: the super user\'s two-step sign-in was turned off; remove the setting now');
   if (applied.length) app.log.info(`migrations applied: ${applied.join(', ')}`);
   if (!cfg.databaseUrl) app.log.warn(`no DATABASE_URL: using the embedded Postgres in ${cfg.pgliteDir}`);
   if (keys.email().provider === 'log') app.log.warn('Email sending is off: emails are kept in the outbox, not sent');

@@ -7,6 +7,7 @@ import { Brand } from '../components/Brand';
 import { SceneWelcome } from '../components/Art';
 import { api, ApiError, getConn, isStaff, serverMode, setUser, type ServerUser } from '../data/api';
 import * as sync from '../data/sync';
+import { TwoStepCode } from '../components/TwoStep';
 
 // Sign up / sign in. With the Keyholder server (Stage 2), accounts are real: email and password (or Google,
 // when it is set up on the server), and the data is saved to the account. Without a server (the Claude
@@ -160,6 +161,8 @@ export function SignIn() {
   const params = new URLSearchParams(useLocation().search);
   const googleFailed = params.get('error') === 'google';
   const expired = params.get('expired') === '1';
+  // Two-step sign-in: the password (or Google, or a new password) was right; the code from the app comes next.
+  const [ticket, setTicket] = useState(params.get('twostep') ?? '');
   useEffect(() => { window.scrollTo(0, 0); }, []);
   const acct = state.profile.account;
   const done = (w: Who) => {
@@ -174,7 +177,9 @@ export function SignIn() {
         <div className="acct-art" aria-hidden><SceneWelcome /></div>
         <h1>Welcome back</h1>
         <p className="soft">Sign in to see your rent, bills and paperwork.</p>
-        {unknown ? (
+        {ticket ? (
+          <TwoStepCode ticket={ticket} onSignedIn={(u) => afterSignIn(u, act, nav)} onBack={() => { setTicket(''); nav('/signin'); }} />
+        ) : unknown ? (
           <div className="callout warn" role="alert">
             <p style={{ margin: 0 }}><strong>No Keyholder account for {unknown} yet.</strong> It takes 2 minutes to set one up.</p>
             <div className="btn-row" style={{ marginTop: 12 }}><Link className="btn primary" to="/start">Create a free account</Link><button className="btn ghost" onClick={() => setUnknown(null)}>Try another account</button></div>
@@ -187,7 +192,7 @@ export function SignIn() {
               <GoogleButton onClick={() => (serverMode() ? startGoogle('signin') : setPicker(true))} />
               <div className="acct-or"><span>or</span></div>
             </>}
-            <CentralLogin onAccount={(email) => done({ provider: 'email', email, name: '' })} />
+            <CentralLogin onAccount={(email) => done({ provider: 'email', email, name: '' })} onTwoStep={setTicket} />
           </>
         )}
         <p className="small soft acct-switch">New to Keyholder? <Link to="/start">Create a free account</Link></p>
@@ -204,7 +209,7 @@ export function SignIn() {
  * there (and the Keyholder team lands on the live support dashboard; "admin" with the team's own password
  * works too); without one (the Claude preview), it opens the account saved in this browser.
  */
-function CentralLogin({ onAccount }: { onAccount: (email: string) => void }) {
+function CentralLogin({ onAccount, onTwoStep }: { onAccount: (email: string) => void; onTwoStep: (ticket: string) => void }) {
   const { act } = useStore();
   const nav = useNavigate();
   const [user, setUserName] = useState('');
@@ -230,8 +235,9 @@ function CentralLogin({ onAccount }: { onAccount: (email: string) => void }) {
     if (!server) { onAccount(user.trim()); return; }
     setBusy(true); setErr('');
     try {
-      const r = await api<{ user: ServerUser }>('POST', '/api/auth/login', { email: user.trim(), password: pass });
-      await afterSignIn(r.user, act, nav);
+      const r = await api<{ user?: ServerUser; twoStep?: boolean; ticket?: string }>('POST', '/api/auth/login', { email: user.trim(), password: pass });
+      if (r.twoStep && r.ticket) { onTwoStep(r.ticket); return; }
+      await afterSignIn(r.user!, act, nav);
     } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   };
   const edit = (f: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => { f(e.target.value); setWrong(false); setErr(''); };

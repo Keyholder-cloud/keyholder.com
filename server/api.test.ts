@@ -7,7 +7,8 @@ import { migrate, openDb, type Db } from './db';
 import { buildApp } from './app';
 import { dailyRun, refreshGic } from './jobs';
 import { sendDue } from './email';
-import { ensureAdmin } from './services';
+import { ensureAdmin, resetAdminTwoStep } from './services';
+import { codeAt, fromBase32, stepNow } from './totp';
 import { Keys } from './keys';
 import { createHash, generateKeyPairSync, sign as signData } from 'node:crypto';
 
@@ -90,6 +91,37 @@ async function call(method: string, url: string, opts: { body?: unknown; cookie?
   let body: unknown = r.body; try { body = r.json(); } catch { /* not JSON */ }
   return { status: r.statusCode, body, cookie: c ? c.split(';')[0] : undefined };
 }
+const cookieOf = (r: { headers: Record<string, unknown> }, name: string) => {
+  const set = r.headers['set-cookie'] as string | string[] | undefined;
+  return (Array.isArray(set) ? set : set ? [set] : []).find((x) => x.startsWith(`${name}=`))?.split(';')[0];
+};
+/** An authenticator app: the current code for a secret (the step after `after`, so a code is never reused). */
+const appCode = (secret: string, after = stepNow()) => codeAt(fromBase32(secret), after + 1);
+
+// The Keyholder team must use two-step sign-in. The first sign-in sets it up (as the dashboard asks); later ones
+// answer the code step with a backup code and trust the browser for 30 days, as a person would.
+const team = new Map<string, { trust?: string; backup: string[]; secret: string }>();
+const teamKey = (email: string) => (email.trim().toLowerCase() === 'admin' ? ADMIN.email : email).toLowerCase();
+async function setUpTwoStep(email: string, cookie: string) {
+  const s = await call('POST', '/api/auth/two-step/setup', { cookie });
+  const e = await call('POST', '/api/auth/two-step/enable', { cookie, body: { code: codeAt(fromBase32(s.body.secret), stepNow()) } });
+  if (e.status !== 200) throw new Error('two-step set-up failed: ' + JSON.stringify(e.body));
+  team.set(teamKey(email), { backup: e.body.backupCodes, secret: s.body.secret });
+}
+async function teamIn(email: string, password: string): Promise<string> {
+  const me = team.get(teamKey(email));
+  const r = await app.inject({ method: 'POST', url: '/api/auth/login', headers: { 'x-keyholder': '1', ...(me?.trust ? { cookie: me.trust } : {}) }, payload: { email, password } });
+  const body = r.json();
+  if (body.twoStep) {
+    const v = await app.inject({ method: 'POST', url: '/api/auth/two-step', headers: { 'x-keyholder': '1' }, payload: { ticket: body.ticket, code: me!.backup.shift(), trust: true } });
+    me!.trust = cookieOf(v, 'kh_trust');
+    return cookieOf(v, 'kh_session')!;
+  }
+  const cookie = cookieOf(r, 'kh_session')!;
+  if (body.user && body.user.role !== 'owner' && !body.user.twoStep) await setUpTwoStep(email, cookie);
+  return cookie;
+}
+
 const latestMail = async (to: string, kind?: string) => (await db.query<{ subject: string; text_body: string; status: string; kind: string }>(
   `select subject, text_body, status, kind from outbox where lower(to_email) = lower($1) and ($2 = '' or kind = $2) order by created_at desc limit 1`, [to, kind ?? '']))[0];
 const linkToken = (text: string) => text.match(/token=([A-Za-z0-9_-]+)/)![1];
@@ -255,7 +287,7 @@ describe('support', () => {
     expect((await call('POST', '/api/support/tickets', { cookie: alex, body: { subject: 'Bank not connecting', message: 'TD says sign in again', category: 'bank' } })).status).toBe(201);
     expect((await latestMail('alex@morgan.ca', 'ticket-ack')).subject).toMatch(/We got your message/);
     expect((await call('GET', '/api/admin/support', { cookie: alex })).status).toBe(403);
-    admin = (await call('POST', '/api/auth/login', { body: ADMIN })).cookie!;
+    admin = await teamIn(ADMIN.email, ADMIN.password);
     const snap = (await call('GET', '/api/admin/support', { cookie: admin })).body;
     expect(snap.live).toBe(true);
     const c = snap.customers.find((x: { email: string }) => x.email === 'Alex@Morgan.ca');
@@ -282,7 +314,9 @@ describe('support', () => {
   it('the team can sign in with the username "admin" and the team password (not with "admin" / "admin")', async () => {
     const r = await call('POST', '/api/auth/login', { body: { email: 'admin', password: ADMIN.password } });
     expect(r.status).toBe(200);
-    expect(r.body.user).toMatchObject({ email: ADMIN.email, role: 'super' });
+    expect(r.body).toMatchObject({ twoStep: true }); // then the code from the app
+    const c = await teamIn('admin', ADMIN.password);
+    expect((await call('GET', '/api/session', { cookie: c })).body.user).toMatchObject({ email: ADMIN.email, role: 'super', twoStep: true });
     expect((await call('POST', '/api/auth/login', { body: { email: 'Admin', password: 'admin' } })).status).toBe(401);
   });
 
@@ -293,12 +327,17 @@ describe('support', () => {
     const token = linkToken((await latestMail('nadia@keyholder.ca', 'invite')).text_body);
     const r = await call('POST', '/api/auth/reset', { body: { token, password: 'nadia-support-2026' } });
     expect(r.body.user.role).toBe('support');
+    // The dashboard needs two-step sign-in first.
+    const before = await call('GET', '/api/admin/support', { cookie: r.cookie });
+    expect(before.status).toBe(403);
+    expect(before.body.error).toMatch(/Two-step sign-in is required/);
+    await setUpTwoStep('nadia@keyholder.ca', r.cookie!);
     expect((await call('GET', '/api/admin/support', { cookie: r.cookie })).status).toBe(200);
   });
 });
 
 describe('the super user', () => {
-  const login = async (email: string, password: string) => (await call('POST', '/api/auth/login', { body: { email, password } })).cookie!;
+  const login = teamIn;
   const snap = async (cookie: string) => (await call('GET', '/api/admin/support', { cookie })).body;
   const put = (cookie: string, next: unknown, log?: { action: string; detail: string }) => call('PUT', '/api/admin/support', { cookie, body: { next, log } });
   let sup = '', ava = '', nadia = '';
@@ -314,6 +353,7 @@ describe('the super user', () => {
     const r = await call('POST', '/api/auth/reset', { body: { token, password: 'ava-the-admin-2026' } });
     expect(r.body.user.role).toBe('admin');
     ava = r.cookie!;
+    await setUpTwoStep('ava@keyholder.ca', ava);
     nadia = await login('nadia@keyholder.ca', 'nadia-support-2026');
     expect((await snap(ava)).myRole).toBe('admin');
     expect((await snap(nadia)).myRole).toBe('support');
@@ -466,7 +506,7 @@ describe('the super user', () => {
 describe('bank data (Plaid)', () => {
   let sup = '';
   it('turns on when Plaid is set up on Connections; a landlord connects a bank and its first transactions arrive (settled only)', async () => {
-    sup = (await call('POST', '/api/auth/login', { body: { email: 'admin', password: ADMIN.password } })).cookie!;
+    sup = await teamIn('admin', ADMIN.password);
     const ok = await call('PUT', '/api/admin/connections', { cookie: sup, body: { password: ADMIN.password, values: { 'plaid.clientId': 'plaid-client-1', 'plaid.secret': 'plaid-sandbox-secret-7777', 'plaid.env': 'sandbox' } } });
     expect(ok.status).toBe(200);
     expect((await call('GET', '/api/session')).body.config.banks).toBe(true);
@@ -521,7 +561,7 @@ describe('no property estimates', () => {
   it('the estimate routes are gone and Connections has no property values slot', async () => {
     expect((await call('POST', '/api/valuation', { cookie: alex, body: {} })).status).toBe(404);
     expect((await call('GET', '/api/session')).body.config.avm).toBeUndefined();
-    const sup = (await call('POST', '/api/auth/login', { body: { email: 'admin', password: ADMIN.password } })).cookie!;
+    const sup = await teamIn('admin', ADMIN.password);
     const c = (await call('GET', '/api/admin/connections', { cookie: sup })).body;
     expect(JSON.stringify(c)).not.toMatch(/avm|Repliers/i);
     expect((await call('PUT', '/api/admin/connections', { cookie: sup, body: { password: ADMIN.password, values: { 'avm.apiKey': 'x' } } })).status).toBe(400);
@@ -568,18 +608,99 @@ describe('deleting an account', () => {
 describe('the team password', () => {
   it('a password changed in the dashboard stays; a new ADMIN_PASSWORD (Render) replaces it and signs out old sessions', async () => {
     expect(await ensureAdmin(db, cfg)).toBe('unchanged');
-    const first = (await call('POST', '/api/auth/login', { body: { email: 'admin', password: ADMIN.password } })).cookie!;
+    const first = await teamIn('admin', ADMIN.password);
     // Changed in the dashboard (Team & settings → Your password).
     expect((await call('POST', '/api/auth/password', { cookie: first, body: { current: ADMIN.password, next: 'dashboard-pass-123' } })).status).toBe(200);
     expect(await ensureAdmin(db, cfg)).toBe('unchanged'); // same ADMIN_PASSWORD as before: the new one stays
     expect((await call('POST', '/api/auth/login', { body: { email: 'admin', password: 'dashboard-pass-123' } })).status).toBe(200);
     // A new value in Render, then a restart.
-    const keep = (await call('POST', '/api/auth/login', { body: { email: 'admin', password: 'dashboard-pass-123' } })).cookie!;
+    const keep = await teamIn('admin', 'dashboard-pass-123');
     const cfg2 = loadConfig({ NODE_ENV: 'test', PGLITE_DIR: 'memory://', LOG_LEVEL: 'silent', ADMIN_EMAIL: ADMIN.email, ADMIN_PASSWORD: 'render-pass-4567', WORKER: 'off' });
     expect(await ensureAdmin(db, cfg2)).toBe('updated');
     expect((await call('POST', '/api/auth/login', { body: { email: ADMIN.email, password: 'render-pass-4567' } })).status).toBe(200);
     expect((await call('POST', '/api/auth/login', { body: { email: 'admin', password: 'dashboard-pass-123' } })).status).toBe(401);
     expect((await call('GET', '/api/session', { cookie: keep })).body.user).toBeNull();
     expect(await ensureAdmin(db, cfg2)).toBe('unchanged');
+  });
+});
+
+describe('two-step sign-in (authenticator app)', () => {
+  it('matches the RFC 6238 test codes', () => {
+    // RFC 6238 appendix B: secret "12345678901234567890", SHA-1, at 59 s → 94287082 (6 digits: 287082).
+    expect(codeAt(Buffer.from('12345678901234567890'), Math.floor(59 / 30))).toBe('287082');
+    expect(codeAt(Buffer.from('12345678901234567890'), Math.floor(1111111109 / 30))).toBe('081804');
+  });
+
+  it('a landlord turns it on; sign-in then asks for the code; wrong codes and reused codes are refused; a backup code works once; a trusted browser skips it for 30 days', async () => {
+    const email = 'tara.two@example.com', password = 'tara-two-step-2026';
+    const su = await call('POST', '/api/auth/signup', { body: { name: 'Tara Two', email, password } });
+    const cookie = su.cookie!;
+    expect(su.body.user.twoStep).toBe(false);
+    const s = await call('POST', '/api/auth/two-step/setup', { cookie });
+    expect(s.body.uri).toMatch(/^otpauth:\/\/totp\/Keyholder%3Atara\.two%40example\.com\?secret=[A-Z2-7]+&issuer=Keyholder/);
+    expect((await call('POST', '/api/auth/two-step/enable', { cookie, body: { code: '000000' } })).status).toBe(400);
+    const on = await call('POST', '/api/auth/two-step/enable', { cookie, body: { code: codeAt(fromBase32(s.body.secret), stepNow()) } });
+    expect(on.body.backupCodes).toHaveLength(10);
+    expect(on.body.user).toMatchObject({ twoStep: true, backupCodesLeft: 10 });
+    const backup: string[] = on.body.backupCodes;
+
+    // Password right: no session yet, a ticket for the code.
+    const r1 = await call('POST', '/api/auth/login', { body: { email, password } });
+    expect(r1.body).toMatchObject({ twoStep: true });
+    expect(r1.cookie).toBeUndefined();
+    expect((await call('POST', '/api/auth/two-step', { body: { ticket: r1.body.ticket, code: '123456' } })).status).toBe(401);
+    // The code used to turn it on cannot be used again; the next one works.
+    expect((await call('POST', '/api/auth/two-step', { body: { ticket: r1.body.ticket, code: codeAt(fromBase32(s.body.secret), stepNow()) } })).status).toBe(401);
+    const ok = await call('POST', '/api/auth/two-step', { body: { ticket: r1.body.ticket, code: appCode(s.body.secret) } });
+    expect(ok.status).toBe(200);
+    expect(ok.cookie).toBeTruthy();
+    expect((await call('POST', '/api/auth/two-step', { body: { ticket: r1.body.ticket, code: appCode(s.body.secret, stepNow() + 1) } })).status).toBe(400); // a ticket is used once
+
+    // A backup code works once, and can trust this browser.
+    const r2 = await call('POST', '/api/auth/login', { body: { email, password } });
+    const v = await app.inject({ method: 'POST', url: '/api/auth/two-step', headers: { 'x-keyholder': '1' }, payload: { ticket: r2.body.ticket, code: backup[0].toUpperCase(), trust: true } });
+    expect(v.statusCode).toBe(200);
+    expect(v.json().user.backupCodesLeft).toBe(9);
+    const trust = cookieOf(v, 'kh_trust')!;
+    const r3 = await call('POST', '/api/auth/login', { body: { email, password } });
+    expect((await call('POST', '/api/auth/two-step', { body: { ticket: r3.body.ticket, code: backup[0] } })).status).toBe(401);
+    // Trusted browser: straight in.
+    const r4 = await app.inject({ method: 'POST', url: '/api/auth/login', headers: { 'x-keyholder': '1', cookie: trust }, payload: { email, password } });
+    expect(r4.json().user.email).toBe(email);
+
+    // Five wrong codes end the sign-in.
+    const r5 = await call('POST', '/api/auth/login', { body: { email, password } });
+    for (let i = 0; i < 5; i++) await call('POST', '/api/auth/two-step', { body: { ticket: r5.body.ticket, code: '111111' } });
+    expect((await call('POST', '/api/auth/two-step', { body: { ticket: r5.body.ticket, code: appCode(s.body.secret, stepNow() + 1) } })).status).toBe(400);
+
+    // A password reset still needs the code.
+    await call('POST', '/api/auth/forgot', { body: { email } });
+    const token = linkToken((await latestMail(email, 'reset')).text_body);
+    const reset = await call('POST', '/api/auth/reset', { body: { token, password: 'tara-new-pass-2026' } });
+    expect(reset.body).toMatchObject({ twoStep: true });
+    expect(reset.cookie).toBeUndefined();
+    // …and forgets trusted browsers.
+    const r6 = await app.inject({ method: 'POST', url: '/api/auth/login', headers: { 'x-keyholder': '1', cookie: trust }, payload: { email, password: 'tara-new-pass-2026' } });
+    expect(r6.json()).toMatchObject({ twoStep: true });
+
+    // Turning it off needs a current code; the audit log has it all.
+    const fin = await call('POST', '/api/auth/two-step', { body: { ticket: r6.json().ticket, code: backup[1] } });
+    expect((await call('POST', '/api/auth/two-step/disable', { cookie: fin.cookie, body: { code: '000000' } })).status).toBe(400);
+    const off = await call('POST', '/api/auth/two-step/disable', { cookie: fin.cookie, body: { code: backup[2] } });
+    expect(off.body.user.twoStep).toBe(false);
+    expect((await call('POST', '/api/auth/login', { body: { email, password: 'tara-new-pass-2026' } })).body.user.email).toBe(email);
+    const actions = (await db.query<{ action: string; detail: string }>(`select action, detail from audit_log where actor = $1`, [email])).map((a) => `${a.action}|${a.detail}`);
+    expect(actions).toEqual(expect.arrayContaining(['Two-step sign-in turned on|', 'Sign-in failed|Wrong two-step code', 'Signed in|Two-step: backup code', 'Two-step sign-in turned off|']));
+  });
+
+  it('the team cannot turn it off; ADMIN_RESET_TWO_STEP turns the super user\'s off at start-up (lost phone)', async () => {
+    const sup = await teamIn('admin', 'render-pass-4567');
+    expect((await call('POST', '/api/auth/two-step/disable', { cookie: sup, body: { code: team.get(ADMIN.email.toLowerCase())!.backup.shift() } })).status).toBe(403);
+    const cfg3 = loadConfig({ NODE_ENV: 'test', PGLITE_DIR: 'memory://', LOG_LEVEL: 'silent', ADMIN_EMAIL: ADMIN.email, ADMIN_PASSWORD: 'render-pass-4567', ADMIN_RESET_TWO_STEP: 'true', WORKER: 'off' });
+    expect(await resetAdminTwoStep(db, cfg3)).toBe(true);
+    const r = await call('POST', '/api/auth/login', { body: { email: ADMIN.email, password: 'render-pass-4567' } });
+    expect(r.body.user).toMatchObject({ role: 'super', twoStep: false });
+    // …and the dashboard asks for it again.
+    expect((await call('GET', '/api/admin/support', { cookie: r.cookie })).status).toBe(403);
   });
 });

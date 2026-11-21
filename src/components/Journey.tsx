@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { Lease, Unit } from '../data/types';
 import { currentLine, useStore } from '../data/store';
 import { addDays, addMonths, fmtDay, fmtPeriod, periodOf } from '../lib/dates';
-import { activeLease, byRoom, leasePlace, openRooms, paidOn, roomsLine, roomsPaid } from '../lib/finance';
+import { activeLease, byRoom, leasePlace, openRooms, paidOn, roomsLine, roomsPaid, roomsPill } from '../lib/finance';
 import { allJourneyCards, isHidden, journeyLeases, leaseStep, openStep, prefKey, propertySteps, unitStep, type JourneyCard } from '../lib/journey';
 import { keyholderScore, scoreKey } from '../lib/score';
 import { banksOn } from '../data/api';
@@ -96,6 +96,8 @@ function statusFor(state: ReturnType<typeof useStore>['state'], lease: Lease | u
   if (c?.stage === 'lease' || c?.stage === 'moved-in') return { label: 'Moving in', tone: 'due' };
   if (c?.stage === 'moving-out') return { label: 'Moving out', tone: 'due' };
   if (c?.step.kind === 'confirm-payment') return { label: 'Rent to confirm', tone: 'due' };
+  // A lease that starts later (moving in next month): no rent is due yet.
+  if (lease.start > today && periodOf(lease.start) > periodOf(today)) return { label: `Rent starts ${fmtDay(lease.start)}`, tone: 'due' };
   const line = currentLine(state, lease, today)!;
   if (line.state === 'paid') { const d = paidOn(line); return { label: d ? `Rent paid · ${fmtDay(d)}` : 'Rent paid', tone: 'paid' }; }
   if (line.state === 'late') return { label: `Rent late · ${line.daysLate} day${line.daysLate === 1 ? '' : 's'}`, tone: 'late' };
@@ -119,7 +121,7 @@ function UnitLine({ unit }: { unit: Unit }) {
   const freeCard = leases.filter((l) => l.end && l.end < today).map((l) => leaseStep(state, l, today)).find(Boolean) ?? openStep(state, unit, today);
   const prop = state.properties.find((p) => p.id === unit.propertyId);
   const sum = roomsPaid(state, unit, today);
-  const tone = sum.rented && sum.paid === sum.rented ? 'paid' : sum.late ? 'late' : 'due';
+  const pill = roomsPill(sum, fmtDay);
   return (
     <>
       <li className={`rent-row unit-head${sum.late ? ' late' : ''}`}>
@@ -127,9 +129,7 @@ function UnitLine({ unit }: { unit: Unit }) {
           <span className="unit-ic" aria-hidden><Icon name="door" size={20} /></span>
           <span className="who-text" title={`${prop?.nickname} · ${roomsLine(state, unit, today)}`}><span className="who">Unit {unit.label} · by the room</span></span>
         </Link>
-        {sum.rented > 0
-          ? <StatusPill tone={tone} meaning="Each room's rent is tracked on its own row underneath.">{tone === 'paid' && <Icon name="check" size={16} />}{sum.paid} of {sum.rented} paid</StatusPill>
-          : <StatusPill tone="vacant">No rooms rented</StatusPill>}
+        <StatusPill tone={pill.tone} meaning={sum.rented ? "Each room's rent is tracked on its own row underneath." : undefined}>{pill.tone === 'paid' && <Icon name="check" size={16} />}{pill.label}</StatusPill>
         <span className="row-act" />
       </li>
       {running.map((l) => <RentLine key={l.id} unit={unit} lease={l} card={leaseStep(state, l, today)} room />)}

@@ -7,6 +7,7 @@ import { addDays, daysBetween, fmtDate } from '../lib/dates';
 import { BarChart, Spark } from '../support/charts';
 import { customerOf, fmtMoney, isLive, isSuper, live, loadLive, mrr, timeLeft, useSupport, useSupportToasts, within, type SupportState } from '../support/store';
 import { isStaff, useConn } from '../data/api';
+import { TeamTwoStepGate } from '../components/TwoStep';
 import { Inbox, TicketPage } from '../support/Inbox';
 import { CustomerPage, Customers } from '../support/Customers';
 import { Growth, Revenue } from '../support/Business';
@@ -47,8 +48,16 @@ const NAV: { group: string; only?: (s: SupportState) => boolean; items: { to: st
 ];
 
 export function Support() {
-  const { user } = useConn();
+  const { user, config } = useConn();
+  const { act } = useStore();
+  const nav = useNavigate();
   const staff = isStaff(user);
+  // The Keyholder team signs in with two steps: set up before the dashboard opens.
+  if (staff && config?.twoStep && !user?.twoStep) return <TeamTwoStepGate onSignOut={() => { act.signOut(); nav('/welcome'); }} />;
+  return <SupportLoaded staff={staff} />;
+}
+
+function SupportLoaded({ staff }: { staff: boolean }) {
   const [ready, setReady] = useState(!staff);
   const [err, setErr] = useState('');
   useEffect(() => {
