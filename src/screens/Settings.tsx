@@ -14,18 +14,18 @@ import { Avatar } from '../components/Art';
 import { ServerAccount, ServerData } from '../components/ServerAccount';
 import { useConn } from '../data/api';
 
-const PREFS = ['appearance', 'two-step', 'rent-tracking'];
-const THEME = { system: 'Match device', light: 'Paper', dark: 'Night Ledger' } as const;
+const THEMES = [
+  { id: 'system', icon: 'monitor', label: 'Device', title: 'Match device' },
+  { id: 'light', icon: 'sun', label: 'Paper', title: 'Paper (light)' },
+  { id: 'dark', icon: 'moon', label: 'Night', title: 'Night Ledger (dark)' },
+] as const;
 
-/** One preference: a short row with what it is set to; tap to change it there. */
-function Pref({ id, icon, title, value, open, setOpen, children }: { id: string; icon: string; title: string; value: string; open: string | null; setOpen: (x: string | null) => void; children: React.ReactNode }) {
-  const on = open === id;
+/** One preference on one line: an icon, its name, and its options right there (wraps to two lines on phones). */
+function Pref({ id, icon, title, children }: { id: string; icon: string; title: string; children: React.ReactNode }) {
   return (
-    <div className={`pref${on ? ' open' : ''}`}>
-      <button type="button" className="pref-row" id={`pref-${id}`} aria-expanded={on} aria-controls={id} onClick={() => setOpen(on ? null : id)}>
-        <Icon name={icon} size={18} /><span className="pref-t">{title}</span><span className="pref-v">{value}</span><Icon name="next" size={16} />
-      </button>
-      {on && <div className="pref-body" id={id}>{children}</div>}
+    <div className="pref" id={`pref-${id}`}>
+      <span className="pref-name"><Icon name={icon} size={18} /><span className="pref-t">{title}</span></span>
+      <div className="pref-opts" id={id}>{children}</div>
     </div>
   );
 }
@@ -39,16 +39,8 @@ export function Settings() {
   const conn = useConn();
   // With the Keyholder server, a landlord's real account (not the demo or admin preview).
   const live = conn.mode === 'server' && !!conn.user && conn.user.role === 'owner' && !admin && !!p.account;
-  // Preferences: one row each; a link like /settings#two-step opens that one.
-  const [open, setOpen] = useState<string | null>(PREFS.includes(loc.hash.slice(1)) ? loc.hash.slice(1) : null);
-  useEffect(() => {
-    const id = loc.hash.slice(1); if (!id) return;
-    if (PREFS.includes(id)) setOpen(id);
-    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }));
-  }, [loc.hash]);
-  const u = conn.user;
-  const twoStepValue = conn.mode !== 'server' || !u ? 'With your online account' : u.twoStep
-    ? `On · ${[u.passkeys ? 'fingerprint or face' : '', u.twoStepApp ? 'authenticator app' : ''].filter(Boolean).join(' or ') || 'on'}` : 'Off';
+  // A link like /settings#two-step scrolls to that line.
+  useEffect(() => { const id = loc.hash.slice(1); if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'center' })); }, [loc.hash]);
   // Your profile: changes wait in the form until Save.
   const saved = { name: p.name, email: p.email, phone: p.phone ?? '', province: p.province, city: p.city, emailUpdates: !!p.emailUpdates };
   const [draft, setDraft] = useState(saved);
@@ -112,16 +104,14 @@ export function Settings() {
       <section className="section" id="preferences">
         <h2 className="section-title">Preferences</h2>
         <div className="sheet prefs">
-          <Pref id="appearance" icon="sparkle" title="Appearance" value={`${THEME[p.theme]}${p.paperGrain ? ' · paper grain' : ''}`} open={open} setOpen={setOpen}>
-            <Field label="Theme"><Seg label="Theme" value={p.theme} onChange={(theme) => act.setProfile({ theme })} options={[{ id: 'system', label: THEME.system }, { id: 'light', label: THEME.light }, { id: 'dark', label: THEME.dark }]} /></Field>
-            <label className="check"><input type="checkbox" checked={p.paperGrain} onChange={(e) => act.setProfile({ paperGrain: e.target.checked })} />Paper grain texture</label>
+          <Pref id="appearance" icon="sparkle" title="Appearance">
+            <span className="seg-icons" role="radiogroup" aria-label="Theme">
+              {THEMES.map((t) => <button key={t.id} role="radio" aria-checked={p.theme === t.id} title={t.title} onClick={() => act.setProfile({ theme: t.id })}><Icon name={t.icon} size={15} />{t.label}</button>)}
+            </span>
+            <button className="chip" role="switch" aria-checked={p.paperGrain} id="pref-grain" title="Paper grain texture" onClick={() => act.setProfile({ paperGrain: !p.paperGrain })}><Icon name={p.paperGrain ? 'check' : 'sparkle'} size={14} />Grain</button>
           </Pref>
-          <Pref id="two-step" icon="lock" title="Two-step sign-in" value={twoStepValue} open={open} setOpen={setOpen}>
-            <TwoStepSettings />
-          </Pref>
-          <Pref id="rent-tracking" icon="bank" title="Rent tracking" value={(state.banks ?? []).length ? `Your bank: ${(state.banks ?? []).map((b) => b.bank).join(', ')}` : 'I mark it myself'} open={open} setOpen={setOpen}>
-            <RentTracking />
-          </Pref>
+          <Pref id="two-step" icon="lock" title="Two-step sign-in"><TwoStepSettings /></Pref>
+          <Pref id="rent-tracking" icon="bank" title="Rent tracking"><RentTracking /></Pref>
         </div>
       </section>
 

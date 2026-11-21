@@ -14,7 +14,7 @@ import { Portfolio } from './screens/Portfolio';
 import { PropertyDetail } from './screens/PropertyDetail';
 import { TenantDetail } from './screens/TenantDetail';
 import { ExpensesPage } from './screens/Money';
-import { Rentals } from './screens/Rentals';
+import { Rentals, TenantsPage } from './screens/Rentals';
 import { IncomePage, Paperwork } from './screens/Paperwork';
 import { Settings } from './screens/Settings';
 import { Landing } from './screens/Landing';
@@ -104,6 +104,7 @@ function Shell() {
     { to: '/today', label: 'Home', icon: 'home', badge: true },
     { to: '/portfolio', label: 'Portfolio', icon: 'chart' },
     { to: '/rentals', label: 'Rentals', icon: 'rent' },
+    { to: '/tenants', label: 'Tenants', icon: 'users' },
     { to: '/income', label: 'Income', icon: 'cash' },
     { to: '/expenses', label: 'Expenses', icon: 'receipt' },
     { to: '/paperwork', label: 'Paperwork', icon: 'paper' },
@@ -135,6 +136,7 @@ function Shell() {
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/portfolio/:tab" element={<Portfolio />} />
             <Route path="/rentals" element={<Rentals />} />
+            <Route path="/tenants" element={<TenantsPage />} />
             <Route path="/rent" element={<Navigate to="/rentals" replace />} />
             <Route path="/income" element={<IncomePage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
@@ -168,7 +170,7 @@ function Shell() {
         <NavLink to="/income" data-tour="income"><Icon name="cash" />Income</NavLink>
         <NavLink to="/rentals" data-tour="rentals" className={({ isActive }) => `hub${isActive || loc.pathname.startsWith('/rent/') ? ' active' : ''}`}><span className="disc"><Icon name="rent" size={24} /></span>Rentals</NavLink>
         <NavLink to="/expenses" data-tour="expenses"><Icon name="receipt" />Expenses</NavLink>
-        <NavLink to="/more" data-tour="more" className={['/portfolio', '/paperwork', '/settings', '/more'].some((x) => loc.pathname.startsWith(x)) ? 'active' : ''}><Icon name="menu" />More</NavLink>
+        <NavLink to="/more" data-tour="more" className={['/portfolio', '/paperwork', '/settings', '/more', '/tenants'].some((x) => loc.pathname.startsWith(x)) ? 'active' : ''}><Icon name="menu" />More</NavLink>
       </nav>
 
       {capture && <ExpenseForm onClose={() => setCapture(false)} />}
@@ -195,6 +197,7 @@ function SettingsIcon() {
 /** Phone "More" menu: big, plain buttons for the pages not in the bottom bar. */
 function More() {
   const items = [
+    { to: '/tenants', icon: 'users', label: 'Tenants', sub: 'Everyone renting from you, and where' },
     { to: '/portfolio', icon: 'chart', label: 'Portfolio', sub: 'What your properties are worth and earn' },
     { to: '/paperwork', icon: 'paper', label: 'Paperwork', sub: 'Leases, notices, forms and taxes' },
     { to: '/settings', icon: 'settings', label: 'Settings', sub: 'Your profile, rent tracking, reminders' },

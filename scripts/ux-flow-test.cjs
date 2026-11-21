@@ -89,7 +89,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     });
     await step(tag, 'A4 Add a tenant: two people on one lease, each with an email (lease from today)', async () => {
       // The property's "Add tenant" tab: the form on the page, for its vacant unit.
-      await pg.locator('.tabs a:has-text("Add tenant"), [role=tab]:has-text("Add tenant")').first().click(); await pg.waitForSelector('#vacant-units');
+      await pg.locator('.tabs a:has-text("Tenants")').first().click(); await pg.click('#tenants-add'); await pg.waitForSelector('#vacant-units');
       await pg.fill('#tf-n0', 'Rita Gomez'); await pg.fill('#tf-e0', 'rita@example.com');
       await pg.locator('.tenancy-inline >> text=Add another person').click(); await pg.fill('#tf-n1', 'Luis Gomez'); await pg.fill('#tf-e1', 'luis@example.com');
       const today = await pg.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; });
@@ -97,8 +97,9 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.click('#tf-save'); await pg.waitForTimeout(300);
       await pg.waitForSelector('.unit-row:has-text("Rita Gomez")');
       // Its only unit is rented now: the tab says a vacant unit is needed.
-      await pg.locator('.tabs a:has-text("Add tenant"), [role=tab]:has-text("Add tenant")').first().click();
+      await pg.locator('.tabs a:has-text("Tenants")').first().click();
       await pg.waitForSelector('#need-vacant >> text=You need a vacant unit to add a tenant.');
+      if (!(await pg.locator('#tenants-add').isDisabled())) throw new Error('Add tenant is on with no vacant unit');
       await pg.locator('.tabs a:has-text("Units"), [role=tab]:has-text("Units")').first().click(); await pg.waitForSelector('.unit-row:has-text("Rita Gomez")');
     });
     let row = (who) => pg.locator('.rent-row', { hasText: who });
@@ -155,8 +156,8 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     await step(tag, 'A14 Portfolio shows net worth and the property card', async () => { await go(pg, 'portfolio'); await pg.waitForSelector('text=Your net worth in property'); await pg.waitForSelector('.pcard:has-text("Oak house")'); });
     await step(tag, 'A15 Paperwork → Taxes shows the property', async () => { await go(pg, 'paperwork/taxes'); await pg.waitForSelector('text=rental income · Oak house'); });
     await step(tag, 'A16 Settings → connect a bank → "Check now"', async () => {
-      await go(pg, 'settings'); await pg.click('#pref-rent-tracking'); await pg.locator('text=Check my banks for me').click(); await pg.locator('.drawer .choice:has-text("TD")').click(); await pg.locator('text=Connect TD').click(); await pg.waitForTimeout(1400);
-      await pg.locator('text=/Check (all )?now/').first().click(); await pg.waitForTimeout(300);
+      await go(pg, 'settings'); await pg.click('#rt-bank'); await pg.locator('.drawer .choice:has-text("TD")').click(); await pg.locator('text=Connect TD').click(); await pg.waitForTimeout(1400);
+      await pg.click('#rt-check'); await pg.waitForTimeout(300);
     });
     ok(tag, 'A errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 
@@ -238,7 +239,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await circle().click(); await pg.waitForSelector('.setup-card #score');
       const n = await pg.locator('#score .row').count(); await pg.locator('#score >> text=Show all').click(); const n2 = await pg.locator('#score .row').count();
       const before = Number((await pg.locator('#score .score-ring > span').textContent()).trim());
-      await pg.locator('#score .row').nth(1).locator('.dots').click(); await pg.locator('#score [role=menuitem]', { hasText: /^Ignore$/ }).click(); await pg.waitForTimeout(250);
+      await pg.locator('#score .row').nth(1).locator('.dots').click(); await pg.locator('.row-menu-pop [role=menuitem]', { hasText: /^Ignore$/ }).click(); await pg.waitForTimeout(250);
       const after = Number((await pg.locator('#score .score-ring > span').textContent()).trim()); if (!(after > before)) throw new Error(before + ' → ' + after);
       await pg.keyboard.press('Escape'); await pg.waitForTimeout(150);
       return n + ' shown, ' + n2 + ' after Show all · score ' + before + ' → ' + after;
@@ -277,8 +278,8 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if (await pg.locator('.drawer').count()) await pg.locator('.drawer >> text=Cancel').first().click();
     });
     await step(tag, 'B17 Settings: two banks connected, "Add another bank" available', async () => {
-      await go(pg, 'settings'); await pg.waitForSelector('#pref-rent-tracking >> text=Your bank:'); await pg.click('#pref-rent-tracking');
-      await pg.waitForSelector('#rent-tracking >> text=Add another bank'); const st = await state(pg); if (st.banks.length !== 2) throw new Error(`${st.banks.length} banks`);
+      await go(pg, 'settings'); await pg.waitForSelector('#rt-add'); if ((await pg.locator('#rent-tracking .bank-chip').count()) !== 2) throw new Error('bank chips');
+      const st = await state(pg); if (st.banks.length !== 2) throw new Error(`${st.banks.length} banks`);
       if (await pg.locator('text=Rent found in your banks').count()) throw new Error('rent found is still in Settings');
     });
     await step(tag, 'B18 Portfolio: "Your money compared" with GIC always shows', async () => {
@@ -752,11 +753,12 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if ((await state(pg)).profile.phone !== '416-555-0199') throw new Error('not saved');
       if (!(await pg.locator('#st-save').isDisabled())) throw new Error('Save still on after saving');
     });
-    await step(tag, 'H11 Property tabs: Units, then Add tenant listing the vacant units and rooms', async () => {
+    await step(tag, 'H11 Property tabs: Units, then Tenants (the list, with Add tenant and Find a tenant at the side)', async () => {
       await go(pg, 'rent/property/p-maple'); const tabs = (await pg.locator('.tabs a, [role=tab]').allTextContents()).join(' ');
-      if (!/Units.*Add tenant/.test(tabs)) throw new Error('tabs: ' + tabs);
-      await pg.locator('.tabs a:has-text("Add tenant"), [role=tab]:has-text("Add tenant")').first().click();
-      await pg.waitForSelector('#vacant-units'); await pg.waitForSelector('#tf-save');
+      if (!/Units.*Tenants/.test(tabs)) throw new Error('tabs: ' + tabs);
+      await pg.locator('.tabs a:has-text("Tenants")').first().click();
+      await pg.waitForSelector('#tenants .unit-row:has-text("Maya Chen")'); await pg.waitForSelector('#tenants-find');
+      await pg.click('#tenants-add'); await pg.waitForSelector('#vacant-units'); await pg.waitForSelector('#tf-save');
     });
     await step(tag, 'H12 Delete a unit that never had a tenant from its ⋯ menu; a rented unit cannot be deleted', async () => {
       await go(pg, 'rent/property/p-maple'); await pg.click('#add-unit'); await pg.fill('#uf-l', 'Z');
@@ -795,16 +797,29 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if (await pg.locator('#bank-deposits .bank-row:has-text("MOM")').count()) throw new Error('still on Rentals');
       await go(pg, 'today'); if (await pg.locator('text=from MOM').count()) throw new Error('still on Home');
     });
-    await step(tag, 'H16 Settings → Preferences: short rows with what each is set to; tapping one opens it', async () => {
+    await step(tag, 'H16 Settings → Preferences: one line each, with icons and the options right there', async () => {
       await go(pg, 'settings');
-      if (!(await pg.locator('#pref-appearance .pref-v').textContent()).includes('Match device')) throw new Error('appearance value');
-      if (await pg.locator('#appearance').count()) throw new Error('open before tapping');
-      await pg.click('#pref-appearance'); await pg.waitForSelector('#appearance [aria-label="Theme"]');
-      await pg.click('#pref-two-step'); await pg.waitForSelector('#two-step'); if (await pg.locator('#appearance').count()) throw new Error('two open at once');
+      for (const id of ['appearance', 'two-step', 'rent-tracking']) { const h = await pg.locator(`#pref-${id}`).evaluate((e) => e.getBoundingClientRect().height); if (h > (tag === 'phone' ? 170 : 72)) throw new Error(`${id} line is ${h}px tall`); }
+      if ((await pg.locator('#appearance [role=radio] svg').count()) !== 3) throw new Error('theme icons');
+      await pg.locator('#appearance [role=radio]:has-text("Night")').click(); if ((await state(pg)).profile.theme !== 'dark') throw new Error('theme not set');
+      await pg.locator('#appearance [role=radio]:has-text("Device")').click();
+      await pg.click('#pref-grain'); const g = (await state(pg)).profile.paperGrain; await pg.click('#pref-grain'); if ((await state(pg)).profile.paperGrain === g) throw new Error('grain toggle');
     });
     await step(tag, 'H17 A vacant unit has Add tenant next to its main button; it opens the Add tenant tab', async () => {
       await go(pg, 'rentals'); await pg.locator('.add-tenant-quick').first().click();
       await pg.waitForSelector('#vacant-units'); if (!(await pg.evaluate(() => location.hash)).includes('/add-tenant')) throw new Error('not the Add tenant tab');
+    });
+    await step(tag, 'H18 Tenants page (menu): every tenant with their unit and property; ⋯ actions; Find a tenant lists the properties with a vacancy', async () => {
+      await go(pg, 'tenants'); await pg.waitForSelector('#tenants .unit-row');
+      if (!(await pg.locator('#tenants .unit-row:has-text("Maya Chen")').textContent()).includes('Maple triplex')) throw new Error('no property on the row');
+      await pg.locator('#tenants .unit-row:has-text("Maya Chen") .dots').click(); await pg.waitForSelector('[role=menuitem]:has-text("End lease")'); await pg.keyboard.press('Escape');
+      await pg.click('#tenants-find'); if (await pg.locator('[role=menuitem]').count()) await pg.locator('[role=menuitem]').first().click();
+      await pg.waitForTimeout(300); if (!(await pg.evaluate(() => location.hash)).includes('/find')) throw new Error('Find a tenant did not open a property');
+    });
+    await step(tag, 'H19 Home ⋯ menu floats above the page (not cut off by its card)', async () => {
+      await go(pg, 'today'); const dots = pg.locator('.rent-list .dots, .prop-line .dots').first(); await dots.scrollIntoViewIfNeeded(); await dots.click();
+      const ok = await pg.evaluate(() => { const m = document.querySelector('.row-menu-pop'); if (!m || m.parentElement !== document.body) return false; const r = m.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + 10); return !!top && !!top.closest('.row-menu-pop'); });
+      if (!ok) throw new Error('menu hidden or inside the card'); await pg.keyboard.press('Escape');
     });
     ok(tag, 'H errors', errsH.length === 0, errsH.slice(0, 3).join(' | '));
 
@@ -916,7 +931,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       // The bank turned off, in the sample landlord app (test / test).
       await go(pg, 'support'); await pg.locator('.sp-rail-foot >> text=Sign out').click(); await pg.waitForSelector('.lp-hero-h');
       await login(pg, 'test', 'test'); await pg.waitForSelector('.rent-row'); await pg.locator('.tour-card >> text=Skip tour').click(); await pg.waitForTimeout(200);
-      await go(pg, 'settings#rent-tracking'); await pg.locator('#rent-tracking >> text=Add another bank').click(); await pg.waitForSelector('.drawer');
+      await go(pg, 'settings#rent-tracking'); await pg.locator('#rt-add').click(); await pg.waitForSelector('.drawer');
       if (!(await pg.locator('.drawer .choice:has-text("RBC")').isDisabled())) throw new Error('RBC can still be picked');
       await pg.waitForSelector('.drawer .choice:has-text("RBC") >> text=Not available right now');
       await pg.keyboard.press('Escape'); await pg.waitForTimeout(200);

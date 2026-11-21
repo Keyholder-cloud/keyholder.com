@@ -170,6 +170,7 @@ export function Expenses() {
 // How rent is tracked: two choices only — mark it yourself, or connect a bank (Plaid: new transactions as soon as the bank reports them).
 // =====================================================================================
 /** How rent is tracked (shown in Settings). */
+/** Settings → Preferences → Rent tracking, on one line: mark it myself or check my bank; each bank as a chip. */
 export function RentTracking() {
   const { state, act } = useStore();
   const [connect, setConnect] = useState(false);
@@ -178,41 +179,23 @@ export function RentTracking() {
   const soon = !banksOn();
   // A bank that asks to sign in again (Plaid's window in "update" mode).
   const reconnect = (id: string) => { connectWithPlaid(id).then((r) => { if (r) { void sync.refresh(); act.say(`${r.bank} is connected again.`); } }, (e) => act.say((e as Error).message)); };
-
   return (
     <>
-      <p className="lead">How do we know rent arrived?</p>
-      <div className="choices two" role="radiogroup" aria-label="How rent is tracked">
-        <button role="radio" aria-checked={manual} className="choice big" onClick={() => !manual && act.useManualTracking()}>
-          <Icon name="check" size={28} />
-          <span className="t">I'll mark it myself</span>
-          <span className="s">Tap "Mark paid" when rent comes in.</span>
+      <span className="seg-icons" role="radiogroup" aria-label="How rent is tracked">
+        <button role="radio" id="rt-manual" aria-checked={manual} title="Tap Mark paid when rent comes in" onClick={() => !manual && act.useManualTracking()}><Icon name="hand" size={15} />I mark it</button>
+        <button role="radio" id="rt-bank" aria-checked={!manual} disabled={soon} title={soon ? 'Bank checks are coming soon' : 'Keyholder spots rent, bills and mortgage payments in your bank (view only)'} onClick={() => manual && setConnect(true)}>
+          <Icon name="bank" size={15} />My bank{soon && <span className="soon-tag">{serverMode() ? 'Coming soon' : 'Not available right now'}</span>}
         </button>
-        <button role="radio" aria-checked={!manual} className={`choice big${soon ? ' soon' : ''}`} disabled={soon} onClick={() => manual && setConnect(true)}>
-          <Icon name="bank" size={28} />
-          <span className="t">Check my banks for me{soon && <span className="soon-tag">{serverMode() ? 'Coming soon' : 'Not available right now'}</span>}</span>
-          <span className="s">{soon ? 'Keyholder will spot rent, bills and mortgage payments in your bank. Until then, tap "Mark paid" when rent comes in.' : 'Any Canadian banks or credit unions. Rent, bills and mortgage payments, as soon as your bank reports them.'}</span>
-        </button>
-      </div>
-
-      {!manual && (
-        <div className="sheet" style={{ marginTop: 24 }}>
-          <div className="spread" style={{ marginBottom: 8 }}><h3>Connected banks</h3><button className="btn small" onClick={() => setConnect(true)}><Icon name="plus" size={14} />Add another bank</button></div>
-          <ul className="rows">{banks.map((b) => (
-            <li key={b.id} className="row" style={{ gridTemplateColumns: '1fr auto' }}>
-              <span><span className="title">{b.bank} {b.accountMask}</span><span className="sub" style={{ display: 'block' }}>{b.status === 'connected' ? `Last checked ${new Date(b.lastSync).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Needs you to sign in again'}</span></span>
-              <span className="row-act">
-                {b.status === 'needs-reauth' && <button className="btn small primary" onClick={() => (serverMode() ? reconnect(b.id) : act.reauthBank(b.id))}>Sign in again</button>}
-                <button className="btn small ghost" onClick={() => act.disconnectBank(b.id)}>Disconnect</button>
-              </span>
-            </li>
-          ))}</ul>
-          <div className="btn-row" style={{ marginTop: 8 }}><button className="btn" onClick={() => act.syncBank()}><Icon name="sync" size={16} />Check all now</button></div>
-          <p className="small soft" style={{ marginTop: 12 }}>View only. Keyholder sees deposits and payments, and can never move money.</p>
-        </div>
-      )}
-
-      {!manual && <p className="small soft" style={{ marginTop: 12 }}>Money that comes in shows on Home and Rentals (is it rent?). Money that goes out shows on Expenses (which property, which type).</p>}
+      </span>
+      {banks.map((b) => (
+        <span key={b.id} className={`chip bank-chip${b.status === 'needs-reauth' ? ' warn' : ''}`} title={b.status === 'connected' ? `Last checked ${new Date(b.lastSync).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Needs you to sign in again'}>
+          <Icon name="bank" size={14} />{b.bank}{b.accountMask ? ` ${b.accountMask}` : ''}
+          {b.status === 'needs-reauth' && <button className="chip-btn" onClick={() => (serverMode() ? reconnect(b.id) : act.reauthBank(b.id))}>Sign in again</button>}
+          <button className="chip-x" aria-label={`Disconnect ${b.bank}`} title="Disconnect" onClick={() => act.disconnectBank(b.id)}><Icon name="close" size={12} /></button>
+        </span>
+      ))}
+      {!manual && <button className="chip" id="rt-check" title="Check every bank now" onClick={() => act.syncBank()}><Icon name="sync" size={14} />Check now</button>}
+      {!manual && <button className="chip" id="rt-add" title="Add another bank (view only: Keyholder can never move money)" onClick={() => setConnect(true)}><Icon name="plus" size={14} />Add bank</button>}
       {connect && (serverMode() ? <PlaidConnect onClose={() => setConnect(false)} /> : <ConnectBank onClose={() => setConnect(false)} />)}
     </>
   );

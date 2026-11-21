@@ -2,8 +2,7 @@ import { canDeleteUnit, DeleteUnitDrawer } from '../components/PropertyActions';
 import { DeleteTenantDrawer, EndLeaseDrawer } from '../components/TenantActions';
 import { PageSub, StatusPill } from '../components/Guide';
 import { OfficialPdfButton } from '../components/OfficialForm';
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import type { Applicant, Lease, Listing, Notice, Tenant, Unit } from '../data/types';
@@ -24,6 +23,7 @@ import { PaymentForm, PropertyForm, TenancyForm, UnitForm } from '../components/
 import { Drawer, Empty, Field, MoneyInput, Seg, Stamp } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { MatchDrawer, ReminderDrawer } from './Tray';
+import { FloatMenu, FloatMenu as UnitMenu, type MenuItem } from '../components/FloatMenu';
 import { SceneEmptyHome } from '../components/Art';
 
 // Rentals: every property and unit, and everything about running them.
@@ -205,7 +205,7 @@ function VacantRow({ unit, free, room }: { unit: Unit; free?: string[]; room?: b
 }
 
 /** A lease: the whole unit's (one or several people), or one room's (`room`: shown under the unit's row). */
-function LeaseRow({ unit, lease, tenant, room }: { unit: Unit; lease: Lease; tenant: Tenant; room?: boolean }) {
+function LeaseRow({ unit, lease, tenant, room, place }: { unit: Unit; lease: Lease; tenant: Tenant; room?: boolean; place?: string }) {
   const { state, today } = useStore();
   const nav = useNavigate();
   const [pay, setPay] = useState(false);
@@ -222,7 +222,7 @@ function LeaseRow({ unit, lease, tenant, room }: { unit: Unit; lease: Lease; ten
   return (
     <li className={`unit-row${room ? ' room-row' : ''}${isLate ? ' late' : ''}`}>
       {room ? <RoomMark /> : <span className={`unit-label${unit.label.length > 2 ? ' long' : ''}`}>{unit.label}</span>}
-      <Link to={`/rent/tenant/${tenant.id}`} className="unit-who"><strong>{tenant.names.join(' & ')}</strong><span>{lease.room ? `${lease.room} · ` : ''}{fmt(lease.rent)} a month{tenant.names.length > 1 ? ' · shared lease' : ''}</span></Link>
+      <Link to={`/rent/tenant/${tenant.id}`} className="unit-who"><strong>{tenant.names.join(' & ')}</strong><span>{place ? `${place} · ` : ''}{lease.room ? `${lease.room} · ` : ''}{fmt(lease.rent)} a month{tenant.names.length > 1 ? ' · shared lease' : ''}</span></Link>
       <span className="unit-state">
         {line.state === 'paid' && <StatusPill tone="paid" meaning={paid ? undefined : 'Rent for this month counts as paid.'}><Icon name="check" size={16} />{paid ? `Rent paid · ${fmtDay(paid)}` : 'Rent paid'}</StatusPill>}
         {isLate && <StatusPill tone="late">Late · {line.daysLate} days</StatusPill>}
@@ -275,34 +275,70 @@ export function UnitsTab({ propertyId }: { propertyId: string }) {
 // =====================================================================================
 // Add tenant tab (property page): tenants go into a vacant unit or room.
 // =====================================================================================
-export function AddTenantTab({ propertyId }: { propertyId: string }) {
+/**
+ * Tenants: everyone renting now, with their unit (and property), rent status and ⋯ actions; Add tenant and Find a
+ * tenant at the side. On a property page (propertyId) or for every property (the Tenants page).
+ */
+export function TenantsList({ propertyId }: { propertyId?: string }) {
   const { state, today } = useStore();
   const nav = useNavigate();
   const loc = useLocation();
-  const [adding, setAdding] = useState(false);
-  const p = state.properties.find((x) => x.id === propertyId)!;
-  const units = state.units.filter((u) => u.propertyId === propertyId);
+  const props = state.properties.filter((p) => !p.archived && (!propertyId || p.id === propertyId));
+  const pids = new Set(props.map((p) => p.id));
+  const units = state.units.filter((u) => pids.has(u.propertyId));
+  const rows = units.flatMap((u) => activeLeases(state, u.id, today).flatMap((l) => {
+    const t = state.tenants.find((x) => x.id === l.tenantId);
+    return t ? [{ u, l, t, p: props.find((x) => x.id === u.propertyId)! }] : [];
+  })).sort((a, b) => (a.p.nickname + a.u.label + (a.l.room ?? '')).localeCompare(b.p.nickname + b.u.label + (b.l.room ?? ''), undefined, { numeric: true }));
   const vacant = units.filter((u) => hasSpace(state, u, today));
   const want = new URLSearchParams(loc.search).get('unit');
+  const asked = !!want || loc.pathname.endsWith('/add-tenant');
+  const [adding, setAdding] = useState(asked && vacant.length > 0);
+  useEffect(() => { if (asked && vacant.length) setAdding(true); }, [loc.pathname, loc.search]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [addUnit, setAddUnit] = useState(false);
   const start = vacant.find((u) => u.id === want)?.id ?? vacant[0]?.id;
-  const place = (u: Unit) => (byRoom(u) ? `Unit ${u.label} (${openRooms(state, u, today).join(', ')})` : `Unit ${u.label}`);
+  const propName = (u: Unit) => props.find((p) => p.id === u.propertyId)?.nickname ?? '';
+  const where = (u: Unit) => `${propertyId ? '' : `${propName(u)} · `}Unit ${u.label}${byRoom(u) ? ` (${openRooms(state, u, today).join(', ')})` : ''}`;
+  const freeProps = props.filter((p) => vacant.some((u) => u.propertyId === p.id));
+  const closeForm = () => { setAdding(false); if (asked) nav(propertyId ? `/rent/property/${propertyId}/tenants` : '/tenants', { replace: true }); };
+  const findBtn = <><Icon name="search" size={16} />Find a tenant</>;
   return (
-    <section className="section">
-      <h2 className="section-title">Add a tenant</h2>
-      {vacant.length ? (
-        <>
-          <div className="callout vacancy-note" id="vacant-units"><Icon name="door" size={18} /> <span>Tenants are added to a <strong>vacant unit or room</strong>. Vacant here: {vacant.map(place).join(' · ')}.</span></div>
-          <TenancyForm key={start} inline propertyId={propertyId} unitId={start} onClose={() => nav(`/rent/property/${propertyId}`)} />
-        </>
-      ) : (
-        <div className="callout warn need-vacant" id="need-vacant">
-          <strong>You need a vacant unit to add a tenant.</strong>
-          <p style={{ margin: '6px 0 12px' }}>{units.length ? `Every unit at ${p.nickname} has a tenant.` : `${p.nickname} has no units yet.`} Add a unit, or end a lease when a tenant moves out (⋯ on the unit, in Units).</p>
-          <div className="btn-row"><button className="btn primary" onClick={() => setAdding(true)}><Icon name="plus" size={16} />Add a unit</button><Link className="btn" to={`/rent/property/${propertyId}`}>Go to Units</Link></div>
-        </div>
-      )}
-      {adding && <UnitForm propertyId={propertyId} onClose={() => setAdding(false)} />}
+    <section className="section tenants-layout" id="tenants">
+      <div className="tenants-main">
+        {adding && start && (
+          <div className="tenants-add">
+            <div className="callout vacancy-note" id="vacant-units"><Icon name="door" size={18} /> <span>Tenants are added to a <strong>vacant unit or room</strong>. Vacant: {vacant.map(where).join(' · ')}.</span></div>
+            <TenancyForm key={start} inline propertyId={propertyId} unitId={start} onClose={closeForm} />
+          </div>
+        )}
+        {rows.length ? (
+          <div className="sheet tight"><ul className="unit-list">{rows.map(({ u, l, t, p }) => (
+            <LeaseRow key={l.id} unit={u} lease={l} tenant={t} room={false} place={propertyId ? undefined : p.nickname} />
+          ))}</ul></div>
+        ) : <div className="sheet"><Empty title="No tenants yet.">Add the tenant you already have, or find one for a vacant unit.</Empty></div>}
+      </div>
+      <aside className="tenants-side" aria-label="Tenant actions">
+        <div className="tenants-count"><Icon name="users" size={18} /><span><strong>{rows.length}</strong> tenant{rows.length === 1 ? '' : 's'}</span><span className="soft">·</span><Icon name="door" size={18} /><span><strong>{vacant.length}</strong> vacant</span></div>
+        <button className="btn primary" id="tenants-add" disabled={!vacant.length || adding} onClick={() => setAdding(true)}><Icon name="plus" size={16} />Add tenant</button>
+        {!vacant.length ? (
+          <div className="callout warn need-vacant" id="need-vacant"><strong>You need a vacant unit to add a tenant.</strong>
+            <button className="btn small" onClick={() => (propertyId ? setAddUnit(true) : nav('/rentals'))}><Icon name="plus" size={14} />Add a unit</button></div>
+        ) : freeProps.length > 1
+          ? <FloatMenu id="tenants-find" triggerClass="btn" trigger={findBtn} items={freeProps.map((p) => ({ label: p.nickname, icon: 'home', onClick: () => nav(`/rent/property/${p.id}/find`) }))} />
+          : <button className="btn" id="tenants-find" onClick={() => nav(`/rent/property/${freeProps[0].id}/find`)}>{findBtn}</button>}
+      </aside>
+      {addUnit && propertyId && <UnitForm propertyId={propertyId} onClose={() => setAddUnit(false)} />}
     </section>
+  );
+}
+
+/** The Tenants page: every tenant at every property. */
+export function TenantsPage() {
+  return (
+    <div className="page">
+      <div className="page-head"><div><h1 className="title-ic"><span className="tile-ic lilac" aria-hidden><Icon name="users" size={22} /></span>Tenants</h1><PageSub>Everyone renting from you, and where</PageSub></div></div>
+      <TenantsList />
+    </div>
   );
 }
 
@@ -661,51 +697,6 @@ export function RaiseRent({ lease, onClose }: { lease: Lease; onClose: () => voi
  * its button, upward when the button is near the bottom of the screen, and follows the button when the page
  * scrolls. Escape, a click elsewhere, or the button leaving the screen closes it.
  */
-type MenuPos = { top?: number; bottom?: number; right: number };
-type MenuItem = { label: string; onClick?: () => void; danger?: boolean; note?: string };
-/** The ⋯ menu of a unit or room row. An item without onClick is shown greyed, with its note (why not). */
-function UnitMenu({ items }: { items: MenuItem[] }) {
-  const [pos, setPos] = useState<MenuPos | null>(null);
-  const btn = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  const place = (): MenuPos | null => {
-    if (!btn.current) return null;
-    const r = btn.current.getBoundingClientRect();
-    if (r.bottom < 0 || r.top > window.innerHeight) return null;
-    const right = Math.max(8, window.innerWidth - r.right);
-    return window.innerHeight - r.bottom < 140 ? { bottom: window.innerHeight - r.top + 4, right } : { top: r.bottom + 4, right };
-  };
-  const toggle = () => setPos((p) => (p ? null : place()));
-  const open = !!pos;
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setPos(null);
-    const follow = () => setPos(place());
-    const down = (e: PointerEvent) => { if (!menu.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) close(); };
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { close(); btn.current?.focus(); } };
-    window.addEventListener('pointerdown', down);
-    window.addEventListener('keydown', key);
-    window.addEventListener('scroll', follow, true);
-    window.addEventListener('resize', follow);
-    menu.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
-    return () => { window.removeEventListener('pointerdown', down); window.removeEventListener('keydown', key); window.removeEventListener('scroll', follow, true); window.removeEventListener('resize', follow); };
-  }, [open]);
-  return (
-    <span className="row-menu">
-      <button ref={btn} className="btn ghost small dots" aria-label="More options" aria-haspopup="menu" aria-expanded={!!pos} onClick={toggle}>⋯</button>
-      {pos && createPortal(
-        <div ref={menu} className="row-menu-pop floating" role="menu" style={pos}>
-          {items.map((it) => (
-            <button key={it.label} role="menuitem" className={it.danger ? 'danger' : undefined} aria-disabled={!it.onClick || undefined} disabled={!it.onClick}
-              onClick={() => { if (!it.onClick) return; setPos(null); it.onClick(); }}>
-              {it.label}{it.note && <span className="menu-note">{it.note}</span>}
-            </button>
-          ))}
-        </div>, document.body)}
-    </span>
-  );
-}
-
 /** The rent suggestion: shown only when the rent is meaningfully below what similar units rent for nearby. */
 export function rentSuggestion(state: ReturnType<typeof useStore>['state'], lease: Lease, unit: Unit, today: string) {
   const prop = propertyOf(state, lease);

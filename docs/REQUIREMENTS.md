@@ -314,3 +314,17 @@ Status: ☐ to do · ◐ in progress · ☑ done
   Dashboard (API → Allowed redirect URIs). If it is not registered, Link opens without it and Health says so.
 - When Plaid's window closes with an error, its code, type, request id and session id go to Platform → System
   health and the audit log; the landlord sees the code.
+
+### R38. Tenants (property tab and page), floating ⋯ menus, Preferences on one line ☑
+- Owner, 2026-11-21: "Make the tab - Tenant ... show the list of tenants and give options to work on them, give the
+  Add tenant option, and find a tenant buttons ... to the side"; "do it on both"; "the 3 dots makes a drop down that is
+  not visible"; Preferences "one line ... utilize icons ... keep the content as like one line".
+- Property page: "Tenants" tab (replaces "Add tenant"): every tenant with unit/room, rent, status and ⋯ (Raise rent,
+  End lease, Delete tenant); at the side the counts, Add tenant (the form opens above the list; off with "You need a
+  vacant unit" + Add a unit when none) and Find a tenant. /add-tenant?unit= opens the form for that unit.
+- Tenants page in the menu (phones: More): the same for every property, with the property on each row; Find a tenant
+  lists the properties with a vacancy.
+- Every ⋯ menu floats above the page (Home, Rentals, Setup progress), opening upward near the bottom.
+- Settings → Preferences: one line each with an icon: Appearance (Device / Paper / Night, Grain), Two-step sign-in
+  (On, Face/finger, App, Backup · n, Remembered · n, turn off; each opens its panel), Rent tracking (I mark it / My
+  bank, a chip per bank with ×, Check now, Add bank).

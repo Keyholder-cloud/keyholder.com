@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { hasSpace } from '../lib/finance';
-import { AddTenantTab, FindTenantTab, NoticesTab, UnitsTab } from './Rentals';
+import { FindTenantTab, NoticesTab, TenantsList, UnitsTab } from './Rentals';
 import { ArchivePropertyDrawer } from '../components/PropertyActions';
 import type { Property } from '../data/types';
 import { propertyLevel, atLeast } from '../lib/levels';
@@ -47,7 +47,7 @@ export function PropertyDetail() {
       </div>
       <nav className="tabs" aria-label="Property sections">
         <NavLink end to={base} className={cur === 'units' ? 'active' : ''}>Units</NavLink>
-        <NavLink to={`${base}/add-tenant`}>Add tenant</NavLink>
+        <NavLink to={`${base}/tenants`} className={cur === 'tenants' || cur === 'add-tenant' ? 'active' : ''}>Tenants</NavLink>
         {hasEmpty && <NavLink to={`${base}/find`}>Find a tenant</NavLink>}
         <NavLink to={`${base}/notices`}>Late rent and notices</NavLink>
         <NavLink to={`${base}/value`}>Value</NavLink>
@@ -59,7 +59,7 @@ export function PropertyDetail() {
           {state.units.some((u) => u.propertyId === p.id) && <section className="section"><h2 className="section-title">Rent, last 12 months</h2><div className="sheet"><RentRoll propertyId={p.id} /></div></section>}
         </>
       )}
-      {cur === 'add-tenant' && <AddTenantTab propertyId={p.id} />}
+      {(cur === 'tenants' || cur === 'add-tenant') && <TenantsList propertyId={p.id} />}
       {cur === 'find' && <FindTenantTab propertyId={p.id} />}
       {cur === 'notices' && <NoticesTab propertyId={p.id} />}
       {cur === 'value' && <ValueTab id={p.id} />}
