@@ -270,7 +270,8 @@ export interface Picture {
 }
 
 export function picture(state: AppState, from: ISODate, to: ISODate, opts: { propertyId?: string } = {}): Picture {
-  const props = state.properties.filter((p) => !p.archived && (!opts.propertyId || p.id === opts.propertyId));
+  // A property archived (sold) during the period still counts for it: its rent and costs up to that day are real.
+  const props = state.properties.filter((p) => (!p.archived || (!!p.archivedOn && p.archivedOn >= from)) && (!opts.propertyId || p.id === opts.propertyId));
   const propIds = new Set(props.map((p) => p.id));
   const units = state.units.filter((u) => propIds.has(u.propertyId));
   const unitIds = new Set(units.map((u) => u.id));

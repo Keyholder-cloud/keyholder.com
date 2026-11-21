@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Mortgage, Property } from '../data/types';
 import { useStore } from '../data/store';
-import { levelInfo, nextStep, propertyLevel, type Level } from '../lib/levels';
+import { levelInfo, propertyLevel, type Level } from '../lib/levels';
 import { keyholderScore } from '../lib/score';
 import { banksOn } from '../data/api';
 import { portfolio } from '../lib/finance';
@@ -73,7 +73,7 @@ export function PropertyCard({ property, active, banner }: { property: Property;
         <div><span>Yours</span><strong>{row.owedKnown && !none ? fmtShort(row.yours) : '—'}</strong></div>
         <div><span>Return a year</span><strong>{row.returnPct === null ? '—' : `${row.returnPct.toFixed(1)}%`}</strong>{row.returnPct !== null && <em className="vs-gic">GIC {benchmarks().gic.pct}%</em>}</div>
       </div>
-      <div className="pcard-source">{row.valueInfo.source}{!none && !row.owedKnown ? ' · add what is owed' : ''}</div>
+      <div className="pcard-source">{none ? 'Step 1 of 2: add what you paid' : `${row.valueInfo.source}${!row.owedKnown ? ' · add what is owed' : ''}`}</div>
     </div>
   );
 }
@@ -118,16 +118,42 @@ function useCountUp(target: number) {
   return v;
 }
 
-// ---------- A locked tab, shown as an invitation ----------
-export function LevelInvite({ property, to, title, points }: { property: Property; to: Level; title: string; points: string[] }) {
-  const [open, setOpen] = useState(false);
-  const step = nextStep(useStore().state, property);
+// ---------- The way up, one step at a time: Bronze → Silver (what you paid) → Gold (the mortgage) ----------
+const STEPS: { to: Level; title: string; gives: string }[] = [
+  { to: 'silver', title: 'Add what you paid', gives: 'What it is worth to you, your gain since buying, your return next to a GIC, room to borrow.' },
+  { to: 'gold', title: 'Add your mortgage', gives: 'What you still owe, mortgage interest for your taxes, depreciation, and what you would keep if you sold.' },
+];
+
+/**
+ * The property's steps as one numbered path. The step to do now has the only button; a later step is greyed
+ * ("Do step 1 first"); a done step is ticked. Replaces the separate invitations that each asked the same thing.
+ */
+export function LevelSteps({ property, onOwnEstimate }: { property: Property; onOwnEstimate?: () => void }) {
+  const { state } = useStore();
+  const [open, setOpen] = useState<Level | null>(null);
+  const level = propertyLevel(state, property);
+  const done = (to: Level) => levelInfo(level).rank >= levelInfo(to).rank;
+  const now = STEPS.findIndex((s) => !done(s.to));
+  if (now < 0) return null;
   return (
-    <div className="sheet invite">
-      <h2>{title}</h2>
-      <ul>{points.map((x) => <li key={x}>{x}</li>)}</ul>
-      <button className="btn primary" onClick={() => setOpen(true)}>{step?.to === to ? step.action : to === 'gold' ? 'Add what I paid first' : 'Add details'}</button>
-      {open && <LevelUpForm property={property} to={step?.to ?? to} onClose={() => setOpen(false)} />}
+    <div className="sheet level-steps" id="level-steps">
+      <div className="ls-head"><LevelBadge level={level} /><span className="small soft">Step {now + 1} of {STEPS.length}</span></div>
+      <ol>{STEPS.map((s, i) => {
+        const state = done(s.to) ? 'done' : i === now ? 'now' : 'later';
+        return (
+          <li key={s.to} className={`ls-step ${state}`} aria-current={state === 'now' ? 'step' : undefined}>
+            <span className="ls-n" aria-hidden>{state === 'done' ? '✓' : i + 1}</span>
+            <div>
+              <strong>{s.title}</strong> <span className="ls-to">→ {levelInfo(s.to).name}</span>
+              <p className="small soft">{state === 'later' ? `Do step ${now + 1} first.` : s.gives}</p>
+            </div>
+            {state === 'now' && <button className="btn primary" id={s.to === 'silver' ? 'add-paid' : 'add-mortgage'} onClick={() => setOpen(s.to)}>{s.title}</button>}
+            {state === 'done' && <span className="small soft">Done</span>}
+          </li>
+        );
+      })}</ol>
+      {onOwnEstimate && now === 0 && <p className="small soft" style={{ margin: '12px 0 0' }}>Have a recent appraisal? <button className="link-btn" id="add-own" onClick={onOwnEstimate}>Use your own estimate instead</button> (optional).</p>}
+      {open && <LevelUpForm property={property} to={open} onClose={() => setOpen(null)} />}
     </div>
   );
 }

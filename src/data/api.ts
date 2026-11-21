@@ -7,7 +7,7 @@ import { embedded } from '../components/ui';
 //  • "local": no server answers (the Claude preview, a static host). Everything stays in this browser, as in Stage 1.
 // The mode is decided once at start-up, before the first screen is drawn.
 
-export type ServerUser = { id: string; email: string; name: string; role: 'owner' | 'super' | 'admin' | 'support'; emailVerified: boolean; hasPassword: boolean; google: boolean; twoStep?: boolean; twoStepSince?: string | null; backupCodesLeft?: number };
+export type ServerUser = { id: string; email: string; name: string; role: 'owner' | 'super' | 'admin' | 'support'; emailVerified: boolean; hasPassword: boolean; google: boolean; twoStep?: boolean; twoStepSince?: string | null; backupCodesLeft?: number; twoStepApp?: boolean; passkeys?: number };
 export type ServerConfig = { google: boolean; emailDelivery: boolean; banks?: boolean; banksOff?: string[]; addressLookup?: boolean; benchmarks?: Benchmarks; version: string; build?: string; twoStep?: boolean };
 export type Conn = { mode: 'local' | 'server'; user: ServerUser | null; config: ServerConfig | null };
 

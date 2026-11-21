@@ -31,7 +31,7 @@ export function Today() {
     // Start here: three steps with a progress bar, for people starting with their own data.
     const steps = [
       { done: state.properties.length > 0, title: 'Add your property', sub: 'The address and how many units.', to: '/rentals', btn: 'Add property', icon: 'home' },
-      { done: state.tenants.length > 0, title: 'Add your tenant', sub: 'Their name, rent and the day it is due.', to: state.properties[0] ? `/rent/property/${state.properties[0].id}` : '/rentals', btn: 'Add tenant', icon: 'user' },
+      { done: state.tenants.length > 0, title: 'Add your tenant', sub: 'Their name, rent and the day it is due.', to: state.properties[0] ? `/rent/property/${state.properties[0].id}/add-tenant` : '/rentals', btn: 'Add tenant', icon: 'user' },
       { done: state.banks.some((b) => b.status === 'connected') || state.profile.rentArrival === 'manual', title: 'Choose how rent is tracked', sub: banksOn() ? 'Connect your banks, or tap "Mark paid" yourself.' : 'Tap "Mark paid" when rent comes in. Bank checks are coming soon.', to: '/settings#rent-tracking', btn: 'Choose', icon: 'bank' },
       // Live accounts: two-step sign-in (optional; the step stays until it is on).
       ...(offerTwoStep ? [{ done: false, title: 'Turn on two-step sign-in', sub: 'Optional: a code from an app on your phone after your password.', to: '/settings#two-step', btn: 'Turn on', icon: 'lock' }] : []),

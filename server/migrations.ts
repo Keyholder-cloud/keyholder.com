@@ -271,4 +271,22 @@ create table two_step_tickets (
 );
 create index two_step_tickets_user on two_step_tickets (user_id);`,
   },
+  {
+    // Two-step sign-in with fingerprint or face (passkeys, WebAuthn): one row per device; the pending challenge.
+    id: '008_passkeys',
+    sql: `create table passkeys (
+  id text primary key,
+  user_id uuid not null references users(id) on delete cascade,
+  public_key text not null,
+  counter bigint not null default 0,
+  transports jsonb,
+  name text not null default '',
+  created_at timestamptz not null default now(),
+  last_used_at timestamptz
+);
+create index passkeys_user on passkeys (user_id);
+alter table users add column webauthn_challenge text;
+alter table users add column webauthn_challenge_at timestamptz;
+alter table two_step_tickets add column challenge text;`,
+  },
 ];

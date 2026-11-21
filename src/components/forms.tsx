@@ -387,10 +387,11 @@ export function UnitForm({ propertyId, unit, onClose }: { propertyId: string; un
   return (
     <Drawer title={unit ? `Unit ${unit.label}` : 'Add a unit'} onClose={onClose}
       footer={<>
-        {unit && !occupied && <button className="btn ghost danger" onClick={() => { act.removeUnit(unit.id); onClose(); }}>Remove unit</button>}
+        {unit && !state.leases.some((l) => l.unitId === unit.id) && <button className="btn ghost danger" id="uf-delete" onClick={() => { act.deleteUnit(unit.id); onClose(); }}>Delete unit</button>}
         <button className="btn ghost" onClick={onClose}>Cancel</button>
         <button className="btn primary" disabled={!u.label.trim() || tooFew || splitLeases} onClick={() => { act.saveUnit(u); onClose(); }}>Save unit</button>
       </>}>
+      {unit && state.leases.some((l) => l.unitId === unit.id) && !occupied && <p className="tiny soft" style={{ marginTop: 0 }}>This unit has had tenants, so it can't be deleted: its rent history stays for your taxes. If the property was sold, archive the property.</p>}
       <div className="grid2">
         <Field label="Door label" htmlFor="uf-l" hint='"A", "Upper", "Basement"'><input id="uf-l" className="input" value={u.label} onChange={(e) => set({ label: e.target.value })} /></Field>
         <Field label="Bedrooms" htmlFor="uf-b"><input id="uf-b" type="number" min={0} className="input" value={u.bedrooms} onChange={(e) => set({ bedrooms: Number(e.target.value) })} /></Field>
@@ -416,9 +417,13 @@ export function UnitForm({ propertyId, unit, onClose }: { propertyId: string; un
 // =====================================================================================
 // Tenant + lease (TL-1, TL-2) — includes the email-notice consent the PRD requires
 // =====================================================================================
-export function TenancyForm({ unitId, onClose }: { unitId?: string; onClose: () => void }) {
+/**
+ * Add a tenant to a vacant unit or room. `propertyId`: only that property's vacant units. `inline`: on the page (the
+ * property's "Add tenant" tab) instead of in a drawer.
+ */
+export function TenancyForm({ unitId, onClose, propertyId, inline }: { unitId?: string; onClose: () => void; propertyId?: string; inline?: boolean }) {
   const { state, act, today } = useStore();
-  const free = state.units.filter((u) => hasSpace(state, u, today));
+  const free = state.units.filter((u) => hasSpace(state, u, today) && (!propertyId || u.propertyId === propertyId));
   const [uId, setUId] = useState(unitId ?? free[0]?.id ?? '');
   const unit = state.units.find((u) => u.id === uId);
   const rooms = unit && byRoom(unit) ? openRooms(state, unit, today) : [];
@@ -458,9 +463,14 @@ export function TenancyForm({ unitId, onClose }: { unitId?: string; onClose: () 
 
   if (!state.units.length) return <Drawer title="Add a tenant" onClose={onClose}><p>Add a property and a unit first.</p></Drawer>;
 
-  return (
-    <Drawer title="Add a tenant" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!valid} onClick={save}>Save tenant and lease</button></>}>
-      <Field label="Unit" htmlFor="tf-u">
+  const footer = <><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" id="tf-save" disabled={!valid} onClick={save}>Save tenant and lease</button></>;
+  // A plain function (not a component), so the inputs keep their focus while typing.
+  const wrap = (children: React.ReactNode) => (inline
+    ? <div className="sheet tenancy-inline">{children}<div className="btn-row tenancy-foot">{footer}</div></div>
+    : <Drawer title="Add a tenant" onClose={onClose} footer={footer}>{children}</Drawer>);
+  return wrap(
+    <>
+      <Field label={propertyId ? 'Vacant unit' : 'Unit'} htmlFor="tf-u">
         <select id="tf-u" className="input" value={uId} onChange={(e) => { setUId(e.target.value); const u = state.units.find((x) => x.id === e.target.value); setRent(u?.rent); setLmr(u?.rent); setRoom(u && byRoom(u) ? openRooms(state, u, today)[0] ?? '' : ''); }}>
           {(free.length ? free : state.units).map((u) => <option key={u.id} value={u.id}>{state.properties.find((p) => p.id === u.propertyId)?.nickname} — Unit {u.label}{byRoom(u) ? ` (${openRooms(state, u, today).length} free of ${u.rooms ?? 1} rooms)` : ''}</option>)}
         </select>
@@ -507,7 +517,7 @@ export function TenancyForm({ unitId, onClose }: { unitId?: string; onClose: () 
         </div>
       )}
       <p className="small soft">The rent schedule is created from these terms: one charge per month, due on the {dueDay}{dueDay === 1 ? 'st' : 'th'}.</p>
-    </Drawer>
+    </>,
   );
 }
 

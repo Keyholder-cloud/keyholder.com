@@ -92,6 +92,9 @@ export interface Property {
   /** Owner said there is no mortgage (counts as mortgage details for Gold). */
   mortgageFree?: boolean;
   archived?: boolean;
+  /** Archived: the day it was sold or stopped being rented, and why. Its records stay (taxes count it until then). */
+  archivedOn?: ISODate;
+  archivedReason?: 'sold' | 'not-rented';
 }
 
 export type UnitStatus = 'occupied' | 'vacant' | 'notice';
