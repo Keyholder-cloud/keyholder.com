@@ -96,6 +96,8 @@ function statusFor(state: ReturnType<typeof useStore>['state'], lease: Lease | u
   if (c?.stage === 'lease' || c?.stage === 'moved-in') return { label: 'Moving in', tone: 'due' };
   if (c?.stage === 'moving-out') return { label: 'Moving out', tone: 'due' };
   if (c?.step.kind === 'confirm-payment') return { label: 'Rent to confirm', tone: 'due' };
+  // A lease that starts later (moving in next month): no rent is due yet.
+  if (lease.start > today && periodOf(lease.start) > periodOf(today)) return { label: `Rent starts ${fmtDay(lease.start)}`, tone: 'due' };
   const line = currentLine(state, lease, today)!;
   if (line.state === 'paid') { const d = paidOn(line); return { label: d ? `Rent paid · ${fmtDay(d)}` : 'Rent paid', tone: 'paid' }; }
   if (line.state === 'late') return { label: `Rent late · ${line.daysLate} day${line.daysLate === 1 ? '' : 's'}`, tone: 'late' };

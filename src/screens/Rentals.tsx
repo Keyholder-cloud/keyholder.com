@@ -139,7 +139,7 @@ function LeaseRow({ unit, lease, tenant, room }: { unit: Unit; lease: Lease; ten
         {line.state === 'paid' && <StatusPill tone="paid" meaning={paid ? undefined : 'Rent for this month counts as paid.'}><Icon name="check" size={16} />{paid ? `Rent paid · ${fmtDay(paid)}` : 'Rent paid'}</StatusPill>}
         {isLate && <StatusPill tone="late">Late · {line.daysLate} days</StatusPill>}
         {line.state === 'partial' && !isLate && !found && <StatusPill tone="partial">{fmt(line.charge - line.paid)} owed</StatusPill>}
-        {(line.state === 'due' || line.state === 'upcoming') && !found && <StatusPill tone="due">{line.state === 'due' ? 'Rent due today' : `Rent due ${fmtDay(line.due)}`}</StatusPill>}
+        {(line.state === 'due' || line.state === 'upcoming') && !found && <StatusPill tone="due">{lease.start > today && lease.start.slice(0, 7) > today.slice(0, 7) ? `Rent starts ${fmtDay(lease.start)}` : line.state === 'due' ? 'Rent due today' : `Rent due ${fmtDay(line.due)}`}</StatusPill>}
         {found && line.state !== 'paid' && <StatusPill tone="due">Payment found</StatusPill>}
       </span>
       <span className="row-act">
