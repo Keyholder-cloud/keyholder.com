@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../data/store';
-import { hasSpace } from '../lib/finance';
-import { FindTenantTab, NoticesTab, TenantsList, UnitsTab } from './Rentals';
+import { FindTenantPage, NoticesTab, TenantsList, UnitsTab } from './Rentals';
 import { ArchivePropertyDrawer } from '../components/PropertyActions';
 import type { Property } from '../data/types';
 import { propertyLevel, atLeast } from '../lib/levels';
@@ -18,15 +17,16 @@ import { Icon } from '../components/Icon';
 
 export function PropertyDetail() {
   const { id, tab = 'units' } = useParams();
-  const { state, act, today } = useStore();
+  const { state, act } = useStore();
   const nav = useNavigate();
   const [edit, setEdit] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const p = state.properties.find((x) => x.id === id);
   if (!p) return <div className="page"><Empty title="That property isn't here." action={<Link to="/rentals" className="btn">Back to Rentals</Link>} /></div>;
-  const hasEmpty = state.units.some((u) => u.propertyId === p.id && hasSpace(state, u, today));
   const cur = tab === 'overview' ? 'units' : tab;
   const base = `/rent/property/${p.id}`;
+  // Find a tenant is its own page for this property (not a tab).
+  if (cur === 'find') return <FindTenantPage propertyId={p.id} />;
 
   return (
     <div className="page">
@@ -48,7 +48,6 @@ export function PropertyDetail() {
       <nav className="tabs" aria-label="Property sections">
         <NavLink end to={base} className={cur === 'units' ? 'active' : ''}>Units</NavLink>
         <NavLink to={`${base}/tenants`} className={cur === 'tenants' || cur === 'add-tenant' ? 'active' : ''}>Tenants</NavLink>
-        {hasEmpty && <NavLink to={`${base}/find`}>Find a tenant</NavLink>}
         <NavLink to={`${base}/notices`}>Late rent and notices</NavLink>
         <NavLink to={`${base}/value`}>Value</NavLink>
         <NavLink to={`${base}/mortgage`}>Mortgage</NavLink>
@@ -60,7 +59,6 @@ export function PropertyDetail() {
         </>
       )}
       {(cur === 'tenants' || cur === 'add-tenant') && <TenantsList propertyId={p.id} />}
-      {cur === 'find' && <FindTenantTab propertyId={p.id} />}
       {cur === 'notices' && <NoticesTab propertyId={p.id} />}
       {cur === 'value' && <ValueTab id={p.id} />}
       {cur === 'mortgage' && (atLeast(propertyLevel(state, p), 'gold') ? <MortgageTab id={p.id} /> : <LevelSteps property={p} />)}

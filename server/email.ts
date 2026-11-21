@@ -57,9 +57,14 @@ async function deliver(em: Config['email'], m: Row): Promise<{ providerId?: stri
 }
 
 /** Sends what is due. Safe to run from several processes at once (rows are claimed with SKIP LOCKED). */
-export async function sendDue(cfg: Config, db: Db, limit = 20, keys?: Keys): Promise<{ sent: number; failed: number }> {
+export async function sendDue(cfg: Config, db: Db, limit = 20, keys?: Keys): Promise<{ sent: number; failed: number; held?: boolean }> {
   if (keys) await keys.refresh(db);
   const em = keys ? keys.email() : cfg.email;
+  // Live site with no email provider yet: keep every email queued (nothing is marked sent), so support replies,
+  // receipts and reminders go out once email is switched on (Support → Connections → Email).
+  if (cfg.production && em.provider === 'log') return { sent: 0, failed: 0, held: true };
+  // Switched on later: emails waiting more than 7 days are not sent late.
+  await db.query(`update outbox set status = 'expired', last_error = 'Waited more than 7 days for email to be switched on' where status = 'queued' and created_at < now() - interval '7 days'`);
   const rows = await db.query<Row>(
     `update outbox set status = 'sending', attempts = attempts + 1
      where id in (select id from outbox where status = 'queued' and send_after <= now() order by created_at limit $1 for update skip locked)

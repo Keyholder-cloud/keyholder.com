@@ -714,3 +714,54 @@ button.chip:hover { border-color: var(--primary); }
 }
 /* Floating ⋯ menus sit above popovers and side panels they are opened from. */
 .row-menu-pop.floating { z-index: 400; }
+/* "Remember this device?": two buttons side by side. */
+.two-step-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* The public application form. */
+.apply-card { width: min(720px, 100%); }
+.apply-facts { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--ink-soft); font-size: 14px; margin: 4px 0 8px; }
+.apply-facts span { display: inline-flex; align-items: center; gap: 6px; }
+.apply-facts svg, .apply-h svg { color: var(--primary); }
+.apply-h { display: flex; align-items: center; gap: 8px; font-size: 17px; margin: 22px 0 10px; }
+.apply-person { border: 1px solid var(--rule); border-radius: 12px; padding: 10px 14px 4px; margin: 0 0 10px; }
+.apply-person legend { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; padding: 0 4px; }
+.apply-card .field { display: grid; gap: 4px; margin-bottom: 10px; }
+.apply-card .field > span { font-size: 13px; color: var(--ink-soft); }
+.apply-card .span2 { grid-column: 1 / -1; }
+.apply-checks { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 4px 0 10px; }
+.apply-checks .input { flex: 1; min-width: 200px; }
+.apply-hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+/* Settings → Your profile: compact, three fields a row; the email choice and Save on one line. */
+.profile-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 14px; }
+.profile-grid .field { margin-bottom: 10px; }
+#profile .sheet { padding-top: 16px; padding-bottom: 14px; }
+#profile .profile-save { margin-top: 4px; justify-content: flex-end; }
+#profile .profile-save .check { margin: 0 auto 0 0; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+#profile .profile-account { margin-top: 12px; padding-top: 12px; }
+@media (max-width: 760px) { .profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .profile-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 10px; } .profile-grid > :nth-child(1), .profile-grid > :nth-child(2) { grid-column: 1 / -1; } }
+/* App pages start close to the top (owner, 2026-11-21: the empty space above each page ÷ 3). */
+.page { padding-top: calc(var(--s-6) / 3); }
+@media (max-width: 860px) { .page { padding-top: calc(var(--s-5) / 3); } }
+
+/* "Mark rent yourself?": confirm before the connected banks are disconnected. */
+.rt-confirm { width: min(552px, 100%); padding: 29px; font-size: 19px; }
+.rt-confirm h2 { display: flex; align-items: center; gap: 12px; font-size: 26px; margin: 0 0 12px; }
+.rt-confirm h2 svg { color: var(--primary); width: 24px; height: 24px; }
+.rt-confirm .small { font-size: 16px; }
+.rt-confirm .btn-row { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+.rt-confirm .btn { font-size: 17px; min-height: 50px; padding: 0 20px; }
+/* Settings: Receipts and reminders, and Data, compact like Preferences (readable sizes). */
+.pref-inline { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-soft); }
+.pref-num { width: 72px; height: 36px; padding: 0 10px; text-align: center; }
+a.chip { text-decoration: none; }
+.chip.danger { color: var(--rust); }
+.chip.danger > svg { color: var(--rust); }
+.data-sheet { display: grid; gap: 12px; padding-top: 16px; padding-bottom: 16px; }
+.data-sheet > p { margin: 0; }
+.data-sheet .btn-row .btn { min-height: 38px; padding: 0 14px; font-size: 14px; }
+.clear-box { display: grid; gap: 10px; }
+#reminders .chip[aria-checked="true"] { border-color: var(--primary); color: var(--primary); }
+#profile .field label, #profile .field > span:first-child { font-size: 14px; margin-bottom: 4px; }
+#profile .input { min-height: 42px; height: 42px; padding-top: 0; padding-bottom: 0; font-size: 15px; }
+#profile .profile-save .btn { min-height: 40px; }
+.sp-email-off { display: flex; gap: 6px; align-items: flex-start; color: var(--rust); margin: 0 0 8px; }

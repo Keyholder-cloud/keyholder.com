@@ -7,6 +7,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import type { Applicant, Lease, Listing, Notice, Tenant, Unit } from '../data/types';
 import { currentLine, unitTenant, useStore } from '../data/store';
+import { serverMode } from '../data/api';
 import { activeLeases, byRoom, currentLeases, hasSpace, leaseLedger, openRooms, paidOn, roomsLine, roomsPaid, roomsPill } from '../lib/finance';
 import { applicantPeople } from '../lib/people';
 import { addDays, daysBetween, fmtDate, fmtDay, fmtPeriod } from '../lib/dates';
@@ -23,7 +24,7 @@ import { PaymentForm, PropertyForm, TenancyForm, UnitForm } from '../components/
 import { Drawer, Empty, Field, MoneyInput, Seg, Stamp } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { MatchDrawer, ReminderDrawer } from './Tray';
-import { FloatMenu, FloatMenu as UnitMenu, type MenuItem } from '../components/FloatMenu';
+import { FloatMenu as UnitMenu, type MenuItem } from '../components/FloatMenu';
 import { SceneEmptyHome } from '../components/Art';
 
 // Rentals: every property and unit, and everything about running them.
@@ -299,7 +300,6 @@ export function TenantsList({ propertyId }: { propertyId?: string }) {
   const start = vacant.find((u) => u.id === want)?.id ?? vacant[0]?.id;
   const propName = (u: Unit) => props.find((p) => p.id === u.propertyId)?.nickname ?? '';
   const where = (u: Unit) => `${propertyId ? '' : `${propName(u)} · `}Unit ${u.label}${byRoom(u) ? ` (${openRooms(state, u, today).join(', ')})` : ''}`;
-  const freeProps = props.filter((p) => vacant.some((u) => u.propertyId === p.id));
   const closeForm = () => { setAdding(false); if (asked) nav(propertyId ? `/rent/property/${propertyId}/tenants` : '/tenants', { replace: true }); };
   const findBtn = <><Icon name="search" size={16} />Find a tenant</>;
   return (
@@ -323,9 +323,7 @@ export function TenantsList({ propertyId }: { propertyId?: string }) {
         {!vacant.length ? (
           <div className="callout warn need-vacant" id="need-vacant"><strong>You need a vacant unit to add a tenant.</strong>
             <button className="btn small" onClick={() => (propertyId ? setAddUnit(true) : nav('/rentals'))}><Icon name="plus" size={14} />Add a unit</button></div>
-        ) : freeProps.length > 1
-          ? <FloatMenu id="tenants-find" triggerClass="btn" trigger={findBtn} items={freeProps.map((p) => ({ label: p.nickname, icon: 'home', onClick: () => nav(`/rent/property/${p.id}/find`) }))} />
-          : <button className="btn" id="tenants-find" onClick={() => nav(`/rent/property/${freeProps[0].id}/find`)}>{findBtn}</button>}
+        ) : <button className="btn" id="tenants-find" onClick={() => nav(propertyId ? `/rent/property/${propertyId}/find` : '/find')}>{findBtn}</button>}
       </aside>
       {addUnit && propertyId && <UnitForm propertyId={propertyId} onClose={() => setAddUnit(false)} />}
     </section>
@@ -347,6 +345,27 @@ export function TenantsPage() {
 // =====================================================================================
 const SAFE_DECLINE = ['The unit has been rented to another applicant', 'Income does not meet the rent-to-income guideline', 'Could not verify references', 'Move-in date does not work'];
 
+/**
+ * Find a tenant: its own page, for one property (/rent/property/:id/find, back to its Tenants) or for every
+ * property with a vacancy (/find, back to Tenants).
+ */
+export function FindTenantPage({ propertyId }: { propertyId?: string }) {
+  const { state, today } = useStore();
+  const props = state.properties.filter((x) => !x.archived && (!propertyId || x.id === propertyId));
+  const withSpace = props.filter((x) => state.units.some((u) => u.propertyId === x.id && hasSpace(state, u, today)));
+  const one = propertyId ? props[0] : undefined;
+  return (
+    <div className="page find-page">
+      <Link to={one ? `/rent/property/${one.id}/tenants` : '/tenants'} className="crumb"><Icon name="back" size={16} />Back to {one ? one.nickname : 'Tenants'}</Link>
+      <div className="page-head"><div><h1 className="title-ic"><span className="tile-ic sky" aria-hidden><Icon name="search" size={22} /></span>Find a tenant</h1>
+        <PageSub>{one ? `${one.nickname} · ${one.address}` : 'Every vacant unit and room, with its listing and applications'}</PageSub></div></div>
+      {one ? <FindTenantTab propertyId={one.id} /> : withSpace.length ? withSpace.map((x) => (
+        <section key={x.id} className="section find-prop"><h2 className="section-title"><Icon name="home" size={18} /> <Link to={`/rent/property/${x.id}/find`}>{x.nickname}</Link></h2><FindTenantTab propertyId={x.id} /></section>
+      )) : <div className="sheet"><Empty title="Every unit is rented.">When a unit or room is free, list it here.</Empty></div>}
+    </div>
+  );
+}
+
 export function FindTenantTab({ propertyId }: { propertyId: string }) {
   const { state, today } = useStore();
   const empty = state.units.filter((u) => u.propertyId === propertyId && hasSpace(state, u, today));
@@ -364,7 +383,7 @@ function FindTenantUnit({ unit }: { unit: Unit }) {
   const [open, setOpen] = useState<Applicant | null>(null);
   const apps = state.applicants.filter((a) => a.unitId === unit.id).sort((a, b) => b.submitted.localeCompare(a.submitted));
   const live = apps.filter((a) => a.status !== 'declined');
-  const link = `https://keyholder.ca/apply/${l.slug}`;
+  const link = `${serverMode() ? window.location.origin : 'https://keyholder.cloud'}/apply/${l.slug}`;
   const days = Math.max(0, daysBetween(l.vacantSince, today));
   const free = byRoom(unit) ? openRooms(state, unit, today) : null;
   const what = !free ? 'empty' : free.length === 1 ? `${free[0]} free` : `${free.length} rooms free`;

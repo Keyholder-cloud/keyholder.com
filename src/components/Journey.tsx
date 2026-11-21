@@ -53,7 +53,7 @@ const shortLabel = (c: JourneyCard): string => {
 };
 
 /** Runs a journey step: inline when it can, otherwise opens the right form or page. */
-export function StepButton({ c }: { c: JourneyCard }) {
+export function StepButton({ c, noAdd }: { c: JourneyCard; noAdd?: boolean }) {
   const { act } = useStore();
   const nav = useNavigate();
   const [form, setForm] = useState(false);
@@ -75,7 +75,7 @@ export function StepButton({ c }: { c: JourneyCard }) {
     <>
       <button className={`btn ${c.urgent || s.kind !== 'mortgage' ? 'primary' : ''}`} onClick={run}>{shortLabel(c)}</button>
       {/* A vacant unit or room: list it, or add the tenant you already found. */}
-      {s.kind === 'list-unit' && <button className="btn add-tenant-quick" onClick={() => nav(`/rent/property/${s.unit.propertyId}/add-tenant?unit=${s.unit.id}`)}><Icon name="plus" size={16} />Add tenant</button>}
+      {(s.kind === 'list-unit' || s.kind === 'send-form' || s.kind === 'review') && !noAdd && <button className="btn add-tenant-quick" onClick={() => nav(`/rent/property/${s.unit.propertyId}/add-tenant?unit=${s.unit.id}`)}><Icon name="plus" size={16} />Add tenant</button>}
       {form && s.kind === 'form' && <FormWizard lease={s.lease} formId={s.formId} onClose={() => setForm(false)} />}
       {match && s.kind === 'confirm-payment' && <MatchDrawer item={{ kind: 'match', id: s.txn.id, txn: s.txn, suggestion: null }} onClose={() => setMatch(false)} />}
     </>
@@ -127,7 +127,7 @@ function UnitLine({ unit }: { unit: Unit }) {
           <span className="who-text" title={`${prop?.nickname} · ${roomsLine(state, unit, today)}`}><span className="who">Unit {unit.label} · by the room</span></span>
         </Link>
         <StatusPill tone={pill.tone} meaning={sum.rented ? "Each room's rent is tracked on its own row underneath." : undefined}>{pill.tone === 'paid' && <Icon name="check" size={16} />}{pill.label}</StatusPill>
-        <span className="row-act" />
+        <span className="row-act">{free.length > 0 && <Link className="btn add-tenant-quick" id={`home-add-${unit.id}`} to={`/rent/property/${unit.propertyId}/add-tenant?unit=${unit.id}`}><Icon name="plus" size={16} />Add tenant</Link>}</span>
       </li>
       {running.map((l) => <RentLine key={l.id} unit={unit} lease={l} card={leaseStep(state, l, today)} room />)}
       {free.length > 0 && <RentLine unit={unit} card={freeCard} free={free.length} room />}
@@ -169,7 +169,7 @@ function RentLine({ unit, lease, card, free, room }: { unit: Unit; lease?: Lease
       )}
       <StatusPill tone={st.tone} meaning={meaning}>{st.tone === 'paid' && <Icon name="check" size={16} />}{st.label}</StatusPill>
       <span className="row-act">
-        {visible ? <StepButton c={visible} /> : fallback}
+        {visible ? <StepButton c={visible} noAdd={room} /> : fallback}
         {visible && <RowMenu k={prefKey(visible)} />}
       </span>
       {pay && lease && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}

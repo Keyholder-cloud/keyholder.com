@@ -374,7 +374,7 @@ function Tour() {
           </div>
           <div className="lp-tour-stage" role="tabpanel" id="tour-panel" aria-labelledby={`tour-tab-${s.id}`}>
             <div className="mac">
-              <div className="mac-bar" aria-hidden><span className="mac-dots"><i /><i /><i /></span><span className="mac-url"><Icon name="lock" size={11} />keyholder.com</span></div>
+              <div className="mac-bar" aria-hidden><span className="mac-dots"><i /><i /><i /></span><span className="mac-url"><Icon name="lock" size={11} />keyholder.cloud</span></div>
               <button className="mac-screen" aria-label={`Enlarge screen: ${s.alt}`}
                 onClick={() => { if (!touch.current?.moved) setZoom(true); }}
                 onTouchStart={(e) => { touch.current = { x: e.touches[0].clientX, moved: false }; }}

@@ -93,13 +93,14 @@ export async function refreshGic(cfg: Config, db: Db, fetcher: typeof fetch = fe
 
 /** Starts the background loop: the email queue every 10 s, the daily run and clean-up once an hour. */
 export function startWorker(cfg: Config, db: Db, log: (msg: string) => void, keys = new Keys(cfg)) {
-  let stopped = false, busy = false;
+  let stopped = false, busy = false, lastHeld = -1;
   const tick = async () => {
     if (busy || stopped) return;
     busy = true;
     try {
       const r = await sendDue(cfg, db, 20, keys);
-      if (r.sent || r.failed) log(`email: ${r.sent} delivered, ${r.failed} failed`);
+      if (r.held) { const n = (await db.one<{ n: number }>(`select count(*)::int as n from outbox where status = 'queued'`))?.n ?? 0; if (n && n !== lastHeld) log(`email is off: ${n} email(s) waiting in the outbox (switch email on in Support → Connections → Email)`); lastHeld = n; }
+      else if (r.sent || r.failed) log(`email: ${r.sent} ${keys.email().provider === 'log' ? 'logged (email is off, not sent)' : 'sent'}, ${r.failed} failed`);
     } catch (e) { log(`email queue error: ${(e as Error).message}`); } finally { busy = false; }
   };
   const hourly = async () => {

@@ -3,7 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { PageHead } from '../screens/Support';
 import { Status } from './charts';
-import { customerOf, health, HEALTH_LABEL, sup, timeLeft, useSupport } from './store';
+import { customerOf, health, HEALTH_LABEL, isLive, sup, timeLeft, useSupport } from './store';
+import { getConn } from '../data/api';
 import type { Priority, TicketStatus } from './data';
 
 const PRIORITY: Record<Priority, string> = { urgent: 'Urgent', high: 'High', normal: 'Normal', low: 'Low' };
@@ -88,6 +89,9 @@ export function TicketPage() {
               <button aria-pressed={!note} onClick={() => setNote(false)}>Reply</button>
               <button aria-pressed={note} onClick={() => setNote(true)}>Team note</button>
             </div>
+            {!note && isLive() && getConn().config && !getConn().config!.emailDelivery && (
+              <p className="sp-small sp-email-off" role="status" id="sp-email-off"><Icon name="alert" size={14} /> Email is off, so {c?.name.split(' ')[0] ?? 'they'} won't get this by email yet. It is kept and sent once email is switched on in <Link to="/support/connections">Connections → Email</Link>.</p>
+            )}
             <label htmlFor="sp-reply" className="sr-only">{note ? 'Private note' : 'Reply'}</label>
             <textarea id="sp-reply" className="input" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder={note ? 'Only your team sees this' : `Reply to ${c?.name.split(' ')[0] ?? 'them'}`} />
             <div className="sp-reply-foot">

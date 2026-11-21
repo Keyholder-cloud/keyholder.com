@@ -69,26 +69,26 @@ export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; on
   if (done) return (
     <div className="acct-login two-step-form" id="ts-remember">
       <div className="two-step-head"><span className="tile-ic mint" aria-hidden><Icon name="check" size={20} /></span>
-        <div><strong>Remember this device?</strong><p className="small soft">Next time on this browser, Keyholder skips the second step. It forgets after 30 days unused, a new password, or Forget in Settings.</p></div></div>
-      <button type="button" className="btn primary acct-login-btn" id="ts-remember-yes" disabled={busy} onClick={() => finish(true)}>Yes, remember this device</button>
-      <button type="button" className="btn ghost acct-login-btn" id="ts-remember-no" disabled={busy} onClick={() => finish(false)}>Not now</button>
-      <p className="tiny soft" style={{ margin: 0 }}>Choose "Not now" on a shared or public computer.</p>
+        <div><strong>Remember this device?</strong><p className="small soft">Skip this step here next time.</p></div></div>
+      <div className="two-step-choice">
+        <button type="button" className="btn primary" id="ts-remember-yes" disabled={busy} onClick={() => finish(true)}><Icon name="check" size={16} />Remember</button>
+        <button type="button" className="btn ghost" id="ts-remember-no" disabled={busy} title="Best on a shared computer" onClick={() => finish(false)}>Not now</button>
+      </div>
     </div>
   );
   return (
     <form className="acct-login two-step-form" onSubmit={submit}>
       <div className="two-step-head"><span className="tile-ic lilac" aria-hidden><Icon name="lock" size={20} /></span>
-        <div><strong>Two-step sign-in</strong><p className="small soft">{ways.passkey ? 'Use your fingerprint or face on this device.' : 'Open your authenticator app and type the 6-digit code for Keyholder.'}</p></div></div>
+        <div><strong>Confirm it's you</strong></div></div>
       {ways.passkey && <>
         <button type="button" className="btn primary acct-login-btn" id="ts-biometric" disabled={busy} onClick={biometric}><Icon name="fingerprint" size={18} />Use fingerprint or face</button>
-        <div className="acct-or"><span>or type a code</span></div>
+        <div className="acct-or"><span>or a code</span></div>
       </>}
-      <div className="field"><label htmlFor="ts-code">{ways.app ? 'Code from your app, or a backup code' : 'Backup code'}</label>
+      <div className="field"><label htmlFor="ts-code">{ways.app ? 'App or backup code' : 'Backup code'}</label>
         <input id="ts-code" className="input two-step-input" value={code} onChange={(e) => { setCode(e.target.value); setErr(''); }} inputMode="text" autoComplete="one-time-code" autoFocus placeholder="123 456" maxLength={12} /></div>
       {err && <p className="small acct-error" role="alert">{err}</p>}
       <button className={`btn ${ways.passkey ? '' : 'primary '}acct-login-btn`} disabled={!code.trim() || busy}>{busy ? 'Checking…' : 'Continue'}</button>
-      <p className="tiny soft" style={{ margin: 0 }}>Lost your phone? Type one of your backup codes in the same box.</p>
-      <button type="button" className="btn ghost small" onClick={onBack}>Back to sign in</button>
+      <button type="button" className="btn ghost small" onClick={onBack}><Icon name="back" size={14} />Back</button>
     </form>
   );
 }

@@ -328,3 +328,32 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Settings → Preferences: one line each with an icon: Appearance (Device / Paper / Night, Grain), Two-step sign-in
   (On, Face/finger, App, Backup · n, Remembered · n, turn off; each opens its panel), Rent tracking (I mark it / My
   bank, a chip per bank with ×, Check now, Add bank).
+
+### R39. Remember device (fixed), shorter sign-in, real application form, Find a tenant page, compact Settings ☑
+- Owner, 2026-11-21: "2FA does not remember for my computer"; "too much text on the login page"; "the link to apply
+  for a unit is broken ... showing keyholder.ca"; "Check through to make sure all the links are valid"; "Find a tenant
+  should ... be its own page"; "Place preferences above my profile, and make profile more compact"; "add tenants when
+  renting by the room on home page"; "The empty margin on the pages ... divide by 3".
+- Remembered device: a site-wide cookie `kh_device` (path /; the old `kh_trust` is still read and then cleared);
+  every sign-in logs whether the browser said it was remembered and whether it was found (no token in the log).
+- Two-step screen: "Confirm it's you", the fingerprint button, "App or backup code", Continue, Back. "Remember this
+  device?" with Remember / Not now side by side.
+- The application link is this site's address: APP_URL/apply/<listing>. The page needs no account; it shows the
+  address, unit, rent and date, and asks only fair questions (people, income, current home, tenancy, references,
+  consent). Sending adds the application to that unit and emails the landlord. Pages at deeper addresses load the app
+  from the root (`<base href="/">`).
+- Find a tenant is its own page: /rent/property/<id>/find (back to that property's Tenants) and /find (every vacancy).
+- Settings: Preferences first; the profile is three fields a row with the email choice next to Save.
+- Home: a unit rented by the room with free rooms has Add tenant on its row. Page top space ÷ 3.
+- Links: every internal link on the website and app opens a real page (checked by a crawler); other addresses use
+  keyholder.cloud.
+- Rent tracking: switching to "I mark it" with banks connected opens a confirmation (20% larger) naming the banks it disconnects; Keep my bank / Disconnect and mark it myself.
+
+### R40. Support replies reach the customer's email ☑
+- Owner, 2026-11-21: "when support sends a reply, the customer does not receive it. It should go to their email."
+- Cause: the live site has no email provider switched on, and emails were marked done ("logged") without sending.
+- Now on the live site, with email off, every email stays queued (replies, receipts, reminders) and is sent once
+  email is switched on (Support → Connections → Email); emails older than 7 days by then are not sent late. The log
+  says how many are waiting. Replying in the support inbox shows "Email is off ... sent once email is switched on".
+- Settings: Receipts and reminders and Data on one line each like Preferences; profile compact; "I mark it" asks
+  before disconnecting banks.
