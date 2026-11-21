@@ -218,5 +218,27 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - "Connect your bank" names Plaid and links Plaid's End User Privacy Policy before "Continue to your bank".
 - The Word document (kept outside the repository) answers Plaid's company and application profile, use case, the
   25-question security questionnaire with an honest status for each, and includes a starter security policy, the
-  retention policy and an action list. Open items for the owner: database off Render's free plan, the
-  privacy@keyholder.cloud mailbox, two-step sign-in on admin accounts, branch protection.
+  retention policy and an action list. Contact: admin@keyholder.cloud (owner, 2026-11-21).
+
+### R26. Rooms, ending a lease, deleting a tenant ☑
+- Owner, 2026-11-21: "I have 3 tenants by the room but it shows that no rooms are rented" and "Can't see the option to
+  end lease or delete tenant".
+- A unit rented by the room counts every room with a tenant, also before rent starts: "3 rooms rented · rent starts
+  Dec 1", then "2 of 3 paid".
+- End lease and Delete tenant are on each unit's or room's ⋯ menu in Rentals and at the top of the tenant's page.
+  End lease: the last day; no rent after it; history kept. Delete tenant (added by mistake): removes the tenant, their
+  lease(s), payments, receipts, messages and notices; with payments on record it suggests ending the lease instead.
+
+### R27. Two-step sign-in ☑
+- Owner, 2026-11-21: "Turn on two step login for keyholder as a step" (optional for landlords).
+- After the password (or Google, or a new password), a 6-digit code from an authenticator app (Google Authenticator,
+  Microsoft Authenticator, 1Password…), or one of ten backup codes; "Trust this browser for 30 days".
+- Landlords: optional; Settings → Two-step sign-in (QR code or key, first code, backup codes; new codes; turn off with a
+  code); a Start here step for new accounts and a "Turn on" card on Home (Not now hides it for 30 days).
+- The Keyholder team: required before the support dashboard opens. ADMIN_RESET_TWO_STEP=true (Render, then restart)
+  turns the super user's off if their phone and backup codes are lost.
+- The secret is stored encrypted (KEYS_SECRET); codes cannot be reused; 5 wrong codes end the attempt; a new password
+  forgets trusted browsers. Sign-ins, failures and changes are in the audit log.
+- Render: render.yaml asks for the Starter web plan (always on; the free plan sleeps after 15 minutes) and the
+  basic-256mb database (backups). Emails are sent from admin@keyholder.cloud.
+

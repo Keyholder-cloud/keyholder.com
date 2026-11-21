@@ -22,7 +22,7 @@ const Env = z.object({
   SESSION_DAYS: z.coerce.number().int().positive().default(30),
   /** "log" keeps emails in the outbox only (shown in the support dashboard); "resend" or "postmark" sends them. */
   EMAIL_PROVIDER: z.enum(['log', 'resend', 'postmark']).default('log'),
-  EMAIL_FROM: z.string().default('Keyholder <hello@keyholder.ca>'),
+  EMAIL_FROM: z.string().default('Keyholder <admin@keyholder.cloud>'),
   RESEND_API_KEY: z.string().optional(),
   POSTMARK_TOKEN: z.string().optional(),
   /** The first admin. Created (or promoted) at start-up when both are set. */

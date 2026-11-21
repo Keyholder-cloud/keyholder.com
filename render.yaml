@@ -7,7 +7,9 @@ services:
   - type: web
     name: keyholder
     runtime: node
-    plan: free
+    # Starter: always on. (Render's free plan puts the site to sleep after 15 minutes without visitors, and the
+    # next visit waits about a minute while it wakes up.)
+    plan: starter
     # --include=dev: Render sets NODE_ENV=production during the build too, which would skip the build tools.
     buildCommand: npm ci --include=dev && npm run build && npm test
     startCommand: npm start
@@ -34,7 +36,7 @@ services:
       - key: EMAIL_PROVIDER
         value: log
       - key: EMAIL_FROM
-        value: Keyholder <hello@keyholder.ca>
+        value: Keyholder <admin@keyholder.cloud>
       - key: WORKER
         value: inline
       - key: DAILY_HOUR
@@ -42,6 +44,8 @@ services:
 
 databases:
   - name: keyholder-db
-    plan: free
+    # Paid, with daily backups and point-in-time recovery. (Render deletes free databases after 30 days and
+    # backs up nothing.)
+    plan: basic-256mb
     databaseName: keyholder
     user: keyholder
