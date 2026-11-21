@@ -155,7 +155,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     await step(tag, 'A14 Portfolio shows net worth and the property card', async () => { await go(pg, 'portfolio'); await pg.waitForSelector('text=Your net worth in property'); await pg.waitForSelector('.pcard:has-text("Oak house")'); });
     await step(tag, 'A15 Paperwork → Taxes shows the property', async () => { await go(pg, 'paperwork/taxes'); await pg.waitForSelector('text=rental income · Oak house'); });
     await step(tag, 'A16 Settings → connect a bank → "Check now"', async () => {
-      await go(pg, 'settings'); await pg.locator('text=Check my banks for me').click(); await pg.locator('.drawer .choice:has-text("TD")').click(); await pg.locator('text=Connect TD').click(); await pg.waitForTimeout(1400);
+      await go(pg, 'settings'); await pg.click('#pref-rent-tracking'); await pg.locator('text=Check my banks for me').click(); await pg.locator('.drawer .choice:has-text("TD")').click(); await pg.locator('text=Connect TD').click(); await pg.waitForTimeout(1400);
       await pg.locator('text=/Check (all )?now/').first().click(); await pg.waitForTimeout(300);
     });
     ok(tag, 'A errors', errors.length === 0, errors.slice(0, 3).join(' | '));
@@ -260,6 +260,13 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'expenses'); await pg.waitForSelector('#bank');
       const r0 = pg.locator('.bank-row:has-text("ENBRIDGE")'); await r0.locator('text=Add expense').click(); await pg.waitForTimeout(250);
       const st = await state(pg); if (!st.expenses.some((e) => Math.abs(e.amount) === 21240)) throw new Error('no expense created');
+      if (!st.profile.vendorRules?.['ENBRIDGE GAS']) throw new Error('category not remembered for the vendor');
+    });
+    await step(tag, 'B14b Bank review: Home Depot → Personal (not a rental cost): gone, and remembered for that vendor', async () => {
+      await pg.locator('.bank-row:has-text("HOME DEPOT") >> text=Personal').click(); await pg.waitForTimeout(250);
+      const st = await state(pg); if (st.txns.find((t) => t.id === 'tx-hd').status !== 'ignored') throw new Error('not set aside');
+      if (!st.profile.personalVendors?.includes('HOME DEPOT')) throw new Error('vendor not remembered: ' + st.profile.personalVendors);
+      if (await pg.locator('.bank-row:has-text("HOME DEPOT")').count()) throw new Error('still listed');
     });
     await step(tag, 'B15 Bank review: RBC mortgage payment → Tick off', async () => {
       await pg.locator('.bank-row:has-text("RBC MORTGAGE") >> text=/Tick off/').click(); await pg.waitForTimeout(250);
@@ -270,7 +277,9 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if (await pg.locator('.drawer').count()) await pg.locator('.drawer >> text=Cancel').first().click();
     });
     await step(tag, 'B17 Settings: two banks connected, "Add another bank" available', async () => {
-      await go(pg, 'settings'); await pg.waitForSelector('text=Add another bank'); const st = await state(pg); if (st.banks.length !== 2) throw new Error(`${st.banks.length} banks`);
+      await go(pg, 'settings'); await pg.waitForSelector('#pref-rent-tracking >> text=Your bank:'); await pg.click('#pref-rent-tracking');
+      await pg.waitForSelector('#rent-tracking >> text=Add another bank'); const st = await state(pg); if (st.banks.length !== 2) throw new Error(`${st.banks.length} banks`);
+      if (await pg.locator('text=Rent found in your banks').count()) throw new Error('rent found is still in Settings');
     });
     await step(tag, 'B18 Portfolio: "Your money compared" with GIC always shows', async () => {
       await go(pg, 'portfolio'); await pg.waitForSelector('text=Your money compared'); await pg.waitForSelector('.compare >> text=GIC');
@@ -294,7 +303,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     }
     if (want('C')) ok(tag, 'C Every internal link lands on a real page', bad.length === 0, bad.slice(0, 6).join(' | ') || `${pages.length} pages swept`);
     // Navigation bars
-    await step(tag, 'C2 Menu: Home, Portfolio, Rentals, Income, Expenses, Paperwork, Help at the bottom; Settings at the top right, a small Sign out icon there on Settings only; Settings starts Profile, Appearance (phones: Home, Income, Rentals raised in the middle, Expenses, More)', async () => {
+    await step(tag, 'C2 Menu: Home, Portfolio, Rentals, Income, Expenses, Paperwork, Help at the bottom; Settings at the top right, a small Sign out icon there on Settings only; Settings starts Profile, then one Preferences card (Appearance, Two-step, Rent tracking) (phones: Home, Income, Rentals raised in the middle, Expenses, More)', async () => {
       const labels = tag === 'phone' ? ['Home', 'Income', 'Rentals', 'Expenses', 'More'] : ['Home', 'Portfolio', 'Rentals', 'Income', 'Expenses', 'Paperwork'];
       const order = (await pg.locator(tag === 'phone' ? '.bottombar a' : '.rail .nav-link').allTextContents()).join(' ').replace(/\d+/g, '');
       if (!(tag === 'phone' ? /Home.*Income.*Rentals.*Expenses.*More/ : /Home.*Portfolio.*Rentals.*Income.*Expenses.*Paperwork/).test(order)) throw new Error('order: ' + order);
@@ -306,7 +315,9 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if (!(await pg.locator(`${top} .signout-icon`).isVisible())) throw new Error('no small Sign out icon at the top right of Settings');
       if (await pg.locator('.page > .page-head >> text=Sign out').count()) throw new Error('a big Sign out button is still by the title');
       const order2 = (await pg.locator('.section-title').allTextContents()).join(' | ');
-      if (!/^Your profile \| Appearance \| (Two-step sign-in \| )?Rent tracking/.test(order2)) throw new Error('Settings order: ' + order2);
+      if (!/^Your profile \| Preferences \| Receipts and reminders/.test(order2)) throw new Error('Settings order: ' + order2);
+      const prefs = (await pg.locator('#preferences .pref-t').allTextContents()).join(' | ');
+      if (prefs !== 'Appearance | Two-step sign-in | Rent tracking') throw new Error('Preferences: ' + prefs);
       if (tag === 'phone') { const hub = pg.locator('.bottombar a').nth(2); if (!(await hub.evaluate((a) => a.classList.contains('hub') && a.textContent.includes('Rentals')))) throw new Error('Rentals is not the raised middle button'); }
       if (await pg.locator('.bottombar .capture, .rail >> text=Add a receipt').count()) throw new Error('receipt still in the menu');
       for (const l of labels) { await pg.locator(tag === 'phone' ? `.bottombar >> text=${l}` : `.rail >> text=${l}`).first().click(); await pg.waitForSelector(`h1:has-text("${l === 'Home' ? 'Home' : l === 'Settings' ? 'Your Keyholder' : l}")`, { state: 'attached' }); }
@@ -774,6 +785,27 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.locator('#archived >> text=Restore').first().click(); await pg.waitForTimeout(300);
       st = await state(pg); if (st.properties.find((x) => x.id === 'p-birch').archivedOn) throw new Error('not restored');
     });
+    await step(tag, 'H15 Rentals: money in while rent is owed shows "From your bank"; Not rent is remembered for that sender and gone everywhere', async () => {
+      await pg.evaluate(() => { const k = 'keyholder:v1'; const d = JSON.parse(localStorage.getItem(k)); d.txns.unshift({ id: 'tx-mom', source: 'bank', bankId: d.banks[0]?.id, date: new Date().toISOString().slice(0, 10), amount: 30000, payer: 'MOM', memo: '', status: 'new', checked: true }); localStorage.setItem(k, JSON.stringify(d)); });
+      await pg.reload(); await go(pg, 'rentals');
+      const row = pg.locator('#bank-deposits .bank-row:has-text("MOM")'); await row.waitFor();
+      await row.locator('text=Not rent').click(); await pg.waitForTimeout(300);
+      const st = await state(pg);
+      if (st.txns.find((t) => t.id === 'tx-mom').status !== 'ignored' || !st.profile.notRentPayers?.includes('MOM')) throw new Error('not remembered');
+      if (await pg.locator('#bank-deposits .bank-row:has-text("MOM")').count()) throw new Error('still on Rentals');
+      await go(pg, 'today'); if (await pg.locator('text=from MOM').count()) throw new Error('still on Home');
+    });
+    await step(tag, 'H16 Settings → Preferences: short rows with what each is set to; tapping one opens it', async () => {
+      await go(pg, 'settings');
+      if (!(await pg.locator('#pref-appearance .pref-v').textContent()).includes('Match device')) throw new Error('appearance value');
+      if (await pg.locator('#appearance').count()) throw new Error('open before tapping');
+      await pg.click('#pref-appearance'); await pg.waitForSelector('#appearance [aria-label="Theme"]');
+      await pg.click('#pref-two-step'); await pg.waitForSelector('#two-step'); if (await pg.locator('#appearance').count()) throw new Error('two open at once');
+    });
+    await step(tag, 'H17 A vacant unit has Add tenant next to its main button; it opens the Add tenant tab', async () => {
+      await go(pg, 'rentals'); await pg.locator('.add-tenant-quick').first().click();
+      await pg.waitForSelector('#vacant-units'); if (!(await pg.evaluate(() => location.hash)).includes('/add-tenant')) throw new Error('not the Add tenant tab');
+    });
     ok(tag, 'H errors', errsH.length === 0, errsH.slice(0, 3).join(' | '));
 
     // ---------------- I. Logo, and never the same buttons twice ----------------
@@ -884,7 +916,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       // The bank turned off, in the sample landlord app (test / test).
       await go(pg, 'support'); await pg.locator('.sp-rail-foot >> text=Sign out').click(); await pg.waitForSelector('.lp-hero-h');
       await login(pg, 'test', 'test'); await pg.waitForSelector('.rent-row'); await pg.locator('.tour-card >> text=Skip tour').click(); await pg.waitForTimeout(200);
-      await go(pg, 'settings'); await pg.locator('#rent-tracking >> text=Add another bank').click(); await pg.waitForSelector('.drawer');
+      await go(pg, 'settings#rent-tracking'); await pg.locator('#rent-tracking >> text=Add another bank').click(); await pg.waitForSelector('.drawer');
       if (!(await pg.locator('.drawer .choice:has-text("RBC")').isDisabled())) throw new Error('RBC can still be picked');
       await pg.waitForSelector('.drawer .choice:has-text("RBC") >> text=Not available right now');
       await pg.keyboard.press('Escape'); await pg.waitForTimeout(200);

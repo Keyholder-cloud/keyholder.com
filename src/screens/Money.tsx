@@ -106,7 +106,7 @@ function BankRow({ t, r, bank, props, onFile, onMortgage, onSetup, onIgnore }: {
         {r.kind === 'expense' && <button className="btn primary" disabled={!pid} onClick={() => onFile(pid, cat)}>Add expense</button>}
         {r.kind === 'mortgage' && r.mortgageId && <button className="btn primary" onClick={() => onMortgage(r.mortgageId!)}>{r.matchesSchedule ? 'Tick off' : 'Tick off anyway'}</button>}
         {r.kind === 'mortgage' && !r.mortgageId && <button className="btn primary" disabled={!r.propertyId && !pid} onClick={() => onSetup(r.propertyId ?? pid)}>Set up mortgage</button>}
-        <button className="btn ghost" onClick={onIgnore}>Not rental</button>
+        <button className="btn ghost" title="Not a rental cost: Keyholder remembers this vendor" onClick={onIgnore}>Personal</button>
       </span>
     </li>
   );
@@ -174,7 +174,6 @@ export function RentTracking() {
   const { state, act } = useStore();
   const [connect, setConnect] = useState(false);
   const banks = state.banks ?? [];
-  const deposits = state.txns.filter((t) => t.amount > 0 && t.status !== 'ignored').slice(0, 20);
   const manual = banks.length === 0;
   const soon = !banksOn();
   // A bank that asks to sign in again (Plaid's window in "update" mode).
@@ -213,28 +212,7 @@ export function RentTracking() {
         </div>
       )}
 
-      {!manual && (
-        <section className="section" style={{ marginTop: 24 }}>
-          <h2 className="section-title">Rent found in your banks</h2>
-          {deposits.length === 0 ? <div className="sheet"><Empty title="No rent found yet.">The next check is automatic.</Empty></div> : (
-            <div className="sheet"><ul className="rows">{deposits.map((t) => {
-              const pay = state.payments.find((p) => p.id === t.paymentId);
-              const lease = state.leases.find((l) => l.id === pay?.leaseId);
-              const ten = state.tenants.find((x) => x.id === lease?.tenantId);
-              return (
-                <li key={t.id} className="row">
-                  <span className="margin">{fmtDate(t.date)}</span>
-                  <span><span className="title">{fmt(t.amount)} from {t.payer}</span>
-                    <span className="sub" style={{ display: 'block' }}>{t.status === 'matched' ? `Marked as ${ten?.names[0]}'s rent` : 'Needs you to confirm'}</span></span>
-                  {t.status === 'matched'
-                    ? <button className="btn small ghost" onClick={() => pay && act.voidPayment(pay.id)}>Undo</button>
-                    : <Link className="btn small primary" to="/today">Confirm</Link>}
-                </li>
-              );
-            })}</ul></div>
-          )}
-        </section>
-      )}
+      {!manual && <p className="small soft" style={{ marginTop: 12 }}>Money that comes in shows on Home and Rentals (is it rent?). Money that goes out shows on Expenses (which property, which type).</p>}
       {connect && (serverMode() ? <PlaidConnect onClose={() => setConnect(false)} /> : <ConnectBank onClose={() => setConnect(false)} />)}
     </>
   );

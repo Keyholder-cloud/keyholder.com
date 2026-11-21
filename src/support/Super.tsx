@@ -172,7 +172,36 @@ export function Banks() {
           );
         })}</ul>
       </section>
+      {isLive() && canEdit && <StartFresh />}
     </>
+  );
+}
+
+/** One time, when switching to real bank data: removes test expenses and bank data from every account. */
+function StartFresh() {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<{ accounts: number; expenses: number; transactions: number; payments: number; banks: number } | null>(null);
+  const [err, setErr] = useState('');
+  const go = async (e: FormEvent) => {
+    e.preventDefault(); setBusy(true); setErr('');
+    try { setDone(await api('POST', '/api/admin/start-fresh', { password, confirm })); setPassword(''); setConfirm(''); }
+    catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <section className="sp-card sp-sec" id="start-fresh">
+      <div className="sp-card-head"><h2 className="sp-h3">Start fresh with real bank data</h2><Status tone="bad">Cannot be undone</Status></div>
+      <p className="sp-small">For every landlord: removes every expense, every bank transaction and bank connection, the remembered "not rent" and category choices, and rent marked paid from a bank deposit (with its receipts). Properties, tenants, leases, rent marked paid by hand, notices and messages stay. Landlords then connect their bank again.</p>
+      {done ? <p className="sp-small" role="status"><Icon name="check" size={14} /> Done: {done.accounts} accounts, {done.expenses} expenses, {done.transactions} bank transactions, {done.payments} bank-matched rent payments and {done.banks} bank connections removed.</p> : (
+        <form className="sp-form" onSubmit={go}>
+          <label className="field"><span>Your password</span><input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+          <label className="field"><span>Type START FRESH</span><input className="input" id="sf-confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></label>
+          {err && <p className="sp-small acct-error" role="alert">{err}</p>}
+          <button className="btn danger" id="sf-go" disabled={busy || !password || confirm !== 'START FRESH'}>{busy ? 'Working…' : 'Start fresh for everyone'}</button>
+        </form>
+      )}
+    </section>
   );
 }
 

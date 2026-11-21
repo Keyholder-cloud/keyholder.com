@@ -8,7 +8,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import type { Applicant, Lease, Listing, Notice, Tenant, Unit } from '../data/types';
 import { currentLine, unitTenant, useStore } from '../data/store';
-import { activeLeases, byRoom, hasSpace, openRooms, paidOn, roomsLine, roomsPaid, roomsPill } from '../lib/finance';
+import { activeLeases, byRoom, currentLeases, hasSpace, leaseLedger, openRooms, paidOn, roomsLine, roomsPaid, roomsPill } from '../lib/finance';
 import { applicantPeople } from '../lib/people';
 import { addDays, daysBetween, fmtDate, fmtDay, fmtPeriod } from '../lib/dates';
 import { arrears, earliestIncrease, nextNotice, propertyOf } from '../lib/notices';
@@ -23,10 +23,43 @@ import { byValue } from '../lib/score';
 import { PaymentForm, PropertyForm, TenancyForm, UnitForm } from '../components/forms';
 import { Drawer, Empty, Field, MoneyInput, Seg, Stamp } from '../components/ui';
 import { Icon } from '../components/Icon';
-import { ReminderDrawer } from './Tray';
+import { MatchDrawer, ReminderDrawer } from './Tray';
 import { SceneEmptyHome } from '../components/Art';
 
 // Rentals: every property and unit, and everything about running them.
+
+/**
+ * Money that came into a connected bank while rent is owed: "Whose rent?" or "Not rent" (remembered for that
+ * sender). Shown here and on Home; never in Settings.
+ */
+function BankDeposits() {
+  const { state, act, today } = useStore();
+  const [open, setOpen] = useState<string | null>(null);
+  const owed = currentLeases(state, today).some((l) => leaseLedger(l, state.payments, today).some((x) => x.paid < x.charge));
+  const items = trayItems(state, today).flatMap((t) => (t.kind === 'match' ? [t] : []));
+  if (!owed || !items.length) return null;
+  const item = items.find((t) => t.id === open);
+  return (
+    <section className="section" id="bank-deposits">
+      <h2 className="section-title"><Icon name="bank" size={18} /> From your bank · {items.length} to check</h2>
+      <div className="sheet tight"><ul className="unit-list">{items.map((t) => {
+        const who = t.suggestion ? state.tenants.find((x) => x.id === state.leases.find((l) => l.id === t.suggestion!.leaseId)?.tenantId)?.names[0] : undefined;
+        return (
+          <li key={t.id} className="unit-row bank-row">
+            <span className="unit-label long">{state.banks.find((b) => b.id === t.txn.bankId)?.bank ?? 'Bank'}</span>
+            <span className="unit-who"><strong>{fmt(t.txn.amount)} from {t.txn.payer}</strong><span>{fmtDate(t.txn.date)} · {who ? `Looks like ${who}'s rent` : 'Is it rent?'}</span></span>
+            <span />
+            <span className="row-act">
+              <button className="btn primary" onClick={() => setOpen(t.id)}>{who ? 'Confirm' : 'Whose rent?'}</button>
+              <button className="btn ghost" onClick={() => act.ignoreTxn(t.txn.id)}>Not rent</button>
+            </span>
+          </li>
+        );
+      })}</ul></div>
+      {item && <MatchDrawer item={item} onClose={() => setOpen(null)} />}
+    </section>
+  );
+}
 
 export function Rentals() {
   const { state, today } = useStore();
@@ -38,6 +71,7 @@ export function Rentals() {
         <div><h1 className="title-ic"><span className="tile-ic sky" aria-hidden><Icon name="home" size={22} /></span>Rentals</h1><PageSub>Properties, units, tenants and notices</PageSub></div>
         <button className="btn" onClick={() => setAddProp(true)}><Icon name="plus" size={16} />Add property</button>
       </div>
+      <BankDeposits />
       {!props.length && <div className="sheet"><Empty title="No properties yet." art={<SceneEmptyHome />} action={<button className="btn primary" onClick={() => setAddProp(true)}>Add your first property</button>}>Start with the address. Units and tenants come next.</Empty></div>}
       {props.map((p) => <PropertyBlock key={p.id} propertyId={p.id} />)}
       <ArchivedList />
@@ -162,6 +196,7 @@ function VacantRow({ unit, free, room }: { unit: Unit; free?: string[]; room?: b
       <span className="unit-state">{apps.length ? <span className="status due">{apps.length} application{apps.length > 1 ? 's' : ''}</span> : <span className="status vacant">No applications</span>}</span>
       <span className="row-act">
         <button className="btn primary" onClick={() => nav(`/rent/property/${unit.propertyId}/find`)}>Find a tenant</button>
+        <button className="btn add-tenant-quick" onClick={() => nav(`/rent/property/${unit.propertyId}/add-tenant?unit=${unit.id}`)}><Icon name="plus" size={16} />Add tenant</button>
         <UnitMenu items={[{ label: 'Add tenant', onClick: () => nav(`/rent/property/${unit.propertyId}/add-tenant?unit=${unit.id}`) }, ...(room ? [] : tools.items)]} />
       </span>
       {tools.drawers}

@@ -41,4 +41,13 @@ describe('tenant journey', () => {
     s.todoPrefs[scoreKey(before.todo[0])] = { ignored: true };
     expect(keyholderScore(s, today).score).toBeGreaterThan(before.score);
   });
+
+  it('money in when no rent is owed is "Not rent" in one tap (money in is only ever rent)', () => {
+    const s = seedState(undefined, today);
+    s.leases = []; s.txns = [];
+    s.txns.push({ id: 'tx-gift', source: 'bank', date: today, amount: 25_000, payer: 'MOM GIFT', memo: '', status: 'new' });
+    const card = allJourneyCards(s, today).find((c) => c.id === 'txn-tx-gift')!;
+    expect(card.step.kind).toBe('not-rent');
+    expect(card.text).toMatch(/No rent is owed/);
+  });
 });

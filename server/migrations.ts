@@ -289,4 +289,12 @@ alter table users add column webauthn_challenge text;
 alter table users add column webauthn_challenge_at timestamptz;
 alter table two_step_tickets add column challenge text;`,
   },
+  {
+    // Remembered devices (two-step): a name and when each was last used, so a landlord can see and forget them.
+    id: '009_remembered_devices',
+    sql: `alter table trusted_devices add column id uuid;
+update trusted_devices set id = gen_random_uuid() where id is null;
+alter table trusted_devices add column name text not null default '';
+alter table trusted_devices add column last_used_at timestamptz;`,
+  },
 ];

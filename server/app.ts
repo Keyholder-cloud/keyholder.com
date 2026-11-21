@@ -20,7 +20,7 @@ import {
   accountFor, audit, createLinkToken, createSession, createUser, endAllSessions, endSession, isTeam, publicUser, readState, sessionUser,
   SESSION_COOKIE, stateProblem, useLinkToken, userByEmail, userById, writeState, type User,
 } from './services';
-import { applyChange, bankSettings, benchmarksNow, customerState, deleteAccount, snapshot, unitPrice } from './support';
+import { applyChange, bankSettings, benchmarksNow, customerState, deleteAccount, snapshot, startFresh, unitPrice } from './support';
 import { fieldOf, Keys, type ServiceId } from './keys';
 import { applyBankUpdate, dropBankFromState, itemByPlaidId, itemsFor, Plaid, PlaidError, syncItem } from './plaid';
 import { fillOfficial, formFilename, OfficialFormError } from './officialForms';
@@ -139,7 +139,11 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     } catch { return false; }
   };
   /** A short name for a new device, from the browser: "iPhone", "Mac", "Windows"… */
-  const deviceName = (ua = '') => /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows computer' : 'This device';
+  const deviceName = (ua = '') => {
+    const what = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android phone' : /Macintosh/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows computer' : /Linux/.test(ua) ? 'Linux computer' : 'This device';
+    const app = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : '';
+    return app ? `${app} on ${what}` : what;
+  };
   /** A second factor for a signed-in action (new backup codes, turning it off): a code, a backup code, or fingerprint/face. */
   const confirmSecond = async (u: User, b: { code?: string; passkey?: AuthenticationResponseJSON }) => {
     if (b.passkey) { const ok = await checkPasskey(u, b.passkey, u.webauthn_challenge); if (ok) await db.query('update users set webauthn_challenge = null where id = $1', [u.id]); return ok; }
@@ -147,9 +151,18 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   };
   const SecondBody = z.object({ code: z.string().max(20).optional(), passkey: z.any().optional() });
   /** This browser was trusted for 30 days after a code (only for the same person). */
+  // Each use keeps it for another 30 days (forgotten after 30 days unused, a new password, or Forget in Settings).
   const trustedDevice = async (req: FastifyRequest, u: User) => {
     const t = req.cookies[TRUST_COOKIE]; if (!t) return false;
-    return !!(await db.one('select 1 as ok from trusted_devices where token_hash = $1 and user_id = $2 and expires_at > now()', [sha256(t), u.id]));
+    const hit = await db.query(`update trusted_devices set last_used_at = now(), expires_at = now() + interval '30 days'
+      where token_hash = $1 and user_id = $2 and expires_at > now() returning 1 as ok`, [sha256(t), u.id]);
+    return hit.length > 0;
+  };
+  const rememberDevice = async (req: FastifyRequest, reply: FastifyReply, u: User) => {
+    const token = newToken();
+    await db.query(`insert into trusted_devices (token_hash, user_id, expires_at, id, name, last_used_at) values ($1, $2, now() + interval '30 days', $3, $4, now())`,
+      [sha256(token), u.id, randomUUID(), deviceName(req.headers['user-agent']).slice(0, 60)]);
+    reply.setCookie(TRUST_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: cfg.cookieSecure, path: '/api/auth', maxAge: 30 * 86400 });
   };
   /** The password (or Google) was right; the code comes next. A ticket for that, good for 10 minutes and 5 tries. */
   const twoStepTicket = async (u: User) => {
@@ -257,11 +270,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     }
     await db.query('update two_step_tickets set used_at = now() where token_hash = $1', [sha256(b.ticket)]);
     await startSession(req, reply, u!);
-    if (b.trust) {
-      const token = newToken();
-      await db.query(`insert into trusted_devices (token_hash, user_id, expires_at) values ($1, $2, now() + interval '30 days')`, [sha256(token), u!.id]);
-      reply.setCookie(TRUST_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: cfg.cookieSecure, path: '/api/auth', maxAge: 30 * 86400 });
-    }
+    if (b.trust) await rememberDevice(req, reply, u!);
     await audit(db, { actor: u!.email, actorId: u!.id, scope: 'auth', action: 'Signed in', detail: how === 'backup' ? 'Two-step: backup code' : how === 'passkey' ? 'Two-step: fingerprint or face' : 'Two-step: authenticator code', ip: ip(req) });
     return { user: publicUser((await userById(db, u!.id))!) };
   });
@@ -303,6 +312,35 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'New backup codes', ip: ip(req) });
     return { backupCodes: backup.codes, user: publicUser((await userById(db, u.id))!) };
   });
+  // "Remember this device?", asked right after the second step: this browser skips it next time.
+  app.post('/api/auth/remember-device', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const u = need(req);
+    if (!twoStepOn(u)) fail(400, 'Two-step sign-in is off.');
+    // Only straight after signing in on this browser (the session is new).
+    const sid = req.cookies[SESSION_COOKIE];
+    const fresh = sid && await db.one('select 1 as ok from sessions where token_hash = $1 and created_at > now() - interval \'15 minutes\'', [sha256(sid)]);
+    if (!fresh) fail(400, 'Sign in again to remember this device.');
+    if (!(await trustedDevice(req, u))) await rememberDevice(req, reply, u);
+    await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Device remembered', detail: deviceName(req.headers['user-agent']), ip: ip(req) });
+    return { ok: true };
+  });
+  app.get('/api/auth/devices', async (req) => {
+    const u = need(req);
+    const mine = req.cookies[TRUST_COOKIE] ? sha256(req.cookies[TRUST_COOKIE]) : '';
+    const rows = await db.query<{ id: string; name: string; created_at: Date; last_used_at: Date | null; token_hash: string }>(
+      'select id, name, created_at, last_used_at, token_hash from trusted_devices where user_id = $1 and expires_at > now() order by coalesce(last_used_at, created_at) desc', [u.id]);
+    return rows.map((r) => ({ id: r.id, name: r.name || 'Browser', added: new Date(r.created_at).toISOString().slice(0, 10), lastUsed: r.last_used_at ? new Date(r.last_used_at).toISOString().slice(0, 10) : null, thisDevice: r.token_hash === mine }));
+  });
+  app.post('/api/auth/devices/forget', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const u = need(req);
+    const { id, all } = z.object({ id: z.string().uuid().optional(), all: z.boolean().optional() }).parse(req.body);
+    if (all) await db.query('delete from trusted_devices where user_id = $1', [u.id]);
+    else await db.query('delete from trusted_devices where user_id = $1 and id = $2', [u.id, id ?? null]);
+    if (all || !(await db.one('select 1 as ok from trusted_devices where user_id = $1 and token_hash = $2', [u.id, sha256(req.cookies[TRUST_COOKIE] ?? '')]))) reply.clearCookie(TRUST_COOKIE, { path: '/api/auth' });
+    await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: all ? 'All remembered devices forgotten' : 'Remembered device forgotten', ip: ip(req) });
+    return { ok: true };
+  });
+
   // Turning it off: a landlord's choice (needs a current code). The Keyholder team keeps it on.
   app.post('/api/auth/two-step/disable', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const u = need(req);
@@ -553,7 +591,26 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     const { itemId } = z.object({ itemId: z.string().uuid().optional() }).parse(req.body ?? {});
     let token: string | undefined;
     if (itemId) { const it = (await itemsFor(db, accountId)).find((x) => x.id === itemId); if (!it) fail(404, 'No such bank.'); token = keys.decrypt(it!.access_token); }
-    try { return { linkToken: await plaid.linkToken(accountId, webhookUrl, token) }; } catch (e) { return plaidFail(e); }
+    // Banks that sign in on their own site (OAuth: RBC, TD, Scotiabank…) come back to /plaid-oauth. If that address
+    // is not registered in the Plaid Dashboard yet, Link still opens without it (fine on computers).
+    try { return { linkToken: await plaid.linkToken(accountId, webhookUrl, token, `${cfg.appUrl}/plaid-oauth`) }; }
+    catch (e) {
+      if (e instanceof PlaidError && /redirect/i.test(e.message)) {
+        await recordError(db, 'Bank connections', 'Add https://…/plaid-oauth to Allowed redirect URIs in the Plaid Dashboard (API page): banks like RBC need it on phones.');
+        try { return { linkToken: await plaid.linkToken(accountId, webhookUrl, token) }; } catch (e2) { return plaidFail(e2); }
+      }
+      return plaidFail(e);
+    }
+  });
+  // Plaid's window closed with a problem: its exact code is kept for support (Platform → System health).
+  app.post('/api/bank/link-error', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req) => {
+    const { u, accountId } = await ownerAccount(req);
+    const s = (n: number) => z.string().max(n).nullish();
+    const b = z.object({ error_code: s(80), error_type: s(80), error_message: s(300), display_message: s(300), request_id: s(80), link_session_id: s(120), institution: s(120), status: s(80) }).parse(req.body ?? {});
+    const line = `${b.institution || 'A bank'}: ${b.error_code || b.status || 'closed'}${b.error_type ? ` (${b.error_type})` : ''}${b.error_message ? ` · ${b.error_message}` : ''}${b.request_id ? ` · request ${b.request_id}` : ''}${b.link_session_id ? ` · session ${b.link_session_id}` : ''}`;
+    if (b.error_code) await recordError(db, 'Bank connections', line);
+    await audit(db, { actor: u.email, actorId: u.id, accountId, scope: 'app', action: 'Bank connection did not finish', detail: line.slice(0, 300), ip: ip(req) });
+    return { ok: true };
   });
   // After the landlord signed in at their bank (in Plaid's window): keep the connection and read the first transactions.
   app.post('/api/bank/exchange', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
@@ -757,6 +814,21 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
       province: part('administrative_area_level_1', true), postalCode: part('postal_code'), country: part('country', true),
       lat: b.location?.latitude ?? null, lng: b.location?.longitude ?? null,
     };
+  });
+
+  // ---------------- Start fresh for real bank data (super user only) ----------------
+  app.post('/api/admin/start-fresh', { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } }, async (req) => {
+    const me = needSuper(req);
+    const b = z.object({ password: z.string().max(200), confirm: z.literal('START FRESH') }).parse(req.body);
+    if (!me.password_hash || !(await verifyPassword(b.password, me.password_hash))) fail(400, 'Your password is not right.');
+    // Connections at Plaid are removed too (old ones were made with test keys and stop working anyway).
+    await keys.refresh(db, true);
+    for (const it of await db.query<{ access_token: string }>('select access_token from bank_items')) {
+      try { if (plaid.ready()) await plaid.remove(keys.decrypt(it.access_token)); } catch { /* made with other keys, or already gone */ }
+    }
+    const r = await startFresh(db, me.email);
+    await audit(db, { actor: me.email, actorId: me.id, scope: 'admin', action: 'Started fresh for real bank data', detail: `${r.accounts} accounts: ${r.expenses} expenses, ${r.transactions} bank transactions, ${r.payments} bank-matched rent payments, ${r.banks} bank connections removed`, ip: ip(req) });
+    return r;
   });
 
   // ---------------- Connections: API keys (super user only) ----------------

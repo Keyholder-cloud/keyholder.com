@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import * as sync from './data/sync';
+import { resumePlaidOAuth } from './data/plaid';
 import { HashRouter, MemoryRouter, Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { embedded } from './components/ui';
 import { StoreProvider, useStore } from './data/store';
@@ -80,6 +82,10 @@ function Shell() {
   // Remember the visit before today's, for "Since your last visit" on Home.
   const { act } = useStore();
   useEffect(() => { if (state.profile.lastVisit !== today) act.setProfile({ prevVisit: state.profile.lastVisit, lastVisit: today }); }, [today]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Back from a bank's own sign-in page (RBC, TD…): Plaid's window carries on, then the bank is connected.
+  useEffect(() => {
+    resumePlaidOAuth().then((r) => { if (r) { void sync.refresh(); act.say(`${r.bank} connected.${r.added ? ` ${r.added} transaction${r.added === 1 ? '' : 's'} read.` : ''}`); } }, (e) => act.say((e as Error).message));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Desktop keyboard shortcuts (PRD §12): P = log a payment, E = add an expense, T = open the tray.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
