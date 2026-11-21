@@ -193,8 +193,8 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'rentals'); await pg.locator('.unit-row', { hasText: 'Jordan' }).locator('.dots').click();
       // The menu shows on top of the page, not cut off inside the card.
       const box = await pg.locator('[role=menu]').boundingBox();
-      const top = await pg.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.textContent ?? '', { x: box.x + box.width / 2, y: box.y + box.height / 2 });
-      if (!/Raise rent/.test(top)) throw new Error('the menu is hidden under: ' + top.slice(0, 60));
+      const top = await pg.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('[role=menu]'), { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+      if (!top) throw new Error('the menu is hidden under something else');
       await pg.locator('[role=menuitem]:has-text("Raise rent")').click(); await pg.waitForTimeout(200);
       if (!(await pg.locator('.drawer h2:has-text("N1")').count())) throw new Error('⋯ did not open N1'); await pg.keyboard.press('Escape');
       await go(pg, 'rent/tenant/t-sam'); await pg.locator('.page-head >> text=Raise rent').click(); await pg.waitForTimeout(200);
@@ -299,7 +299,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if (!(await pg.locator(`${top} .signout-icon`).isVisible())) throw new Error('no small Sign out icon at the top right of Settings');
       if (await pg.locator('.page > .page-head >> text=Sign out').count()) throw new Error('a big Sign out button is still by the title');
       const order2 = (await pg.locator('.section-title').allTextContents()).join(' | ');
-      if (!/^Your profile \| Appearance \| Rent tracking/.test(order2)) throw new Error('Settings order: ' + order2);
+      if (!/^Your profile \| Appearance \| (Two-step sign-in \| )?Rent tracking/.test(order2)) throw new Error('Settings order: ' + order2);
       if (tag === 'phone') { const hub = pg.locator('.bottombar a').nth(2); if (!(await hub.evaluate((a) => a.classList.contains('hub') && a.textContent.includes('Rentals')))) throw new Error('Rentals is not the raised middle button'); }
       if (await pg.locator('.bottombar .capture, .rail >> text=Add a receipt').count()) throw new Error('receipt still in the menu');
       for (const l of labels) { await pg.locator(tag === 'phone' ? `.bottombar >> text=${l}` : `.rail >> text=${l}`).first().click(); await pg.waitForSelector(`h1:has-text("${l === 'Home' ? 'Home' : l === 'Settings' ? 'Your Keyholder' : l}")`, { state: 'attached' }); }

@@ -61,17 +61,17 @@ export function Settings() {
         </div>
       </section>
 
-      <section className="section" id="two-step">
-        <h2 className="section-title">Two-step sign-in</h2>
-        <TwoStepSettings />
-      </section>
-
       <section className="section">
         <h2 className="section-title">Appearance</h2>
         <div className="sheet">
           <Field label="Theme"><Seg label="Theme" value={p.theme} onChange={(theme) => act.setProfile({ theme })} options={[{ id: 'system', label: 'Match device' }, { id: 'light', label: 'Paper' }, { id: 'dark', label: 'Night Ledger' }]} /></Field>
           <label className="check"><input type="checkbox" checked={p.paperGrain} onChange={(e) => act.setProfile({ paperGrain: e.target.checked })} />Paper grain texture</label>
         </div>
+      </section>
+
+      <section className="section" id="two-step">
+        <h2 className="section-title">Two-step sign-in</h2>
+        <TwoStepSettings />
       </section>
 
       <section className="section" id="rent-tracking">
