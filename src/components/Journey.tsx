@@ -16,6 +16,7 @@ import { FormWizard } from './FormWizard';
 import { LevelUpForm, ScoreRing } from './levels';
 import { PaymentForm } from './forms';
 import { Icon } from './Icon';
+import { FloatMenu } from './FloatMenu';
 import { MatchDrawer } from '../screens/Tray';
 import { LateRentDrawer } from '../screens/Rentals';
 
@@ -25,21 +26,13 @@ import { LateRentDrawer } from '../screens/Rentals';
 /** "⋯" menu: hide for a while, or ignore for good. */
 function RowMenu({ k }: { k: string }) {
   const { act, today } = useStore();
-  const [open, setOpen] = useState(false);
-  const pick = (pref: { hiddenUntil?: string; ignored?: boolean }) => { act.setTodoPref(k, pref); setOpen(false); };
-  return (
-    <span className="row-menu">
-      <button className="btn ghost small dots" aria-label="More options" aria-expanded={open} onClick={() => setOpen((o) => !o)}>⋯</button>
-      {open && (
-        <span className="row-menu-pop" role="menu">
-          <button role="menuitem" onClick={() => pick({ hiddenUntil: addDays(today, 1) })}>Hide for a day</button>
-          <button role="menuitem" onClick={() => pick({ hiddenUntil: addDays(today, 7) })}>Hide for a week</button>
-          <button role="menuitem" onClick={() => pick({ hiddenUntil: `${periodOf(addMonths(today, 1))}-01` })}>Hide until next month</button>
-          <button role="menuitem" onClick={() => pick({ ignored: true })}>Ignore</button>
-        </span>
-      )}
-    </span>
-  );
+  const pick = (pref: { hiddenUntil?: string; ignored?: boolean }) => act.setTodoPref(k, pref);
+  return <FloatMenu items={[
+    { label: 'Hide for a day', icon: 'clock', onClick: () => pick({ hiddenUntil: addDays(today, 1) }) },
+    { label: 'Hide for a week', icon: 'calendar', onClick: () => pick({ hiddenUntil: addDays(today, 7) }) },
+    { label: 'Hide until next month', icon: 'calendar', onClick: () => pick({ hiddenUntil: `${periodOf(addMonths(today, 1))}-01` }) },
+    { label: 'Ignore', icon: 'close', onClick: () => pick({ ignored: true }) },
+  ]} />;
 }
 
 const shortLabel = (c: JourneyCard): string => {

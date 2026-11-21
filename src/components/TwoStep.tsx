@@ -289,39 +289,38 @@ function RememberedDevices() {
 
 export function TwoStepSettings() {
   const { user, config } = useConn();
-  const [open, setOpen] = useState<'setup' | 'app' | 'off' | 'codes' | null>(null);
-  if (!serverMode() || !user) return <div className="sheet"><p className="small soft" style={{ margin: 0 }}>Two-step sign-in is available on your Keyholder account online: after your password, your fingerprint or face, or a code from an app on your phone.</p></div>;
-  if (!config?.twoStep) return <div className="sheet"><p className="small soft" style={{ margin: 0 }}>Two-step sign-in is not available yet. Keyholder is finishing setting it up.</p></div>;
+  const [open, setOpen] = useState<'setup' | 'app' | 'off' | 'codes' | 'devices' | 'remembered' | null>(null);
+  const [remembered, setRemembered] = useState<number | null>(null);
+  const live = serverMode() && !!user && !!config?.twoStep;
+  useEffect(() => { if (live && user?.twoStep && !open) api<unknown[]>('GET', '/api/auth/devices').then((l) => setRemembered(l.length)).catch(() => {}); }, [live, user?.twoStep, open]);
+  if (!serverMode() || !user) return <span className="pref-note">With your Keyholder account online: fingerprint or face, or an app code.</span>;
+  if (!config?.twoStep) return <span className="pref-note">Not available yet.</span>;
   const team = user.role !== 'owner';
+  const bio = user.passkeys ?? 0;
+  const left = user.backupCodesLeft ?? 0;
+  const close = () => setOpen(null);
   return (
-    <div className="sheet two-step-settings">
-      {user.twoStep ? (
-        <div className="spread" style={{ flexWrap: 'wrap', gap: 12 }}>
-          <div><strong><Icon name="check" size={16} /> On</strong><div className="small soft">{user.twoStepSince ? `Since ${fmtDate(user.twoStepSince)} · ` : ''}{user.backupCodesLeft ?? 0} backup code{user.backupCodesLeft === 1 ? '' : 's'} left</div></div>
-          <div className="btn-row">
-            <button className="btn small" onClick={() => setOpen('codes')}>New backup codes</button>
-            {!team && <button className="btn small ghost" onClick={() => setOpen('off')}>Turn off</button>}
-          </div>
-        </div>
-      ) : (
-        <div className="spread" style={{ flexWrap: 'wrap', gap: 12 }}>
-          <div><strong>Off</strong><div className="small soft">Protect your account: after your password, Keyholder asks for your fingerprint or face, or a code from an app on your phone.</div></div>
-          <button className="btn primary" id="ts-turn-on" onClick={() => setOpen('setup')}><Icon name="lock" size={16} />Turn on</button>
-        </div>
-      )}
-      {user.twoStep && <>
-        <Devices user={user} />
-        <RememberedDevices />
-        <div className="two-step-part spread" style={{ flexWrap: 'wrap', gap: 12 }} id="ts-app">
-          <div><strong>Authenticator app</strong><div className="small soft">{user.twoStepApp ? 'Set up. Use its 6-digit code on any device.' : 'Not set up. Add it to sign in on devices without fingerprint or face.'}</div></div>
-          {!user.twoStepApp && <button className="btn small" id="ts-add-app" onClick={() => setOpen('app')}>Set up the app</button>}
-        </div>
+    <>
+      {user.twoStep ? <>
+        <span className="chip on" title={user.twoStepSince ? `On since ${fmtDate(user.twoStepSince)}` : 'On'}><Icon name="check" size={14} />On</span>
+        <button className="chip" id="ts-chip-bio" title="Fingerprint or face on your devices" onClick={() => setOpen('devices')}><Icon name="fingerprint" size={15} />{bio ? `Face/finger · ${bio}` : 'Add face/finger'}</button>
+        <button className="chip" id="ts-chip-app" title={user.twoStepApp ? 'Authenticator app: set up' : 'Add an authenticator app'} onClick={() => setOpen('app')}><Icon name="phone" size={15} />{user.twoStepApp ? 'App' : 'Add app'}</button>
+        <button className="chip" id="ts-chip-codes" title={`${left} backup code${left === 1 ? '' : 's'} left · get new ones`} onClick={() => setOpen('codes')}><Icon name="key" size={15} />Backup · {left}</button>
+        <button className="chip" id="ts-chip-remembered" title="Browsers that skip the second step" onClick={() => setOpen('remembered')}><Icon name="laptop" size={15} />Remembered{remembered !== null ? ` · ${remembered}` : ''}</button>
+        {!team && <button className="chip icon-only" id="ts-off" title="Turn off two-step sign-in" aria-label="Turn off two-step sign-in" onClick={() => setOpen('off')}><Icon name="close" size={14} /></button>}
+      </> : <>
+        <span className="chip off">Off</span>
+        <button className="chip primary" id="ts-turn-on" onClick={() => setOpen('setup')}><Icon name="lock" size={14} />Turn on</button>
       </>}
-      {open === 'app' && <Drawer title="Add an authenticator app" onClose={() => setOpen(null)}><TwoStepSetup appOnly onDone={() => setOpen(null)} /></Drawer>}
-      {open === 'setup' && <Drawer title="Turn on two-step sign-in" onClose={() => setOpen(null)}><TwoStepSetup onDone={() => setOpen(null)} /></Drawer>}
-      {open === 'off' && <CodeAction title="Turn off two-step sign-in" button="Turn off" path="/api/auth/two-step/disable" danger onClose={() => setOpen(null)} />}
-      {open === 'codes' && <CodeAction title="New backup codes" button="Show new codes" path="/api/auth/two-step/backup-codes" onClose={() => setOpen(null)} />}
-    </div>
+      {open === 'devices' && <Drawer title="Fingerprint or face" onClose={close}><Devices user={user} /></Drawer>}
+      {open === 'remembered' && <Drawer title="Remembered devices" onClose={close}><RememberedDevices /></Drawer>}
+      {open === 'app' && <Drawer title="Authenticator app" onClose={close}>{user.twoStepApp
+        ? <p className="small" id="ts-app" style={{ marginTop: 0 }}><Icon name="check" size={14} /> Set up. Use its 6-digit code on any device.</p>
+        : <TwoStepSetup appOnly onDone={close} />}</Drawer>}
+      {open === 'setup' && <Drawer title="Turn on two-step sign-in" onClose={close}><TwoStepSetup onDone={close} /></Drawer>}
+      {open === 'off' && <CodeAction title="Turn off two-step sign-in" button="Turn off" path="/api/auth/two-step/disable" danger onClose={close} />}
+      {open === 'codes' && <CodeAction title={`New backup codes (${left} left)`} button="Show new codes" path="/api/auth/two-step/backup-codes" onClose={close} />}
+    </>
   );
 }
 

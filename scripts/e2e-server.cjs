@@ -237,8 +237,8 @@ function watch(pg, errors, label) {
         await go(pg, 'settings#rent-tracking');
         if (!banksOn) {
           await pg.waitForSelector('#rent-tracking >> text=Coming soon');
-          if (!(await pg.locator('#rent-tracking .choice.soon').isDisabled())) throw new Error('the bank choice can still be clicked');
-        } else await pg.waitForSelector('#rent-tracking .choice:has-text("Check my banks for me"):not(.soon)');
+          if (!(await pg.locator('#rt-bank').isDisabled())) throw new Error('the bank choice can still be clicked');
+        } else await pg.waitForSelector('#rt-bank:not([disabled])');
       });
       await step(tag, 'E6 Settings shows the account and that it is saved', async () => {
         await go(pg, 'settings'); await pg.waitForSelector(`text=${email}`); await pg.waitForSelector('.save-status');
@@ -483,7 +483,7 @@ function watch(pg, errors, label) {
         await pg.addInitScript(stubPlaidLink); await pg.reload();
         if (!(await api(pg, '/api/session')).body.user) await signIn(pg, email, password);
         await go(pg, 'today'); await pg.waitForSelector('.rent-row');
-        await go(pg, 'settings#rent-tracking'); await pg.locator('#rent-tracking .choice:has-text("Check my banks for me")').click();
+        await go(pg, 'settings#rent-tracking'); await pg.click('#rt-bank');
         await pg.waitForSelector('#plaid-go'); await pg.click('#plaid-go');
         await pg.waitForSelector('#rent-tracking >> text=RBC Royal Bank');
         await until(async () => { const d = (await api(pg, '/api/state')).body.data; const mine = d.txns.filter((t) => t.id.startsWith('pl-')); return mine.length >= 2 && mine.every((t) => t.checked || t.status !== 'new'); }, 10000, 'bank transactions saved and looked at');
@@ -538,7 +538,7 @@ function watch(pg, errors, label) {
       });
       await step(tag, 'E31 Disconnect removes the bank at Plaid (no more billing) and from Settings', async () => {
         const removes = mock.calls.filter((c) => c.path === '/item/remove').length;
-        await go(pg, 'settings#rent-tracking'); await pg.locator('#rent-tracking li:has-text("RBC Royal Bank") >> text=Disconnect').click();
+        await go(pg, 'settings#rent-tracking'); await pg.locator('#rent-tracking .bank-chip:has-text("RBC Royal Bank") .chip-x').click();
         await until(async () => !(await api(pg, '/api/state')).body.data.banks.some((b) => b.bank === 'RBC Royal Bank'), 6000, 'bank removed');
         if (mock.calls.filter((c) => c.path === '/item/remove').length !== removes + 1) throw new Error('not removed at Plaid');
       });
@@ -578,7 +578,7 @@ function watch(pg, errors, label) {
         await go(pg, 'today'); await pg.waitForSelector('#two-step-nudge >> text=Turn on two-step sign-in');
         await pg.locator('#two-step-nudge a.btn').click(); await pg.waitForSelector('#two-step #ts-turn-on');
         await pg.click('#ts-turn-on'); await finishSetUp(pg, email.toLowerCase());
-        await pg.waitForSelector('#two-step >> text=10 backup codes left');
+        await pg.waitForSelector('#ts-chip-codes >> text=Backup · 10');
         if (await pg.locator('#two-step-nudge').count()) throw new Error('nudge still shown');
         await go(pg, 'today'); if (await pg.locator('#two-step-nudge').count()) throw new Error('Home still suggests it');
         const ctx = await b.newContext({ viewport: vp }); const p = await ctx.newPage(); watch(p, errors, 'two-step');
@@ -600,7 +600,7 @@ function watch(pg, errors, label) {
         await signIn(q, email, password); await q.waitForSelector('.rent-row, .rent-card, .start-steps', { timeout: 15000 });
         if (await q.locator('#ts-code').count()) throw new Error('asked for the code on a remembered device');
         // Forget it in Settings: the next sign-in asks again.
-        await go(q, 'settings#two-step'); await q.locator('#ts-remembered li >> text=Forget').click(); await q.waitForSelector('#ts-remembered >> text=None.');
+        await go(q, 'settings#two-step'); await q.click('#ts-chip-remembered'); await q.locator('#ts-remembered li >> text=Forget').click(); await q.waitForSelector('#ts-remembered >> text=None.');
         await q.context().close(); await ctx.close();
       });
       await step(tag, 'E34 Fingerprint or face: added in Settings, then used at sign-in instead of a code', async () => {
@@ -612,9 +612,10 @@ function watch(pg, errors, label) {
         if (await p.locator('#ts-biometric').count()) throw new Error('fingerprint offered before any device was added');
         await p.fill('#ts-code', await nextCode(email.toLowerCase())); await p.click('.two-step-form >> text=Continue'); await notNow(p);
         await p.waitForSelector('.rent-row, .rent-card, .start-steps');
-        await go(p, 'settings#two-step'); await p.waitForSelector('#ts-devices >> text=No device yet');
-        await p.click('#ts-add-device'); await p.waitForSelector('#ts-devices .two-step-devices li');
-        await p.waitForSelector('#ts-app >> text=Set up.');
+        await go(p, 'settings#two-step'); await p.click('#ts-chip-bio'); await p.waitForSelector('#ts-devices >> text=No device yet');
+        await p.click('#ts-add-device'); await p.waitForSelector('#ts-devices .two-step-devices li'); await p.keyboard.press('Escape');
+        await p.waitForSelector('#ts-chip-bio >> text=Face/finger · 1');
+        await p.click('#ts-chip-app'); await p.waitForSelector('#ts-app >> text=Set up.'); await p.keyboard.press('Escape');
         // Signed out, then back in: fingerprint or face instead of the code.
         await p.evaluate(() => fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
         await p.evaluate(() => localStorage.clear()); await p.goto(BASE + '#/welcome'); await p.reload(); await p.waitForSelector('.lp-hero-h');
@@ -629,7 +630,7 @@ function watch(pg, errors, label) {
         await p.fill('#ts-code', await nextCode(email.toLowerCase())); await p.click('.two-step-form >> text=Continue'); await notNow(p);
         await p.waitForSelector('.rent-row, .rent-card, .start-steps', { timeout: 15000 });
         // Removing it leaves the app; two-step stays on.
-        await go(p, 'settings#two-step'); await p.locator('#ts-devices li >> text=Remove').click(); await p.waitForSelector('#ts-devices >> text=No device yet');
+        await go(p, 'settings#two-step'); await p.click('#ts-chip-bio'); await p.locator('#ts-devices li >> text=Remove').click(); await p.waitForSelector('#ts-devices >> text=No device yet');
         const me = (await api(p, '/api/session')).body.user; if (!me.twoStep || me.passkeys !== 0) throw new Error('session: ' + JSON.stringify(me));
         await ctx.close();
       });
