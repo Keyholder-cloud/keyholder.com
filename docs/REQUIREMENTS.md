@@ -431,3 +431,15 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Database (migration 010): trial date dropped, the turned-off-banks setting removed, indexes for tickets,
   emails and expiry clean-up; the daily clean-up also removes expired two-step steps and remembered devices.
 - No automatic clear-out of accounts (owner chose to ship without it).
+
+### R50. Face ID per device, authenticator on a phone, confirm before clearing ☑
+- Owner, 2026-11-22: "On mobile the faceid does not work … I cannot scan my phone with my phone." Cause: Face ID
+  had been added on one device only; a passkey works on the device that added it.
+- After signing in with a code on a phone or computer that can use fingerprint or face, a one-line offer:
+  "Skip the code next time?" → Set it up (or Not now, remembered on that device).
+- "Confirm it's you" before adding or removing fingerprint/face and before Clear all data: signing in counts
+  for 10 minutes; after that the landlord's usual way first (password, or Google again for Google accounts),
+  or fingerprint/face, or an app code. The server enforces it (sessions.verified_at, migration 011) and logs it.
+  Clear all data now runs on the server (new epoch, so an open copy elsewhere cannot bring data back).
+- Authenticator app on a phone: no QR code; "Open in my authenticator app" (otpauth link) and the key with
+  Copy key. Computers keep the QR code, with the key and the link under it.

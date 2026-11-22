@@ -793,4 +793,22 @@ describe('two-step sign-in (authenticator app)', () => {
     expect((await call('GET', '/api/admin/support', { cookie: r.cookie })).status).toBe(403);
   });
 
+
+  it('confirm it is you: adding fingerprint/face and clearing all data need a sign-in or confirmation in the last 10 minutes', async () => {
+    const c = (await call('POST', '/api/auth/signup', { body: { name: 'Robin Lee', email: 'robin@lee.ca', password: 'cedar-lane-2026' } })).cookie!;
+    expect((await call('GET', '/api/auth/confirm', { cookie: c })).body).toMatchObject({ fresh: true, ways: { password: true } });
+    await db.query(`update sessions set created_at = now() - interval '1 hour', verified_at = null`);
+    expect((await call('GET', '/api/auth/confirm', { cookie: c })).body.fresh).toBe(false);
+    expect((await call('POST', '/api/auth/passkey/register-options', { cookie: c, body: {} })).status).toBe(403);
+    expect((await call('POST', '/api/state/clear', { cookie: c, body: {} })).status).toBe(403);
+    expect((await call('POST', '/api/auth/confirm', { cookie: c, body: { password: 'wrong-one-here' } })).status).toBe(400);
+    expect((await call('POST', '/api/auth/confirm', { cookie: c, body: { password: 'cedar-lane-2026' } })).body).toEqual({ fresh: true });
+    expect((await call('POST', '/api/auth/passkey/register-options', { cookie: c, body: {} })).status).toBe(200);
+    const cleared = await call('POST', '/api/state/clear', { cookie: c, body: {} });
+    expect(cleared.status).toBe(200);
+    const st = (await call('GET', '/api/state', { cookie: c })).body.data as AppState;
+    expect(st.properties).toEqual([]);
+    const acts = (await db.query<{ action: string }>(`select action from audit_log where lower(actor) = 'robin@lee.ca'`)).map((a) => a.action);
+    expect(acts).toEqual(expect.arrayContaining(['Confirm it is you failed', 'Confirmed it is them', 'All data cleared']));
+  });
 });

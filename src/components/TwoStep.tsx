@@ -5,11 +5,44 @@ import { api, serverMode, setUser, useConn, type ServerUser } from '../data/api'
 import { fmtDate } from '../lib/dates';
 import { Drawer } from './ui';
 import { Icon } from './Icon';
+import { useConfirmIt } from './ConfirmIt';
 
 // Two-step sign-in: after the password, fingerprint or face on this device (a passkey: Face ID, Touch ID,
 // Windows Hello, Android), or a 6-digit code from an authenticator app (Google Authenticator, Microsoft
 // Authenticator, 1Password…). Optional for landlords; required for the Keyholder team. Backup codes cover a lost
 // phone. Live accounts only (the server keeps the keys).
+
+const BIO_OFFER_KEY = 'kh_offer_bio';
+const BIO_OFFER_NO = 'kh_offer_bio_no';
+
+/**
+ * After signing in with a code on a phone or computer that can use fingerprint or face, a one-line offer:
+ * "Use Face ID on this device next time". Signing in just now counts as confirming it is you, so one tap adds
+ * it. "Not now" hides it on this device for good (it stays in Settings → Two-step sign-in).
+ */
+export function BioOffer() {
+  const { user } = useConn();
+  const [show, setShow] = useState(() => { try { return sessionStorage.getItem(BIO_OFFER_KEY) === '1' && localStorage.getItem(BIO_OFFER_NO) !== '1'; } catch { return false; } });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [confirm, confirmScreen] = useConfirmIt('Before adding fingerprint or face on this device, confirm it is you.');
+  if (!show || !user || !serverMode()) return null;
+  const close = (never: boolean) => { try { sessionStorage.removeItem(BIO_OFFER_KEY); if (never) localStorage.setItem(BIO_OFFER_NO, '1'); } catch { /* fine */ } setShow(false); };
+  const add = () => confirm(async () => {
+    setBusy(true); setMsg('');
+    try { const r = await addThisDevice(); setUser(r.user); close(false); }
+    catch (x) { setMsg((x as Error).message); setBusy(false); }
+  }, 'passkey');
+  return (
+    <div className="callout sky bio-offer" role="region" aria-label="Fingerprint or face" id="bio-offer">
+      <Icon name="fingerprint" size={18} />
+      <span style={{ flex: 1, minWidth: 180 }}><strong>Skip the code next time?</strong> Use Face ID, Touch ID or your fingerprint on this device.{msg && <span className="small acct-error" style={{ display: 'block' }}>{msg}</span>}</span>
+      <button className="btn primary small" id="bio-offer-yes" disabled={busy} onClick={add}>{busy ? 'Follow the prompt…' : 'Set it up'}</button>
+      <button className="btn ghost small" id="bio-offer-no" onClick={() => close(true)}>Not now</button>
+      {confirmScreen}
+    </div>
+  );
+}
 
 /** This browser can use fingerprint or face (WebAuthn). */
 export const canUseBiometrics = () => typeof window !== 'undefined' && browserSupportsWebAuthn();
@@ -57,6 +90,8 @@ export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; on
     setBusy(true); setErr('');
     try {
       const r = await api<{ user: ServerUser }>('POST', '/api/auth/two-step', { ticket, code: code.trim(), trust: remember });
+      // Signed in with a code on a device that could use fingerprint or face: offer it once inside the app.
+      if (canUseBiometrics()) { try { sessionStorage.setItem(BIO_OFFER_KEY, '1'); } catch { /* no offer */ } }
       await onSignedIn(r.user);
     } catch (x) { setErr((x as Error).message); setBusy(false); }
   };
@@ -76,6 +111,15 @@ export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; on
       <button type="button" className="btn ghost small" onClick={onBack}><Icon name="back" size={14} />Back</button>
     </form>
   );
+}
+
+/** A phone or tablet (touch, no mouse): the QR code would have to be scanned by the same device. */
+const phone = () => typeof window !== 'undefined' && !!window.matchMedia?.('(hover: none) and (pointer: coarse)').matches;
+
+/** Copies the setup key (without spaces) for pasting into the authenticator app. */
+function CopyKey({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  return <button type="button" className="btn small" id="ts-copy" onClick={() => { void navigator.clipboard?.writeText(text).then(() => setDone(true)).catch(() => setDone(false)); }}><Icon name={done ? 'check' : 'paper'} size={14} />{done ? 'Copied' : 'Copy key'}</button>;
 }
 
 /** A QR code for the authenticator app to scan. */
@@ -111,13 +155,14 @@ export function TwoStepSetup({ onDone, team, appOnly }: { onDone: () => void; te
     setBusy(true); setErr('');
     try { setSetup(await api<{ secret: string; uri: string }>('POST', '/api/auth/two-step/setup', {})); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   };
-  const biometric = async () => {
+  const [confirmIt, confirmScreen] = useConfirmIt('Before turning on fingerprint or face sign-in, confirm it is you.');
+  const biometric = () => confirmIt(async () => {
     setBusy(true); setErr('');
     try {
       const r = await addThisDevice();
       if (r.backupCodes) { setCodes(r.backupCodes); setDone(r.user); } else { setUser(r.user); onDone(); }
     } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
-  };
+  }, 'passkey');
   const confirm = async (e: FormEvent) => {
     e.preventDefault(); if (!code.trim() || busy) return;
     setBusy(true); setErr('');
@@ -146,13 +191,14 @@ export function TwoStepSetup({ onDone, team, appOnly }: { onDone: () => void; te
       </div>
       {busy && <p className="small soft" role="status">Follow the prompt on your device…</p>}
       {err && <p className="small acct-error" role="alert">{err}</p>}
+      {confirmScreen}
     </div>
   );
   if (!setup) return (
     <div className="two-step-setup">
       <ol className="two-step-steps">
         <li><strong>Get an authenticator app</strong> on your phone, if you don't have one: Google Authenticator, Microsoft Authenticator or 1Password all work.</li>
-        <li><strong>Scan a QR code</strong> with it (next screen).</li>
+        <li>{phone() ? <><strong>Add Keyholder to it</strong> with one tap, or by pasting a key (next screen).</> : <><strong>Scan a QR code</strong> with it (next screen).</>}</li>
         <li><strong>Type the 6-digit code</strong> it shows, to confirm.</li>
       </ol>
       {err && <p className="small acct-error" role="alert">{err}</p>}
@@ -161,14 +207,25 @@ export function TwoStepSetup({ onDone, team, appOnly }: { onDone: () => void; te
   );
   return (
     <form className="two-step-setup" onSubmit={confirm}>
-      <div className="two-step-scan">
-        <Qr text={setup.uri} />
-        <div>
-          <p className="small" style={{ marginTop: 0 }}>In your app, choose <strong>Add</strong> (+), then <strong>Scan a QR code</strong>.</p>
-          <p className="small soft">Can't scan? Choose "Enter a setup key" and type this key:</p>
-          <p className="two-step-key"><code id="ts-secret">{setup.secret.replace(/(.{4})/g, '$1 ').trim()}</code></p>
+      {phone() ? (
+        // On a phone the QR code cannot be scanned by the same phone: open the app directly, or paste the key.
+        <div className="two-step-mobile" id="ts-mobile">
+          <a className="btn primary" id="ts-open-app" href={setup.uri}><Icon name="phone" size={16} />Open in my authenticator app</a>
+          <p className="small soft">Nothing happened? In your app choose <strong>Add</strong> (+), then <strong>Enter a setup key</strong>, and paste this key:</p>
+          <div className="two-step-key-row"><code id="ts-secret" className="two-step-key">{setup.secret.replace(/(.{4})/g, '$1 ').trim()}</code><CopyKey text={setup.secret} /></div>
+          <p className="tiny soft">Then come back here for the 6-digit code.</p>
         </div>
-      </div>
+      ) : (
+        <div className="two-step-scan">
+          <Qr text={setup.uri} />
+          <div>
+            <p className="small" style={{ marginTop: 0 }}>In your app, choose <strong>Add</strong> (+), then <strong>Scan a QR code</strong>.</p>
+            <p className="small soft">Can't scan? Choose "Enter a setup key" and paste this key:</p>
+            <div className="two-step-key-row"><code id="ts-secret" className="two-step-key">{setup.secret.replace(/(.{4})/g, '$1 ').trim()}</code><CopyKey text={setup.secret} /></div>
+            <p className="tiny soft">On your phone? <a href={setup.uri} id="ts-open-app">Open in your authenticator app</a>.</p>
+          </div>
+        </div>
+      )}
       <div className="field"><label htmlFor="ts-setup-code">6-digit code from the app</label>
         <input id="ts-setup-code" className="input two-step-input" value={code} onChange={(e) => { setCode(e.target.value); setErr(''); }} inputMode="numeric" autoComplete="one-time-code" placeholder="123 456" maxLength={7} autoFocus /></div>
       {err && <p className="small acct-error" role="alert">{err}</p>}
@@ -225,14 +282,16 @@ function Devices({ user }: { user: ServerUser }) {
   const [codes, setCodes] = useState<string[] | null>(null);
   const load = () => api<Device[]>('GET', '/api/auth/passkeys').then(setList).catch(() => setList([]));
   useEffect(() => { void load(); }, [user.passkeys]);
-  const add = async () => {
+  // Adding or removing a device: confirm it is you first (unless you signed in in the last 10 minutes).
+  const [confirm, confirmScreen] = useConfirmIt('Before changing fingerprint or face sign-in, confirm it is you.');
+  const add = () => confirm(async () => {
     setBusy(true); setErr('');
     try { const r = await addThisDevice(); setUser(r.user); if (r.backupCodes) setCodes(r.backupCodes); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
-  };
-  const remove = async (id: string) => {
+  }, 'passkey');
+  const remove = (id: string) => confirm(async () => {
     setBusy(true); setErr('');
     try { const r = await api<{ user: ServerUser }>('POST', '/api/auth/passkey/remove', { id }); setUser(r.user); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
-  };
+  }, 'passkey');
   return (
     <div className="two-step-part" id="ts-devices">
       <strong>Fingerprint or face</strong>
@@ -245,6 +304,7 @@ function Devices({ user }: { user: ServerUser }) {
         ? <button className="btn small" id="ts-add-device" disabled={busy} onClick={add}><Icon name="plus" size={14} />Add fingerprint or face on this device</button>
         : <div className="tiny soft">This browser cannot use fingerprint or face.</div>}
       {err && <p className="small acct-error" role="alert">{err}</p>}
+      {confirmScreen}
       {codes && <Drawer title="Two-step sign-in is on" onClose={() => setCodes(null)}><BackupCodes codes={codes} /><div className="btn-row" style={{ marginTop: 16 }}><button className="btn primary" id="ts-done" onClick={() => setCodes(null)}>I saved my backup codes</button></div></Drawer>}
     </div>
   );

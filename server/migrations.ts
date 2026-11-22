@@ -313,4 +313,11 @@ create index if not exists two_step_tickets_expires on two_step_tickets (expires
 create index if not exists trusted_devices_expires on trusted_devices (expires_at);
 create index if not exists data_requests_status on data_requests (status, received);`,
   },
+  {
+    // "Confirm it's you": when the session last re-checked who is there (password, Google, fingerprint or face,
+    // or an app code). Adding a fingerprint/face device, removing one and clearing all data need it in the
+    // last 10 minutes (signing in counts too).
+    id: '011_session_verified',
+    sql: `alter table sessions add column if not exists verified_at timestamptz;`,
+  },
 ];

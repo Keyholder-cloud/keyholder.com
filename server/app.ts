@@ -8,6 +8,7 @@ import rateLimit from '@fastify/rate-limit';
 import fstatic from '@fastify/static';
 import { z, ZodError } from 'zod';
 import type { AppState } from '../src/data/types';
+import { emptyState } from '../src/data/seed';
 import type { Config } from './config';
 import type { Db } from './db';
 import { queueMail, recordError } from './email';
@@ -163,6 +164,14 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     return !!b.code && !!(await secondFactor(u, b.code));
   };
   const SecondBody = z.object({ code: z.string().max(20).optional(), passkey: z.any().optional() });
+  // ---- "Confirm it's you" before sensitive changes ----
+  // Fresh = signed in, or confirmed again, in the last 10 minutes on this session.
+  const FRESH_MINUTES = 10;
+  const isFresh = async (req: FastifyRequest) => !!req.sessionToken && !!(await db.one<{ ok: boolean }>(
+    `select true as ok from sessions where token_hash = $1 and greatest(created_at, coalesce(verified_at, created_at)) > now() - ($2 || ' minutes')::interval`,
+    [sha256(req.sessionToken), String(FRESH_MINUTES)]));
+  const needFresh = async (req: FastifyRequest) => { if (!(await isFresh(req))) fail(403, 'Please confirm it is you first.'); };
+  const markVerified = (req: FastifyRequest) => db.query('update sessions set verified_at = now() where token_hash = $1', [sha256(req.sessionToken!)]);
   /** This browser was trusted for 30 days after a code (only for the same person). */
   // Each use keeps it for another 30 days (forgotten after 30 days unused, a new password, or Forget in Settings).
   const trustedDevice = async (req: FastifyRequest, u: User) => {
@@ -371,11 +380,31 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     return { user: publicUser((await userById(db, u.id))!) };
   });
 
+  // Whether this session is fresh, and the ways to confirm (the landlord's usual way first).
+  app.get('/api/auth/confirm', async (req) => {
+    const u = need(req);
+    return { fresh: await isFresh(req), ways: { password: !!u.password_hash, google: !!u.google_sub && !!keys.google(), passkey: Number(u.passkey_count ?? 0) > 0, app: !!u.totp_secret && !!u.totp_enabled_at } };
+  });
+  // Confirm with the password, a fingerprint or face on this device, or an app or backup code. (Google: the
+  // sign-in redirect with intent=verify, below.)
+  app.post('/api/auth/confirm', { config: authLimit }, async (req) => {
+    const u = need(req);
+    const b = z.object({ password: z.string().max(200).optional(), code: z.string().max(20).optional(), passkey: z.any().optional() }).parse(req.body);
+    let ok = false, how = '';
+    if (b.password) { ok = !!u.password_hash && (await verifyPassword(b.password, u.password_hash)); how = 'password'; }
+    else if (b.passkey || b.code) { ok = twoStepOn(u) && (await confirmSecond(u, b)); how = b.passkey ? 'fingerprint or face' : 'code'; }
+    if (!ok) { await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Confirm it is you failed', detail: how, ip: ip(req) }); fail(400, how === 'password' ? 'That password is not right.' : 'That did not work. Please try again.'); }
+    await markVerified(req);
+    await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Confirmed it is them', detail: how, ip: ip(req) });
+    return { fresh: true };
+  });
+
   // ---- Fingerprint or face (passkeys) ----
   // Adding this device: the browser asks for fingerprint or face, and the device's key is saved (the first one turns
   // two-step sign-in on, with backup codes).
   app.post('/api/auth/passkey/register-options', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
     const u = need(req);
+    await needFresh(req);
     const existing = await passkeysOf(u.id);
     const options = await generateRegistrationOptions({
       rpName: 'Keyholder', rpID: rp.id, userName: u.email, userDisplayName: u.name || u.email, userID: new TextEncoder().encode(u.id),
@@ -387,6 +416,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   });
   app.post('/api/auth/passkey/register', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
     const u = need(req);
+    await needFresh(req);
     const b = z.object({ response: z.any(), name: z.string().max(60).optional() }).parse(req.body);
     const fresh = u.webauthn_challenge && u.webauthn_challenge_at && Date.now() - new Date(u.webauthn_challenge_at).getTime() < 5 * 60_000;
     if (!fresh) fail(400, 'That took too long. Please try again.');
@@ -414,6 +444,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   });
   app.post('/api/auth/passkey/remove', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
     const u = need(req);
+    await needFresh(req);
     const { id } = z.object({ id: z.string().max(300) }).parse(req.body);
     const mine = await passkeysOf(u.id);
     if (!mine.some((x) => x.id === id)) fail(404, 'That device is not on your account.');
@@ -509,7 +540,9 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   app.get('/api/auth/google/start', async (req, reply) => {
     const g = await googleKeys();
     const state = newToken();
-    const intent = (req.query as { intent?: string }).intent === 'signup' ? 'signup' : 'signin';
+    const asked = (req.query as { intent?: string }).intent;
+    // verify: a signed-in landlord confirms it is them with Google again (before a sensitive change).
+    const intent = asked === 'signup' ? 'signup' : asked === 'verify' && req.user ? 'verify' : 'signin';
     reply.setCookie('kh_oauth', `${state}.${intent}`, { httpOnly: true, sameSite: 'lax', secure: cfg.cookieSecure, path: '/api/auth/google', maxAge: 600 });
     const q = new URLSearchParams({ client_id: g.clientId, redirect_uri: redirectUri, response_type: 'code', scope: 'openid email profile', state, prompt: 'select_account' });
     return reply.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${q}`);
@@ -528,6 +561,13 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     const { access_token } = (await tok.json()) as { access_token: string };
     const info = (await (await fetcher('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${access_token}` } })).json()) as { sub: string; email: string; email_verified: boolean; name?: string };
     if (!info.sub || !info.email || !info.email_verified) return reply.redirect(`${cfg.appUrl}/#/signin?error=google`);
+    if (intent === 'verify') {
+      // Only the same Google account as the one signed in counts; nothing else changes.
+      const me = req.user;
+      const same = !!me && !!req.sessionToken && (me.google_sub === info.sub || (!me.google_sub && normEmail(me.email) === normEmail(info.email)));
+      if (same) { await markVerified(req); await audit(db, { actor: me!.email, actorId: me!.id, scope: 'auth', action: 'Confirmed it is them', detail: 'Google', ip: ip(req) }); }
+      return reply.redirect(`${cfg.appUrl}/#/settings?verified=${same ? 'google' : 'wrong-google'}`);
+    }
     let isNew = false;
     const u = await db.tx(async (q) => {
       let u = (await q.one<User>('select * from users where google_sub = $1', [info.sub])) ?? (await userByEmail(q, info.email));
@@ -547,6 +587,19 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   });
 
   // ---------------- A landlord's data ----------------
+  // Clear all data (Settings): only after confirming it is them. Keeps the profile; a new epoch, so a copy
+  // still open on another device cannot save the old data back.
+  app.post('/api/state/clear', { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } }, async (req) => {
+    const { u, accountId } = await ownerAccount(req);
+    await needFresh(req);
+    const s = await readState(db, accountId);
+    const d = emptyState((s.data as AppState | null)?.profile);
+    d.epoch = randomUUID();
+    const r = await writeState(db, accountId, s.revision, d, u.email, { reset: true });
+    await audit(db, { actor: u.email, actorId: u.id, accountId, scope: 'app', action: 'All data cleared', ip: ip(req) });
+    return { revision: r.revision, data: d };
+  });
+
   const ownerAccount = async (req: FastifyRequest) => { const u = need(req); if (u.role !== 'owner') fail(403, 'Team accounts have no rental data.'); return { u, accountId: await accountFor(db, u.id) }; };
   app.get('/api/state', async (req) => { const { accountId } = await ownerAccount(req); const s = await readState(db, accountId); return { revision: s.revision, data: s.data }; });
   app.get('/api/state/meta', async (req) => { const { accountId } = await ownerAccount(req); const s = await readState(db, accountId); return { revision: s.revision, updatedAt: s.updatedAt ?? null }; });
@@ -938,6 +991,12 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
 
   // ---------------- Local tools (never in production) ----------------
   if (cfg.devTools) {
+    // Local tests: make this session's sign-in an hour old, so "Confirm it's you" is asked.
+    app.post('/api/dev/age-session', async (req) => {
+      need(req);
+      await db.query(`update sessions set created_at = now() - interval '1 hour', verified_at = null where token_hash = $1`, [sha256(req.sessionToken!)]);
+      return { ok: true };
+    });
     app.get('/api/dev/outbox', async (req) => {
       const to = String((req.query as { to?: string }).to ?? '');
       return db.query(`select kind, to_email, subject, text_body, status, created_at, attachment->>'formId' as attached_form, attachment->>'filename' as attached_file from outbox where ($1 = '' or lower(to_email) = lower($1)) order by created_at desc limit 50`, [to]);

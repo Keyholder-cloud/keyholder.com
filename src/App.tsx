@@ -24,6 +24,7 @@ import { AuthLinks } from './screens/AuthLinks';
 import { Support } from './screens/Support';
 import { AnnouncementBar } from './support/Announcement';
 import { UpdateBar } from './components/UpdateBar';
+import { BioOffer } from './components/TwoStep';
 import { SampleBanner, Tour, PageSub, HelpButton } from './components/Guide';
 import { SetupCircle } from './components/Setup';
 
@@ -133,6 +134,7 @@ function Shell() {
         <main>
           <UpdateBar />
           <AnnouncementBar where="app" />
+          <BioOffer />
           <SampleBanner />
           <Routes>
             <Route path="/" element={<Navigate to="/today" replace />} />
