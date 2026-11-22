@@ -91,7 +91,8 @@ export function YearToDate() {
     const props = state.properties.filter((p) => !p.archived);
     const units = state.units.filter((u) => props.some((p) => p.id === u.propertyId));
     const rented = units.filter((u) => u.status !== 'vacant').length;
-    return { p: picture(state, from, today), props: props.length, units: units.length, rented, value: portfolio(state, today).value };
+    const pf = portfolio(state, today);
+    return { p: picture(state, from, today), props: props.length, units: units.length, rented, value: pf.value, owed: pf.owed, net: pf.yours };
   }, [state, today]);
   if (!y.props) return null;
   return (
@@ -99,15 +100,16 @@ export function YearToDate() {
       <h2 className="side-title">{today.slice(0, 4)} so far</h2>
       <p className="side-sub">Overview</p>
       <div className="ytd-over">
+        <div><span>Net worth</span><strong id="ytd-net">{y.value ? fmt0(y.net) : '—'}</strong></div>
         <div><span>Properties</span><strong>{y.props}</strong></div>
         <div><span>Units rented</span><strong>{y.rented} of {y.units}</strong></div>
-        <div><span>Worth</span><strong>{y.value ? fmt0(y.value) : '—'}</strong></div>
       </div>
+      {y.value > 0 && <p className="ytd-under small soft" id="ytd-worth">Worth {fmt0(y.value)} · Owed {fmt0(y.owed)}</p>}
       <p className="side-sub">Cash flow</p>
       <div className="review-grid">
         <div><span>Rent in</span><strong>{fmt0(y.p.rentCollected)}</strong></div>
         <div><span>Costs</span><strong>{fmt0(y.p.opex)}</strong></div>
-        <div className="kept"><span>You kept</span><strong>{fmt0(y.p.kept)}</strong></div>
+        <div className={`kept${y.p.kept < 0 ? ' neg' : ''}`}><span>You kept</span><strong>{fmt0(y.p.kept)}</strong></div>
       </div>
       <Link className="side-link" to="/portfolio">See the full picture<Icon name="next" size={16} /></Link>
     </section>
@@ -131,7 +133,7 @@ export function MonthReview() {
       <div className="review-grid">
         <div><span>Rent in</span><strong>{fmt0(r.p.rentCollected)}</strong></div>
         <div><span>Costs</span><strong>{fmt0(r.p.opex)}</strong></div>
-        <div className="kept"><span>You kept</span><strong>{fmt0(r.p.kept)}</strong></div>
+        <div className={`kept${r.p.kept < 0 ? ' neg' : ''}`}><span>You kept</span><strong>{fmt0(r.p.kept)}</strong></div>
       </div>
       {r.prev.rentExpected > 0 && <p className={`review-diff ${diff >= 0 ? 'up' : 'down'}`}><Icon name="trend" size={16} />{diff >= 0 ? `${fmt0(diff)} more than the month before` : `${fmt0(-diff)} less than the month before`}</p>}
       <Link className="side-link" to="/portfolio/cash-flow">See the full picture<Icon name="next" size={16} /></Link>

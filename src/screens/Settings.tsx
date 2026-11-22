@@ -1,7 +1,8 @@
 import { TwoStepSettings } from '../components/TwoStep';
 import { BackToMore, PageSub } from '../components/Guide';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Billing } from '../components/Billing';
 import { isPreviewUser, useStore } from '../data/store';
 
 import { RentTracking } from './Money';
@@ -19,6 +20,17 @@ const THEMES = [
   { id: 'light', icon: 'sun', label: 'Paper', title: 'Paper (light)' },
   { id: 'dark', icon: 'moon', label: 'Night', title: 'Night Ledger (dark)' },
 ] as const;
+
+const TABS = [
+  { id: 'profile', label: 'Profile', icon: 'user' },
+  { id: 'preferences', label: 'Preferences', icon: 'sparkle' },
+  { id: 'reminders', label: 'Reminders', icon: 'bell' },
+  { id: 'data', label: 'Data', icon: 'paper' },
+  { id: 'billing', label: 'Billing', icon: 'cash' },
+] as const;
+type TabId = (typeof TABS)[number]['id'];
+/** Old in-page links (/settings#two-step) → the tab that has that line now. */
+const HASH_TAB: Record<string, TabId> = { profile: 'profile', account: 'profile', 'two-step': 'profile', preferences: 'preferences', appearance: 'preferences', 'rent-tracking': 'preferences', reminders: 'reminders', tone: 'reminders', grace: 'reminders', auto: 'reminders', data: 'data', billing: 'billing' };
 
 /** One preference on one line: an icon, its name, and its options right there (wraps to two lines on phones). */
 function Pref({ id, icon, title, children }: { id: string; icon: string; title: string; children: React.ReactNode }) {
@@ -39,6 +51,10 @@ export function Settings() {
   const conn = useConn();
   // With the Keyholder server, a landlord's real account (not the demo or admin preview).
   const live = conn.mode === 'server' && !!conn.user && conn.user.role === 'owner' && !admin && !!p.account;
+  // Tabs: /settings/profile, /settings/preferences… Old links like /settings#two-step open the right tab.
+  const { tab } = useParams();
+  const fromHash = HASH_TAB[loc.hash.slice(1)];
+  const cur: TabId = (TABS.find((t) => t.id === tab)?.id ?? fromHash ?? 'profile');
   // A link like /settings#two-step scrolls to that line.
   useEffect(() => { const id = loc.hash.slice(1); if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'center' })); }, [loc.hash]);
   // Your profile: changes wait in the form until Save.
@@ -58,7 +74,7 @@ export function Settings() {
     let pending = ''; try { pending = sessionStorage.getItem(PENDING_KEY) ?? ''; sessionStorage.removeItem(PENDING_KEY); } catch { /* none */ }
     if (v === 'google' && pending === 'clear') setClearing(true);
     if (v === 'google' && pending === 'passkey') requestAnimationFrame(() => document.getElementById('two-step')?.scrollIntoView({ block: 'center' }));
-    nav('/settings', { replace: true });
+    nav(v === 'google' && pending === 'clear' ? '/settings/data' : '/settings/profile', { replace: true });
   }, [loc.search]);
   // Changed elsewhere (another device, the questions): the form follows, unless you are in the middle of an edit.
   const lastSaved = useRef(JSON.stringify(saved));
@@ -76,11 +92,14 @@ export function Settings() {
 
   return (
     <div className="page">
-      <BackToMore /><div className="page-head"><div><div className="eyebrow">Settings</div><h1 className="title-ic"><span className="tile-ic mint" aria-hidden><Icon name="settings" size={22} /></span>Your Keyholder</h1><PageSub>Your profile, appearance, rent tracking, reminders</PageSub></div></div>
+      <BackToMore /><div className="page-head"><div><div className="eyebrow">Settings</div><h1 className="title-ic"><span className="tile-ic mint" aria-hidden><Icon name="settings" size={22} /></span>Your Keyholder</h1><PageSub>Your profile, preferences, reminders, data and plan</PageSub></div></div>
+      <nav className="tabs settings-tabs" aria-label="Settings">
+        {TABS.map((t) => <Link key={t.id} to={`/settings/${t.id}`} id={`st-tab-${t.id}`} className={`tab${cur === t.id ? ' on' : ''}`} aria-current={cur === t.id ? 'page' : undefined}><Icon name={t.icon} size={16} />{t.label}</Link>)}
+      </nav>
       {verified === 'google' && <p className="callout pine" role="status" id="verified-note"><Icon name="check" size={16} /> Confirmed with Google. You have 10 minutes to finish what you started.</p>}
       {verified === 'wrong-google' && <p className="callout warn" role="alert" id="verified-note">That Google account is not the one on this Keyholder account. Try again with the right one, or use your password.</p>}
 
-      <section className="section" id="preferences">
+      {cur === 'preferences' && <section className="section" id="preferences">
         <h2 className="section-title">Preferences</h2>
         <div className="sheet prefs">
           <Pref id="appearance" icon="sparkle" title="Appearance">
@@ -89,12 +108,11 @@ export function Settings() {
             </span>
             <button className="chip" role="switch" aria-checked={p.paperGrain} id="pref-grain" title="Paper grain texture" onClick={() => act.setProfile({ paperGrain: !p.paperGrain })}><Icon name={p.paperGrain ? 'check' : 'sparkle'} size={14} />Grain</button>
           </Pref>
-          <Pref id="two-step" icon="lock" title="Two-step sign-in"><TwoStepSettings /></Pref>
           <Pref id="rent-tracking" icon="bank" title="Rent tracking"><RentTracking /></Pref>
         </div>
-      </section>
+      </section>}
 
-      <section className="section" id="profile">
+      {cur === 'profile' && <section className="section" id="profile">
         <h2 className="section-title">Your profile</h2>
         <div className="sheet">
           <form id="profile-form" onSubmit={(e) => { e.preventDefault(); if (dirty) saveProfile(); }}>
@@ -129,10 +147,13 @@ export function Settings() {
             )}
           </div>
         </div>
-      </section>
+        <div className="sheet prefs" style={{ marginTop: 16 }}>
+          <Pref id="two-step" icon="lock" title="Two-step sign-in"><TwoStepSettings /></Pref>
+        </div>
+      </section>}
 
-      <section className="section">
-        <h2 className="section-title">Receipts and reminders</h2>
+      {cur === 'reminders' && <section className="section">
+        <h2 className="section-title">Reminders and receipts</h2>
         <div className="sheet prefs" id="reminders">
           <Pref id="tone" icon="message" title="Reminder tone">
             <span className="seg-icons" role="radiogroup" aria-label="Tone">
@@ -150,9 +171,9 @@ export function Settings() {
             <span className="pref-note">Legal notices always wait for you.</span>
           </Pref>
         </div>
-      </section>
+      </section>}
 
-      <section className="section" id="data">
+      {cur === 'data' && <section className="section" id="data">
         <h2 className="section-title">Data</h2>
         <div className="sheet data-sheet">
           {live ? <ServerData /> : <p className="small soft" style={{ margin: 0 }}>Saved in this browser. Clearing browser data clears Keyholder.</p>}
@@ -166,7 +187,9 @@ export function Settings() {
           {clearing && <div className="clear-box"><div className="callout warn">This deletes every property, tenant, payment and expense. It can't be undone.</div><SlideToConfirm label="Slide to clear all data" onConfirm={() => { void clearAll(); }} /></div>}
           {confirmScreen}
         </div>
-      </section>
+      </section>}
+
+      {cur === 'billing' && <Billing />}
     </div>
   );
 }

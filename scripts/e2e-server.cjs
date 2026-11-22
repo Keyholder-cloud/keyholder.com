@@ -340,7 +340,7 @@ function watch(pg, errors, label) {
         password = 'brand-new-password-1';
       });
       await step(tag, 'E13 Download my data', async () => {
-        await go(pgB, 'settings');
+        await go(pgB, 'settings/data');
         const [dl] = await Promise.all([pgB.waitForEvent('download'), pgB.locator('text=Download my data').click()]);
         return dl.suggestedFilename();
       });
@@ -675,7 +675,7 @@ function watch(pg, errors, label) {
         await p.waitForSelector('#ts-copy >> text=Copy key'); await p.waitForSelector('#ts-secret');
         // Clear all data asks to confirm it is you once the sign-in is old, then clears it on the server.
         await p.keyboard.press('Escape'); await p.evaluate(() => fetch('/api/dev/age-session', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
-        await p.click('#st-clear'); await p.locator('.clear-box .knob').focus(); await p.keyboard.press('Enter');
+        await go(p, 'settings/data'); await p.click('#st-clear'); await p.locator('.clear-box .knob').focus(); await p.keyboard.press('Enter');
         await p.waitForSelector('#confirm-it'); await p.fill('#ci-pass', 'birch-road-2026'); await p.click('#ci-go');
         await p.waitForSelector('text=All data cleared');
         await ctx.close();
@@ -707,7 +707,7 @@ function watch(pg, errors, label) {
         if (await p.locator('.sp-page').count()) throw new Error('the preview opened'); await ctx.close();
       });
       await step(tag, 'E19 Delete my account: password needed, then everything is gone', async () => {
-        await go(pgB, 'settings'); await pgB.locator('text=Delete my account').first().click();
+        await go(pgB, 'settings/data'); await pgB.locator('text=Delete my account').first().click();
         await pgB.fill('#del-confirm', password); await pgB.locator('form.callout >> button.btn.danger').click();
         await pgB.waitForSelector('.lp-hero-h');
         const r = await fetch(`${BASE}api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Keyholder': '1' }, body: JSON.stringify({ email, password }) });

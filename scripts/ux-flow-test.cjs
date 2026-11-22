@@ -162,7 +162,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     await step(tag, 'A14 Portfolio shows net worth and the property card', async () => { await go(pg, 'portfolio'); await pg.waitForSelector('text=Your net worth in property'); await pg.waitForSelector('.pcard:has-text("Oak house")'); });
     await step(tag, 'A15 Paperwork → Taxes shows the property', async () => { await go(pg, 'paperwork/taxes'); await pg.waitForSelector('text=rental income · Oak house'); });
     await step(tag, 'A16 Settings → connect a bank → "Check now"', async () => {
-      await go(pg, 'settings'); await pg.click('#rt-bank'); await pg.locator('.drawer .choice:has-text("TD")').click(); await pg.locator('text=Connect TD').click(); await pg.waitForTimeout(1400);
+      await go(pg, 'settings/preferences'); await pg.click('#rt-bank'); await pg.locator('.drawer .choice:has-text("TD")').click(); await pg.locator('text=Connect TD').click(); await pg.waitForTimeout(1400);
       await pg.click('#rt-check'); await pg.waitForTimeout(300);
     });
     ok(tag, 'A errors', errors.length === 0, errors.slice(0, 3).join(' | '));
@@ -286,7 +286,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if (await pg.locator('.drawer').count()) await pg.locator('.drawer >> text=Cancel').first().click();
     });
     await step(tag, 'B17 Settings: two banks connected, "Add another bank" available', async () => {
-      await go(pg, 'settings'); await pg.waitForSelector('#rt-add'); if ((await pg.locator('#rent-tracking .bank-chip').count()) !== 2) throw new Error('bank chips');
+      await go(pg, 'settings/preferences'); await pg.waitForSelector('#rt-add'); if ((await pg.locator('#rent-tracking .bank-chip').count()) !== 2) throw new Error('bank chips');
       const st = await state(pg); if (st.banks.length !== 2) throw new Error(`${st.banks.length} banks`);
       if (await pg.locator('text=Rent found in your banks').count()) throw new Error('rent found is still in Settings');
     });
@@ -378,11 +378,11 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       for (const p of ['portfolio', 'rentals', 'income', 'expenses', 'paperwork', 'paperwork/taxes', 'settings']) { await go(pg, p); if (!(await pg.locator('.page-sub').count())) throw new Error(p); }
     });
     await step(tag, 'D9 Settings → "What is Keyholder?" → landing → back to dashboard', async () => {
-      await go(pg, 'settings'); await pg.locator('text=What is Keyholder?').click(); await pg.waitForSelector('.lp-hero-h');
+      await go(pg, 'settings/data'); await pg.locator('text=What is Keyholder?').click(); await pg.waitForSelector('.lp-hero-h');
       if (tag === 'phone') await pg.locator('.lp-burger').click();
       await pg.locator(tag === 'phone' ? '.lp-menu >> text=Open my dashboard' : '.lp-nav-cta >> text=Open my dashboard').click(); await pg.waitForSelector('.rent-row');
     });
-    await step(tag, 'D10 Settings → "Show the tour again" replays it', async () => { await go(pg, 'settings'); await pg.locator('text=Show the tour again').click(); await pg.waitForSelector('.tour-card'); await pg.locator('.tour-card >> text=Skip tour').click(); });
+    await step(tag, 'D10 Settings → "Show the tour again" replays it', async () => { await go(pg, 'settings/data'); await pg.locator('text=Show the tour again').click(); await pg.waitForSelector('.tour-card'); await pg.locator('.tour-card >> text=Skip tour').click(); });
     await step(tag, 'D11 Admin banner → Sign out → website, and the sample is gone', async () => {
       await pg.locator('.sample-banner >> text=Sign out').click(); await pg.waitForSelector('.lp-hero-h');
       const st = await state(pg); if (st.profile.account || st.profile.onboarded) throw new Error('still signed in');
@@ -664,13 +664,13 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await login(pg, 'test', 'test'); await pg.waitForSelector('.sample-banner >> text=Demo:');
       await pg.locator('.tour-card >> text=Skip tour').click();
       await pg.goto(BASE + '#/support'); await pg.waitForTimeout(300); if (await pg.locator('.sp').count()) throw new Error('the demo reached the support dashboard');
-      await go(pg, 'settings'); for (const t of ['Restore sample data', 'Replay the signup questions']) if (!(await pg.locator(`text=${t}`).count())) throw new Error(`admin has no "${t}"`);
+      await go(pg, 'settings/data'); for (const t of ['Restore sample data', 'Replay the signup questions']) if (!(await pg.locator(`text=${t}`).count())) throw new Error(`admin has no "${t}"`);
       await pg.locator('.signout-icon:visible').click(); await pg.waitForSelector('.lp-hero-h');
     });
     await step(tag, 'H2 Signing in as admin sets your own account aside; signing out brings it back', async () => {
       await onboard(pg); await pg.waitForSelector('text=Start here');
       await pg.evaluate(() => { const s = JSON.parse(localStorage.getItem('keyholder:v1')); s.properties.push({ id: 'p-oak', nickname: 'Oak house', address: '9 Oak St', city: 'Toronto', province: 'ON', type: 'house', rentalSharePct: 100, ownerOccupied: false, ownershipPct: 100, claimCCA: false }); localStorage.setItem('keyholder:v1', JSON.stringify(s)); });
-      await pg.reload(); await go(pg, 'settings');
+      await pg.reload(); await go(pg, 'settings/data');
       for (const t of ['Restore sample data', 'Replay the signup questions']) if (await pg.locator(`text=${t}`).count()) throw new Error(`a real account sees "${t}"`);
       await pg.locator('.signout-icon:visible').click(); await pg.waitForSelector('.lp-hero-h');
       await adminIn(pg); await go(pg, 'rentals'); await pg.waitForSelector('text=Maple triplex');
@@ -807,8 +807,8 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'today'); if (await pg.locator('text=from MOM').count()) throw new Error('still on Home');
     });
     await step(tag, 'H16 Settings → Preferences: one line each, with icons and the options right there', async () => {
-      await go(pg, 'settings');
-      for (const id of ['appearance', 'two-step', 'rent-tracking']) { const h = await pg.locator(`#pref-${id}`).evaluate((e) => e.getBoundingClientRect().height); if (h > (tag === 'phone' ? 170 : 72)) throw new Error(`${id} line is ${h}px tall`); }
+      await go(pg, 'settings/preferences');
+      for (const id of ['appearance', 'rent-tracking']) { const h = await pg.locator(`#pref-${id}`).evaluate((e) => e.getBoundingClientRect().height); if (h > (tag === 'phone' ? 280 : 140)) throw new Error(`${id} line is ${h}px tall`); }
       if ((await pg.locator('#appearance [role=radio] svg').count()) !== 3) throw new Error('theme icons');
       await pg.locator('#appearance [role=radio]:has-text("Night")').click(); if ((await state(pg)).profile.theme !== 'dark') throw new Error('theme not set');
       await pg.locator('#appearance [role=radio]:has-text("Device")').click();
@@ -838,7 +838,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'find'); await pg.waitForSelector('.find-page h1:has-text("Find a tenant")');
     });
     await step(tag, 'H21 Rent tracking: switching to "I mark it" with banks connected asks first and names the banks it disconnects', async () => {
-      await go(pg, 'settings'); const n = (await state(pg)).banks.length; if (!n) return 'no bank connected';
+      await go(pg, 'settings/preferences'); const n = (await state(pg)).banks.length; if (!n) return 'no bank connected';
       await pg.click('#rt-manual'); await pg.waitForSelector('#rt-confirm >> text=disconnects');
       await pg.locator('#rt-confirm >> text=Keep my bank').click(); if ((await state(pg)).banks.length !== n) throw new Error('disconnected without confirming');
       await pg.click('#rt-manual'); await pg.click('#rt-manual-confirm'); await pg.waitForTimeout(250);
@@ -875,6 +875,12 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     await step(tag, 'H25 Add an expense opens the form first; the camera is a button in it', async () => {
       await go(pg, 'expenses'); await pg.click('.add-expense'); await pg.waitForSelector('#ex-amt'); await pg.waitForSelector('#ex-photo');
       await pg.keyboard.press('Escape');
+    });
+    await step(tag, 'H26 Settings in tabs (Profile, Preferences, Reminders, Data, Billing); old links open the right tab; Billing shows the plan and payment', async () => {
+      await go(pg, 'settings'); if ((await pg.locator('.settings-tabs .tab').count()) !== 5) throw new Error('tabs');
+      await go(pg, 'settings#rent-tracking'); await pg.waitForSelector('#st-tab-preferences.on'); await pg.waitForSelector('#rent-tracking');
+      await pg.click('#st-tab-billing'); await pg.waitForSelector('#billing-plan >> text=Your plan'); await pg.waitForSelector('#billing-pay >> text=No card on file');
+      await go(pg, 'today'); await pg.waitForSelector('#ytd >> text=Net worth'); await pg.waitForSelector('#ytd-worth >> text=Owed');
     });
     ok(tag, 'H errors', errsH.length === 0, errsH.slice(0, 3).join(' | '));
 

@@ -878,3 +878,27 @@ a.chip { text-decoration: none; }
 .two-step-form .ts-back { justify-self: start; display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 4px 2px; color: var(--ink-soft, #667085); font: inherit; font-size: 14px; cursor: pointer; }
 .two-step-form .ts-back:hover { color: inherit; }
 .two-step-elsewhere { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Settings: tabs, and roomier rows now that each tab has its own page. */
+.settings-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--rule); margin: 4px 0 20px; }
+.settings-tabs::-webkit-scrollbar { display: none; }
+.settings-tabs .tab { display: inline-flex; align-items: center; gap: 6px; padding: 10px 14px; white-space: nowrap; color: var(--ink-soft, #667085); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 600; }
+.settings-tabs .tab.on { color: var(--ink, inherit); border-bottom-color: var(--primary, #4F46E5); }
+.page:has(.settings-tabs) .prefs { padding: 8px 0; }
+.page:has(.settings-tabs) .pref { padding: 16px 20px; }
+.page:has(.settings-tabs) .pref-name { width: 200px; font-size: var(--t-16, 16px); }
+.page:has(.settings-tabs) .pref-opts { gap: 8px; }
+.page:has(.settings-tabs) .pref-opts .chip { min-height: 38px; padding: 0 14px; font-size: 15px; }
+.page:has(.settings-tabs) .section { margin-bottom: 24px; }
+@media (max-width: 560px) { .page:has(.settings-tabs) .pref { padding: 14px 16px; } .page:has(.settings-tabs) .pref-name { width: 100%; } }
+/* Billing */
+.billing .section-title { margin-top: 20px; }
+.billing .section-title:first-child { margin-top: 0; }
+.billing-name { font-size: 22px; display: block; }
+.billing-price { color: var(--ink-soft, #667085); }
+.billing-features { list-style: none; margin: 0; padding: 4px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 20px; }
+.billing-features li { display: flex; align-items: center; gap: 8px; }
+.billing-features svg { color: #039855; flex: none; }
+.ytd-under { margin: -4px 0 10px; }
+/* "You kept": green when positive, light red when the costs were more than the rent. */
+.review-grid .kept.neg { background: #FEE4E2; }
+.review-grid .kept.neg strong { color: #D92D20; }
