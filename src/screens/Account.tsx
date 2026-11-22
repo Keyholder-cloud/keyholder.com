@@ -8,7 +8,7 @@ import { Brand } from '../components/Brand';
 import { SceneWelcome } from '../components/Art';
 import { api, ApiError, getConn, isStaff, serverMode, setUser, type ServerUser } from '../data/api';
 import * as sync from '../data/sync';
-import { bioName, canUseBiometrics, passkeyEmails, rememberPasskeyHere, TwoStepCode } from '../components/TwoStep';
+import { bioName, canUseBiometrics, passkeyEmails, rememberPasskeyHere, reportBio, TwoStepCode } from '../components/TwoStep';
 import { startAuthentication } from '@simplewebauthn/browser';
 
 // Sign up / sign in. With the Keyholder server (Stage 2), accounts are real: email and password (or Google,
@@ -245,7 +245,7 @@ function CentralLogin({ onAccount, onTwoStep }: { onAccount: (email: string) => 
     if (!bioOpts) return;
     setBusy(true); setErr('');
     startAuthentication({ optionsJSON: bioOpts })
-      .catch(() => { throw new Error(`${bioName()} was cancelled. Tap to try again, or use your password.`); })
+      .catch((e) => { reportBio('sign-in', e); throw new Error(`${bioName()} did not finish (${(e as Error).name}). Tap to try again, or use your password.`); })
       .then(async (passkey) => {
         const r = await api<{ user: ServerUser }>('POST', '/api/auth/passkey/login', { email: user.trim(), passkey });
         rememberPasskeyHere(passkey.id, r.user.email);

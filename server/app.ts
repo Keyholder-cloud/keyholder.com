@@ -483,11 +483,11 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
       if (!u) fail(400, 'This sign-in has expired. Please sign in again.');
     } else u = need(req);
     const mine = await passkeysOf(u!.id);
-    if (!mine.length) return { options: null, app: !!u!.totp_secret };
+    if (!mine.length) return { options: null, app: !!u!.totp_secret, email: u!.email };
     const options = await generateAuthenticationOptions({ rpID: rp.id, allowCredentials: mine.map((x) => ({ id: x.id, transports: x.transports ?? undefined })), userVerification: 'required' });
     if (ticket) await db.query('update two_step_tickets set challenge = $2 where token_hash = $1', [sha256(ticket), options.challenge]);
     else await db.query('update users set webauthn_challenge = $2, webauthn_challenge_at = now() where id = $1', [u!.id, options.challenge]);
-    return { options, app: !!u!.totp_secret };
+    return { options, app: !!u!.totp_secret, email: u!.email };
   });
 
   // Sign in with Face ID alone (email, then fingerprint or face on a device where it was added). A passkey with
@@ -513,6 +513,13 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     await startSession(req, reply, u!);
     await audit(db, { actor: u!.email, actorId: u!.id, scope: 'auth', action: 'Signed in', detail: 'Fingerprint or face (no password)', ip: ip(req) });
     return { user: publicUser((await userById(db, u!.id))!) };
+  });
+
+  // What the phone or browser said when Face ID did not work (name and message only), for the logs.
+  app.post('/api/auth/client-log', { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } }, async (req) => {
+    const b = z.object({ where: z.string().max(40), name: z.string().max(60), message: z.string().max(300) }).parse(req.body);
+    req.log.warn({ faceId: { where: b.where, name: b.name, message: b.message, ua: String(req.headers['user-agent'] ?? '').slice(0, 160), user: req.user?.id ?? null } }, 'face id problem');
+    return { ok: true };
   });
 
   app.post('/api/auth/logout', async (req, reply) => {

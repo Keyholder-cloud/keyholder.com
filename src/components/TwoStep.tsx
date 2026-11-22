@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import QRCode from 'qrcode';
 import { browserSupportsWebAuthn, startAuthentication, startRegistration } from '@simplewebauthn/browser';
-import { api, serverMode, setUser, useConn, type ServerUser } from '../data/api';
+import { api, getConn, serverMode, setUser, useConn, type ServerUser } from '../data/api';
 import { fmtDate } from '../lib/dates';
 import { Drawer } from './ui';
 import { Icon } from './Icon';
@@ -45,10 +45,18 @@ export const canUseBiometrics = () => typeof window !== 'undefined' && browserSu
 // Safari (iPhone, Mac) shows Face ID or Touch ID only straight after a tap: anything fetched from the server
 // must be ready before the tap. So the options are fetched first, and the tap calls the prompt directly.
 const fetchRegOpts = () => api<RegOpts>('POST', '/api/auth/passkey/register-options', {}).catch(() => null);
+/** Tells the server what the device said when Face ID failed (for the logs; nothing personal). */
+export const reportBio = (where: string, e: unknown) => { const x = e as Error; void api('POST', '/api/auth/client-log', { where, name: String(x?.name ?? 'Error').slice(0, 60), message: String(x?.message ?? '').slice(0, 300) }).catch(() => {}); };
+/** Thrown when this device already has Face ID for the account (e.g. synced by iCloud Keychain): that is success. */
+class AlreadyHere extends Error {}
 async function finishAdd(opts: RegOpts): Promise<{ backupCodes: string[] | null; user: ServerUser }> {
   let response;
   try { response = await startRegistration({ optionsJSON: opts }); }
-  catch (e) { throw new Error((e as Error).name === 'InvalidStateError' ? 'This device is already added.' : `${bioName()} was cancelled. Tap again to try once more.`); }
+  catch (e) {
+    reportBio('add', e);
+    if ((e as Error).name === 'InvalidStateError') { const me = getConn().user; rememberPasskeyHere(undefined, me?.email); throw new AlreadyHere(`${bioName()} is already set up on this device. Next time, sign in with ${bioName()}.`); }
+    throw new Error(`${bioName()} did not finish (${(e as Error).name}). Tap again to try once more.`);
+  }
   const r = await api<{ backupCodes: string[] | null; user: ServerUser }>('POST', '/api/auth/passkey/register', { response });
   rememberPasskeyHere(response.id, r.user.email);
   return r;
@@ -71,7 +79,10 @@ function useAddDevice(reason: string, onAdded: (r: { backupCodes: string[] | nul
     if (!opts) { void confirm(async () => { const o = await fetchRegOpts(); setOpts(o); setArmed(!!o); }, 'passkey'); return; }
     setArmed(false);
     setBusy(true);
-    finishAdd(opts).then(onAdded).catch((x) => { setErr((x as Error).message); void fetchRegOpts().then(setOpts); }).finally(() => setBusy(false));
+    finishAdd(opts).then(onAdded).catch((x) => {
+      if (x instanceof AlreadyHere) { const me = getConn().user; if (me) onAdded({ backupCodes: null, user: me }); setErr(''); return; }
+      setErr((x as Error).message); void fetchRegOpts().then(setOpts);
+    }).finally(() => setBusy(false));
   };
   return { start, busy, err, ready: !!opts, armed, confirmScreen };
 }
@@ -103,7 +114,7 @@ function BioOfferBar({ onClose }: { onClose: (never: boolean) => void }) {
 /** Asks for fingerprint or face to confirm it is you, with options fetched before the tap. */
 async function authWith(opts: AuthOpts) {
   try { const a = await startAuthentication({ optionsJSON: opts }); rememberPasskeyHere(a.id); return a; }
-  catch { throw new Error(`${bioName()} was cancelled, or is not set up on this device. Use a code this time.`); }
+  catch (e) { reportBio('confirm', e); throw new Error(`${bioName()} did not finish (${(e as Error).name}). Try again, or use a code.`); }
 }
 
 /** The second step of signing in, after the password (or Google) was right. */
@@ -119,11 +130,11 @@ export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; on
   // Face ID leads only where it was added or used before; there, the code is one tap away.
   const [here, setHere] = useState(false);
   const [useCode, setUseCode] = useState(false);
-  const load = () => api<{ options: AuthOpts | null; app: boolean }>('POST', '/api/auth/passkey/options', { ticket })
+  const load = () => api<{ options: AuthOpts | null; app: boolean; email?: string }>('POST', '/api/auth/passkey/options', { ticket })
     .then((r) => {
       setOpts(r.options); setWays({ passkey: !!r.options && canUseBiometrics(), app: r.app });
       const mine = new Set(hereIds());
-      setHere(!!r.options?.allowCredentials?.some((c) => mine.has(c.id)));
+      setHere(!!r.options?.allowCredentials?.some((c) => mine.has(c.id)) || (!!r.email && passkeyEmails().includes(r.email.toLowerCase())));
     }).catch(() => {});
   useEffect(() => { void load(); }, [ticket]);
   const biometric = () => {
