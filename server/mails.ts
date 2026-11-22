@@ -62,16 +62,15 @@ export function tenantMails(state: AppState, m: Message, accountId: string): Mai
     const unit = state.units.find((u) => u.id === lease?.unitId);
     const prop = state.properties.find((p) => p.id === unit?.propertyId);
     if (!r || !pay) return [];
-    // Sent again (Resend): a later message for the same receipt.
-    const copy = state.messages.some((x) => x.kind === 'receipt' && x.receiptId === r.id && x.id !== m.id && (x.sentAt ?? '') < (m.sentAt ?? ''));
-    subject = `${copy ? 'Copy: ' : ''}Rent receipt #${r.number}${pay.period ? ` for ${fmtPeriod(pay.period)}` : ''}`;
+    // Sent again (Resend) is the same receipt, word for word: the tenant may have missed it.
+    subject = `Rent receipt #${r.number}${pay.period ? ` for ${fmtPeriod(pay.period)}` : ''}`;
     const method = pay.method === 'etransfer' ? 'e-Transfer' : pay.method ? pay.method[0].toUpperCase() + pay.method.slice(1) : 'Not stated';
     const room = unit ? (lease?.room ?? (/^[A-Z0-9]{1,3}$/i.test(unit.label) ? `Unit ${unit.label}` : unit.label)) : '';
     const line = lease && pay.period ? leaseLedger(lease, state.payments, (m.sentAt ?? new Date().toISOString()).slice(0, 10)).find((x) => x.period === pay.period) : undefined;
     attachment = {
       kind: 'receipt', filename: `Rent receipt ${r.number}${pay.period ? ` - ${fmtPeriod(pay.period)}` : ''}.pdf`,
       receipt: {
-        number: r.number, issued: (r.sentAt ?? m.sentAt ?? new Date().toISOString()).slice(0, 10), copy,
+        number: r.number, issued: (r.sentAt ?? m.sentAt ?? new Date().toISOString()).slice(0, 10),
         landlord: { name: owner, email: replyTo, phone: state.profile.phone },
         tenant: tenant.names.join(' & '), rental: prop ? `${prop.address}${room ? `, ${room}` : ''}` : (room || '—'),
         period: pay.period ? fmtPeriod(pay.period) : '—', amount: fmt(pay.amount), paidOn: pay.date, method,

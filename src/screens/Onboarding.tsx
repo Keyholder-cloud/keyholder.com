@@ -195,7 +195,7 @@ function AccountStep({ total, onExit, onAccount }: { total: number; onExit: () =
         <div>
           <p className="q-count">Let's get started</p>
           <h1 className="q-question">Create your free account</h1>
-          <p className="q-aside"><Icon name="info" size={16} />Then {total} quick questions about your rental, and Keyholder sets itself up for you. Free for one rental unit. No card needed.</p>
+          <p className="q-aside"><Icon name="info" size={16} />Then {total} quick questions about your rental, and Keyholder sets itself up for you. Free for most landlords. No card needed.</p>
         </div>
         <div className="q-pic"><SceneWelcome /></div>
       </div>

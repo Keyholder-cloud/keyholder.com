@@ -25,7 +25,7 @@ export function Revenue() {
   const invoices = s.invoices.filter((i) => filter === 'all' || i.status === filter).slice(0, 40);
   return (
     <>
-      <PageHead eyebrow="Business" title="Revenue" sub={`Landlord: ${fmtMoney(price, 2)} per unit a month, 2 units or more · Starter: free, 1 unit`} />
+      <PageHead eyebrow="Business" title="Revenue" sub={`Landlord: ${fmtMoney(price, 2)} per unit a month (banks, 3+ properties) · Starter: free, up to 2 properties`} />
       {isLive() && <p className="callout sp-callout">Card payments are not connected yet. Amounts show what each plan would bill.</p>}
       <div className="sp-tiles">
         <Tile label="Monthly revenue" value={fmtMoney(total)} spark={months.map((m) => m.value)} />

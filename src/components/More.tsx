@@ -18,7 +18,7 @@ export function useMore<T>(items: T[], n = FIRST): [T[], React.ReactNode] {
   return [items.slice(0, shown), button];
 }
 
-/** Sends a rent receipt again (a PDF copy with the same number), or for the first time if it was a draft. */
+/** Sends the same rent receipt again (same number, same PDF), or for the first time if it was a draft. */
 export function ResendReceipt({ receiptId, label = 'Resend' }: { receiptId: string; label?: string }) {
   const { act } = useStore();
   const [sent, setSent] = useState(false);

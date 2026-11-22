@@ -7,7 +7,6 @@ import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from '@ca
 export interface ReceiptPdfData {
   number: number;
   issued: string; // YYYY-MM-DD
-  copy?: boolean; // sent again: marked "Copy"
   landlord: { name: string; email?: string; phone?: string };
   tenant: string;
   rental: string;
@@ -34,7 +33,7 @@ export async function receiptPdf(d: ReceiptPdfData): Promise<Uint8Array> {
   // Header band
   page.drawRectangle({ x: 0, y: 712, width: 612, height: 80, color: BRAND });
   text(page, 'RENT RECEIPT', L, 748, bold, 22, rgb(1, 1, 1));
-  text(page, d.copy ? 'Copy of the original receipt' : 'Official receipt for rent received', L, 730, reg, 10, rgb(0.9, 0.9, 1));
+  text(page, 'Official receipt for rent received', L, 730, reg, 10, rgb(0.9, 0.9, 1));
   const no = `No. ${d.number}`;
   text(page, no, R - bold.widthOfTextAtSize(no, 16), 748, bold, 16, rgb(1, 1, 1));
   const iss = `Issued ${day(d.issued)}`;

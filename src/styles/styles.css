@@ -905,3 +905,8 @@ a.chip { text-decoration: none; }
 /* Long lists: "Show more" under the first 8 lines. */
 .more-row { display: flex; justify-content: center; padding: 8px 0 4px; }
 .resend-receipt { white-space: nowrap; }
+.billing-features.locked li { color: var(--ink-soft, #667085); }
+.billing-features.locked svg { color: var(--ink-soft, #98A2B3); }
+/* Paid-only buttons on the free plan: greyed, with a lock; a tap explains and offers the upgrade. */
+.btn.locked, .chip.locked, [role="radio"].locked { opacity: .55; }
+.btn.locked:hover { opacity: .7; }

@@ -706,9 +706,11 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   }
   // Opens Plaid's bank sign-in. With itemId: sign in again to a bank that asks for it.
   app.post('/api/bank/link-token', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req) => {
-    const { accountId } = await ownerAccount(req);
+    const { u, accountId } = await ownerAccount(req);
     await needPlaid();
     const { itemId } = z.object({ itemId: z.string().uuid().optional() }).parse(req.body ?? {});
+    // Connecting a new bank is part of the Landlord plan (reconnecting one already connected is not).
+    if (!itemId && u.plan !== 'landlord') fail(402, 'Connecting a bank is part of the Landlord plan. Upload a statement instead, or upgrade in Settings → Billing.');
     let token: string | undefined;
     if (itemId) { const it = (await itemsFor(db, accountId)).find((x) => x.id === itemId); if (!it) fail(404, 'No such bank.'); token = keys.decrypt(it!.access_token); }
     // Banks that sign in on their own site (OAuth: RBC, TD, Scotiabank…) come back to /plaid-oauth. If that address
@@ -1045,6 +1047,12 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
 
   // ---------------- Local tools (never in production) ----------------
   if (cfg.devTools) {
+    // Local tests: put this account on a plan.
+    app.post('/api/dev/plan', async (req) => {
+      const u = need(req); const { plan } = z.object({ plan: z.enum(['starter', 'landlord']) }).parse(req.body);
+      await db.query('update accounts set plan = $2 where owner_id = $1', [u.id, plan]);
+      return { ok: true };
+    });
     // Local tests: make this session's sign-in an hour old, so "Confirm it's you" is asked.
     app.post('/api/dev/age-session', async (req) => {
       need(req);

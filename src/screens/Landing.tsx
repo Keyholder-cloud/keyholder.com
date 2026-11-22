@@ -80,7 +80,7 @@ function GetStarted({ start, big, note }: { start: () => void; big?: boolean; no
     </button>
   );
   if (!note) return button;
-  return <div className="lp-go-wrap">{button}<p className="lp-go-note"><Icon name="check" size={16} />Free for 1 rental unit · No card needed</p></div>;
+  return <div className="lp-go-wrap">{button}<p className="lp-go-note"><Icon name="check" size={16} />Free for most landlords · No card needed</p></div>;
 }
 
 function useReveal(key: string) {
@@ -164,7 +164,7 @@ export function Landing() {
             <div className="lp-cta-card reveal">
               <div>
                 <h2 className="lp-h2">Ready to automate your rental?</h2>
-                <p className="lp-lede">Free for 1 rental unit. No card needed.</p>
+                <p className="lp-lede">Free for most landlords. No card needed.</p>
               </div>
               <div className="btn-row" data-cta>
                 <GetStarted start={start} big />
@@ -278,7 +278,7 @@ function Overview({ start }: { start: () => void }) {
         <HeroLines />
         <div className="lp-wrap lp-hero-grid">
           <div className="lp-hero-copy">
-            <p className="lp-pill"><Icon name="home" size={16} />For Canadian landlords with 1 to 10 units</p>
+            <p className="lp-pill"><Icon name="home" size={16} />For Canadian landlords</p>
             <h1 className="lp-hero-h">Rental automation that gives you your <em>weekends back.</em></h1>
             <p className="lp-lede lp-hero-lede">Keyholder automates the busywork of renting. You approve, it does the rest.</p>
             <ul className="lp-auto" aria-label="What Keyholder automates">
@@ -443,7 +443,7 @@ function About({ section }: { section: string }) {
       <section className="lp-sec lp-sec-top0">
         <div className="lp-wrap">
           <ul className="lp-for reveal">
-            {([['home', '1 to 10 units', 'Houses, condos, duplexes and suites'], ['user', 'You manage it yourself', 'No property manager needed'], ['map', 'Every province and territory', 'Forms and rules built in']] as [string, string, string][]).map(([ic, t, d], i) => (
+            {([['home', 'Any size', 'From one basement suite to many properties'], ['user', 'You manage it yourself', 'No property manager needed'], ['map', 'Every province and territory', 'Forms and rules built in']] as [string, string, string][]).map(([ic, t, d], i) => (
               <li key={t}><span className={`lp-tile-ic ${TONES[i % TONES.length]}`}><Icon name={ic} size={18} /></span><span><strong>{t}</strong><span>{d}</span></span></li>
             ))}
           </ul>
@@ -502,23 +502,23 @@ function Pricing({ start }: { start: () => void }) {
   const cents = useUnitPrice();
   return (
     <>
-      <PageHead kicker="Pricing" icon="cash" title={<>Simple pricing. <em>Free to start.</em></>} aside={<Photo src={keysPhoto} alt="House keys next to a small model house on a table" className="aside" />}>Every feature in both plans. You pay only for units past your first, and never without agreeing first.</PageHead>
+      <PageHead kicker="Pricing" icon="cash" title={<>Simple pricing. <em>Free to start.</em></>} aside={<Photo src={keysPhoto} alt="House keys next to a small model house on a table" className="aside" />}>Free for most use. Pay only for advanced features, and never without agreeing first.</PageHead>
       <section className="lp-sec lp-sec-top0">
         <div className="lp-wrap">
           <div className="lp-prices">
             <div className="lp-price reveal">
               <span className="lp-tile-ic big mint"><Icon name="home" size={22} /></span>
               <h3>Starter</h3>
-              <p className="lp-amt">Free</p><p className="lp-per">One rental unit, free for good</p>
+              <p className="lp-amt">Free</p><p className="lp-per">For most landlords, free for good</p>
               <ul>{INCLUDED.map((t) => <li key={t}>{t}</li>)}</ul>
               <button className="btn lp-big" onClick={start} data-cta>Get started</button>
             </div>
             <div className="lp-price best reveal">
-              <span className="lp-flag">Most landlords pick this</span>
+              <span className="lp-flag">Advanced</span>
               <span className="lp-tile-ic big lilac"><Icon name="users" size={22} /></span>
               <h3>Landlord</h3>
-              <p className="lp-amt">{cents % 100 ? fmtPrice(cents) : <CountUp to={cents / 100} prefix="$" />}<span>per unit, a month</span></p><p className="lp-per">2 units or more, for every unit</p>
-              <ul><li>Everything in Starter, on every unit</li><li>Several properties, rooms and shared leases</li><li>Several banks and statement uploads</li><li>A tax pack per property for your accountant</li><li>No card until card payments open: we ask first</li></ul>
+              <p className="lp-amt">{cents % 100 ? fmtPrice(cents) : <CountUp to={cents / 100} prefix="$" />}<span>per unit, a month</span></p><p className="lp-per">Advanced features, when you want them</p>
+              <ul><li>Everything in Starter</li><li>Connect your banks: rent, bills and mortgage found for you</li><li>Check your bank any time</li><li>More than 2 properties</li><li>No card until card payments open: we ask first</li></ul>
               <button className="btn primary lp-big" onClick={start} data-cta>Get started</button>
             </div>
           </div>
@@ -534,18 +534,18 @@ function Pricing({ start }: { start: () => void }) {
 }
 
 /** What every plan includes: the plans differ only in how many units they cover. */
-const INCLUDED = ['Rent tracking, receipts and reminders', 'Bank connection and statement uploads', 'Expenses with receipt photos', "Your province's notices and forms", 'Tenant applications', 'Tax numbers for your T776'];
+const INCLUDED = ['Rent tracking, PDF receipts and reminders', 'Expenses, receipt photos and statement uploads', "Your province's notices and forms", 'Tenant applications', 'Year-end summary and tax numbers (T776)', 'Up to 2 properties'];
 
 // ================================================================ Questions
 const FAQ: [string, string, string][] = [
   ['sparkle', 'What does Keyholder do automatically?', 'It checks your banks for rent and bills, writes receipts and reminders, files your costs and keeps your tax numbers up to date. Receipts and reminders go out with one tap, or automatically once you switch that on. Legal notices and choosing a tenant always need your approval.'],
   ['heart', "I'm new to being a landlord. Is this for me?", 'Yes. Keyholder is made for people with one or a few rentals, including a basement suite in your own home, where shared costs like heat are split for you. It explains each step in plain words.'],
-  ['cash', 'What does it cost?', 'Free for one rental unit, for good. With 2 units or more, it is {price} per unit a month, with every feature in both plans. No card is needed to start, and you are never charged without agreeing first.'],
+  ['cash', 'What does it cost?', 'Nothing for most landlords: rent, receipts, reminders, expenses, statement uploads, notices, applications and taxes are free, for up to 2 properties. Advanced features (connecting your banks, more than 2 properties) are {price} per unit a month. No card is needed, and you are never charged without agreeing first.'],
   ['lock', 'Is my bank information safe?', 'Yes. Keyholder can only look at deposits and bills. It can never move money, and it never sees your bank password. You can also skip the bank and tap "Mark paid" yourself.'],
-  ['bank', 'Which banks work?', 'RBC, TD, BMO, Scotiabank, CIBC, National Bank, Desjardins, Tangerine and most credit unions, view only, as many as you like. If yours cannot connect, upload its statements instead (PDF, CSV and more).'],
+  ['bank', 'Which banks work?', 'RBC, TD, BMO, Scotiabank, CIBC, National Bank, Desjardins, Tangerine and most credit unions, view only (connecting banks is part of the Landlord plan). On the free plan, upload statements instead: PDF, CSV and more.'],
   ['star', 'What do Bronze, Silver and Gold mean?', 'Your property card gets more useful as you add details. Bronze needs only the rent. Silver adds what you paid, so you see your gain and how you compare with a GIC. Gold adds your mortgage and buying costs for full tax numbers. Every level is in both plans.'],
   ['info', 'Is this legal or tax advice?', 'No. Keyholder fills in forms and numbers for you, and you make the decisions. The first time you send a legal notice, it is a good idea to check with a paralegal. At tax time, an accountant can review your numbers.'],
-  ['users', 'Can I try it first?', 'Yes. Keyholder is free for one rental unit, and no card is needed. Add your place and see it work before you pay anything.'],
+  ['users', 'Can I try it first?', 'Yes. Most of Keyholder is free, and no card is needed. Add your place and see it work.'],
 ];
 // ================================================================ Slow flowing lines behind the hero
 // Thin wavy lines, twice the hero's width, drift sideways very slowly and loop without a seam (the waves repeat

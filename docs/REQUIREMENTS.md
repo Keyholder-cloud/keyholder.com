@@ -480,9 +480,20 @@ Status: ☐ to do · ◐ in progress · ☑ done
 
 ### R54. PDF receipts, Resend receipt, 8-line lists, two-step in Preferences, setup "Do it" closes ☑
 - Every receipt email carries a formatted one-page PDF (landlord, tenant, rental, month, amount, date and way
-  paid, receipt number, balance, signature, PAID stamp). A resend is marked "Copy".
+  paid, receipt number, balance, signature, PAID stamp). A resend is the same receipt, sent again.
 - Resend receipt: Income (each paid row), Paperwork → Letters, the tenant's ledger and Messages sent, and the ⋯
   menu of a paid row on Home (Automatic sending stays immediate). A draft receipt is sent instead.
 - Ledgers, payments, messages, notices, mortgage payments and the support audit log show 8 lines, then Show more.
 - Two-step sign-in sits in Settings → Preferences.
 - Setup progress: "Do it" goes to the page and the popup closes ("What you paid" opens its form there).
+
+### R55. Free for most use; paid for banks and 3+ properties; cash flow numbers match ☑
+- Starter (free, for good): up to 2 properties and everything day to day — rent, PDF receipts, reminders,
+  expenses, statement uploads, notices and forms, applications, year-end and taxes. Landlord (paid): connecting
+  banks (with Check now) and more than 2 properties. On Starter those buttons are greyed with a lock and open
+  "Part of the Landlord plan" with Upgrade (a request to the team until card payments open). The server refuses
+  a new bank connection on Starter. Existing properties and banks keep working.
+- Wording everywhere: for all landlords (no "1 to 10 units"); free for most use, pay for advanced features.
+- Home's "Money out" is the Cash flow page's (costs, improvements and mortgage payments), so Rent in − Money out
+  = You kept on both.
+- A resent receipt is the same receipt (no "Copy" wording).
