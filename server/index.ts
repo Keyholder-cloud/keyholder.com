@@ -3,6 +3,7 @@ import { migrate, openDb } from './db';
 import { buildApp } from './app';
 import { startWorker } from './jobs';
 import { ensureAdmin, resetAdminTwoStep } from './services';
+import { repairAfterStartFresh } from './support';
 import { Keys } from './keys';
 
 // Starts Keyholder: database (and its migrations), the first admin, the web server (API + website)
@@ -14,12 +15,14 @@ async function main() {
   const applied = await migrate(db);
   const admin = await ensureAdmin(db, cfg);
   const reset = await resetAdminTwoStep(db, cfg);
+  const repaired = await repairAfterStartFresh(db);
   const keys = new Keys(cfg);
   await keys.refresh(db, true);
   const app = await buildApp({ cfg, db, keys });
   if (admin === 'updated') app.log.info('team password changed from ADMIN_PASSWORD; old sign-ins ended');
   if (reset) app.log.warn('ADMIN_RESET_TWO_STEP: the super user\'s two-step sign-in was turned off; remove the setting now');
   if (applied.length) app.log.info(`migrations applied: ${applied.join(', ')}`);
+  if (repaired) app.log.info(`repair: old bank data removed again in ${repaired} account(s)`);
   if (!cfg.databaseUrl) app.log.warn(`no DATABASE_URL: using the embedded Postgres in ${cfg.pgliteDir}`);
   if (keys.email().provider === 'log') app.log.warn('Email sending is off: emails are kept in the outbox, not sent');
   const stopWorker = cfg.worker === 'inline' ? startWorker(cfg, db, (m) => app.log.info(m), keys) : () => {};

@@ -165,7 +165,7 @@ export function Banks() {
         <ul className="sp-rows sp-bank-list">{list.map((name) => {
           const off = b.off.includes(name);
           return (
-            <li key={name}>
+            <li key={name} className={off || !b.enabled ? 'bank-off' : undefined}>
               <span><strong>{name}</strong><span>{!b.enabled ? 'Off (bank connection is off for everyone)' : off ? 'Turned off: landlords see "Not available right now"' : 'Available'}</span></span>
               <span className="btn-row">{canEdit ? <button className="btn small ghost" onClick={() => toggle(name, off)}>{off ? 'Turn on' : 'Turn off'}</button> : <Status tone={off ? 'off' : 'good'}>{off ? 'Off' : 'On'}</Status>}</span>
             </li>

@@ -291,11 +291,54 @@ export async function startFresh(db: Db, by: string): Promise<{ accounts: number
     d.receipts = d.receipts.filter((r) => !receipts.has(r.id));
     d.messages = d.messages.filter((m) => !(m.receiptId && receipts.has(m.receiptId)));
     delete d.profile.vendorRules; delete d.profile.notRentPayers; delete d.profile.personalVendors;
+    d.epoch = randomUUID(); // a device still holding the old copy can no longer save it back
     if (d.profile.rentArrival === 'bank') d.profile.rentArrival = 'manual';
     d.audit.unshift({ id: randomUUID(), at: new Date().toISOString(), action: 'Started fresh for real bank data', detail: `${n.expenses} expenses, ${n.transactions} bank transactions, ${n.payments} bank-matched rent payments removed by Keyholder` });
-    await writeState(db, account_id, s.revision, d, by);
+    await writeState(db, account_id, s.revision, d, by, { reset: true });
     total.accounts++; total.expenses += n.expenses; total.transactions += n.transactions; total.payments += n.payments; total.banks += n.banks;
   }
   await db.query('delete from bank_items');
   return total;
+}
+
+/**
+ * One-time repair (2026-11-22): after "Start fresh", a device still holding its old copy saved it back and the
+ * old bank data returned. For each account reset that way: expenses and bank-matched rent created before the
+ * reset, transactions from banks no longer connected, and those banks go again; anything added since stays.
+ * The data gets a new epoch, so old copies can no longer be saved back.
+ */
+export async function repairAfterStartFresh(db: Db): Promise<number> {
+  const done = await db.one<{ ok: boolean }>(`select true as ok from settings where key = 'repair.start-fresh-v1'`);
+  if (done) return 0;
+  let fixed = 0;
+  for (const { account_id } of await db.query<{ account_id: string }>('select account_id from account_state')) {
+    const s = await readState(db, account_id); if (!s.data) continue;
+    const d = structuredClone(s.data) as AppState;
+    const reset = d.audit.filter((a) => a.action === 'Started fresh for real bank data').map((a) => a.at).sort()[0];
+    if (!reset) continue;
+    const items = new Set((await db.query<{ id: string }>('select id from bank_items where account_id = $1', [account_id])).map((r) => r.id));
+    const before = { e: d.expenses.length, t: d.txns.length, p: d.payments.length, b: (d.banks ?? []).length };
+    const goneTx = new Set(d.txns.filter((t) => t.source === 'bank' && !(t.bankId && items.has(t.bankId))).map((t) => t.id));
+    const goneExp = new Set([
+      ...d.expenses.filter((e) => e.createdAt < reset).map((e) => e.id),
+      ...d.txns.filter((t) => goneTx.has(t.id) && t.expenseId).map((t) => t.expenseId!),
+    ]);
+    const goneTxPay = new Set(d.txns.filter((t) => goneTx.has(t.id) && t.paymentId).map((t) => t.paymentId!));
+    const goneP = new Set(d.payments.filter((p) => p.source === 'bank' && (p.createdAt < reset || goneTxPay.has(p.id))).map((p) => p.id));
+    const goneR = new Set(d.receipts.filter((r) => goneP.has(r.paymentId)).map((r) => r.id));
+    d.txns = d.txns.filter((t) => !goneTx.has(t.id));
+    d.expenses = d.expenses.filter((e) => !goneExp.has(e.id));
+    d.payments = d.payments.filter((p) => !goneP.has(p.id));
+    d.receipts = d.receipts.filter((r) => !goneR.has(r.id));
+    d.messages = d.messages.filter((m) => !(m.receiptId && goneR.has(m.receiptId)));
+    d.banks = (d.banks ?? []).filter((b) => items.has(b.id));
+    if (!d.banks.length && d.profile.rentArrival === 'bank') d.profile.rentArrival = 'manual';
+    const removed = before.e - d.expenses.length + before.t - d.txns.length + before.p - d.payments.length + before.b - d.banks.length;
+    d.epoch = randomUUID();
+    if (removed) d.audit.unshift({ id: randomUUID(), at: new Date().toISOString(), action: 'Old bank data removed again', detail: `${before.e - d.expenses.length} expenses, ${before.t - d.txns.length} bank transactions, ${before.p - d.payments.length} bank-matched rent payments that came back after Start fresh` });
+    await writeState(db, account_id, s.revision, d, 'Keyholder repair', { reset: true });
+    if (removed) fixed++;
+  }
+  await db.query(`insert into settings (key, value) values ('repair.start-fresh-v1', to_jsonb(now()::text)) on conflict (key) do nothing`);
+  return fixed;
 }

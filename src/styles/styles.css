@@ -772,3 +772,8 @@ a.chip { text-decoration: none; }
   .page { padding-top: 35px; }
 }
 .title-ic-inline { display: inline-flex; align-items: center; gap: 8px; }
+/* A bank turned off by the Keyholder team: greyed, in the landlord's list and in Support → Banks. */
+.chip.bank-chip.off { opacity: 0.55; background: var(--paper-sunk); }
+.chip.bank-chip.off .tiny { color: var(--ink-soft); margin-left: 2px; }
+.sp-bank-list li.bank-off > span:first-child { opacity: 0.5; }
+.sp-bank-list li.bank-off strong { text-decoration: line-through; }

@@ -289,3 +289,15 @@
 /* Dashboard Sign out: a full bordered button with its icon. */
 .btn.sp-signout { gap: 8px; min-height: 44px; border: 1px solid var(--rule-strong); background: var(--paper-raised); color: var(--ink); font-weight: 600; }
 .btn.sp-signout:hover { border-color: var(--primary); color: var(--primary); }
+/* Overview top row at half its former height (owner, 2026-11-22): the map shrinks to fit beside its city list;
+   the Needs you now list scrolls. */
+@media (min-width: 901px) {
+  .sp-top-row > section { height: 378px; display: flex; flex-direction: column; overflow: hidden; }
+  .sp-top-row .sp-needs { overflow-y: auto; min-height: 0; flex: 1; }
+  .sp-top-row .sp-lmap { flex: 1; min-height: 0; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); column-gap: 16px; }
+  .sp-top-row .sp-lmap-total { grid-column: 1 / -1; }
+  .sp-top-row .sp-lmap-art { min-height: 0; display: flex; flex-direction: column; }
+  .sp-top-row .sp-lmap-art svg { flex: 1; min-height: 0; height: 100%; width: 100%; }
+  .sp-top-row .sp-lmap-side { min-height: 0; overflow-y: auto; }
+  .sp-top-row .sp-lmap-top { grid-template-columns: minmax(0, 1fr); }
+}

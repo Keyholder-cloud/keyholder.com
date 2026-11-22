@@ -557,7 +557,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     const b = z.object({ baseRevision: z.number().int().min(0), data: z.unknown() }).parse(req.body);
     const bad = stateProblem(b.data); if (bad) fail(422, bad);
     const r = await writeState(db, accountId, b.baseRevision, b.data as AppState, u.email);
-    return { revision: r.revision, merged: r.merged, data: r.merged ? r.data : undefined };
+    return { revision: r.revision, merged: r.merged, data: r.merged ? r.data : undefined, stale: r.stale || undefined };
   });
 
   app.get('/api/account/export', async (req, reply) => {

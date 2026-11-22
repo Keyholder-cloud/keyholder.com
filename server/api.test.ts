@@ -8,7 +8,8 @@ import { migrate, openDb, type Db } from './db';
 import { buildApp } from './app';
 import { dailyRun, refreshGic } from './jobs';
 import { sendDue } from './email';
-import { ensureAdmin, resetAdminTwoStep } from './services';
+import { ensureAdmin, resetAdminTwoStep, writeState } from './services';
+import { repairAfterStartFresh } from './support';
 import { codeAt, fromBase32, stepNow } from './totp';
 import { Keys } from './keys';
 import { createHash, generateKeyPairSync, sign as signData } from 'node:crypto';
@@ -597,6 +598,30 @@ describe('bank data (Plaid)', () => {
     expect(after.profile.vendorRules).toBeUndefined();
     expect(after.profile.notRentPayers).toBeUndefined();
     expect((await db.query('select 1 from bank_items')).length).toBe(0);
+  });
+
+  it('after Start fresh, a device still holding the old copy cannot save it back; a repair removes what came back', async () => {
+    const now = (await call('GET', '/api/state', { cookie: alex })).body;
+    // A tab left open from before the reset: old revision, old data (no epoch).
+    const old = structuredClone(now.data) as AppState; delete old.epoch;
+    old.expenses.push({ id: 'exp-old', propertyId: old.properties[0].id, date: '2026-10-02', amount: 9900, vendor: 'Old Vendor', category: 'repairs', kind: 'current', scope: 'direct', createdAt: '2026-10-02T00:00:00.000Z' });
+    const put = await call('PUT', '/api/state', { cookie: alex, body: { baseRevision: 1, data: old } });
+    expect(put.body.stale).toBe(true);
+    expect((put.body.data as AppState).expenses.some((e) => e.id === 'exp-old')).toBe(false);
+    const after = (await call('GET', '/api/state', { cookie: alex })).body.data as AppState;
+    expect(after.expenses.some((e) => e.id === 'exp-old')).toBe(false);
+    // Old data that came back before this fix: the one-time repair removes it and keeps what was added since.
+    const cur = (await call('GET', '/api/state', { cookie: alex })).body;
+    const d = structuredClone(cur.data) as AppState;
+    d.expenses.push({ id: 'exp-back', propertyId: d.properties[0].id, date: '2026-10-02', amount: 9900, vendor: 'Back Again', category: 'repairs', kind: 'current', scope: 'direct', createdAt: '2026-10-02T00:00:00.000Z' });
+    d.expenses.push({ id: 'exp-new', propertyId: d.properties[0].id, date: '2026-12-02', amount: 500, vendor: 'New One', category: 'repairs', kind: 'current', scope: 'direct', createdAt: new Date(Date.now() + 60_000).toISOString() });
+    d.txns.push({ id: 'pl-old', source: 'bank', bankId: '00000000-0000-0000-0000-000000000000', date: '2026-10-01', amount: -100, payer: 'OLD', memo: '', status: 'new' });
+    await writeState(db, (await db.query<{ account_id: string }>(`select account_id from account_state where data->'profile'->>'email' = 'alex@morgan.ca' limit 1`))[0].account_id, cur.revision, d, 'test', { reset: true });
+    expect(await repairAfterStartFresh(db)).toBe(1);
+    const fixed = (await call('GET', '/api/state', { cookie: alex })).body.data as AppState;
+    expect(fixed.expenses.map((e) => e.id)).toEqual(['exp-new']);
+    expect(fixed.txns.some((t) => t.id === 'pl-old')).toBe(false);
+    expect(await repairAfterStartFresh(db)).toBe(0); // once only
   });
 
   it('remembered devices (two-step): right after the second step a browser can be remembered; it is listed and can be forgotten', async () => {
