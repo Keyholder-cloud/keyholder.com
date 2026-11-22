@@ -78,15 +78,15 @@ export function TenantDetail() {
             <h2 className="section-title">Ledger</h2>
             {lines.length === 0 ? <div className="sheet"><Empty title="The lease hasn't started yet." /></div> : (
               <div className="sheet tight table-scroll">
-                <table className="ledger">
+                <table className="ledger stack">
                   <thead><tr><th>Due</th><th>Period</th><th className="num">Charge</th><th>Received</th><th className="num">Paid</th><th className="num">Balance</th><th>State</th></tr></thead>
                   <tbody>
                     {linesShown.map((l) => (
                       <tr key={l.period}>
-                        <td className="date">{fmtDate(l.due)}</td>
-                        <td>{fmtPeriod(l.period)}</td>
-                        <td className="num">{fmt(l.charge)}</td>
-                        <td className="small">
+                        <td className="date" data-label="Due">{fmtDate(l.due)}</td>
+                        <td className="st-title" data-label="Period">{fmtPeriod(l.period)}</td>
+                        <td className="num" data-label="Charge">{fmt(l.charge)}</td>
+                        <td className="small st-actions" data-label="Received">
                           {l.before && <span className="soft">Paid before Keyholder</span>}
                           {l.payments.map((p) => {
                             const r = state.receipts.find((x) => x.paymentId === p.id && x.status !== 'superseded');
@@ -100,9 +100,9 @@ export function TenantDetail() {
                             );
                           })}
                         </td>
-                        <td className="num">{l.paid ? fmt(l.paid) : '—'}</td>
-                        <td className={`num ${l.balance > 0 ? 'urgent' : ''}`}>{fmt(l.balance)}</td>
-                        <td><Stamp kind={l.state}>{l.state === 'late' ? `Late ${l.daysLate}d` : l.state}</Stamp></td>
+                        <td className="num" data-label="Paid">{l.paid ? fmt(l.paid) : '—'}</td>
+                        <td className={`num ${l.balance > 0 ? 'urgent' : ''}`} data-label="Balance">{fmt(l.balance)}</td>
+                        <td data-label="State"><Stamp kind={l.state}>{l.state === 'late' ? `Late ${l.daysLate}d` : l.state}</Stamp></td>
                       </tr>
                     ))}
                   </tbody>

@@ -512,3 +512,6 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Owner: headline changed to "Manage your rental property without the paperwork." (managing first); the subhead
   names the jobs: track every expense, send rent receipts, screen tenants, write notices, get taxes ready.
 - Setup progress ring: one colour from red (0) through amber to green (100), ring and inner circle alike (dark mode too).
+- Owner: the progress ring's bar stays the brand indigo; only the inner circle goes from red to green.
+- Phones: the Income table and a tenant's rent history become stacked cards, so the receipt number and
+  Send/Resend are on screen (they were off the right edge of a wide table).

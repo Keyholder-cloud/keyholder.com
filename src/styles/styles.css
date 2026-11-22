@@ -910,8 +910,24 @@ a.chip { text-decoration: none; }
 /* Paid-only buttons on the free plan: greyed, with a lock; a tap explains and offers the upgrade. */
 .btn.locked, .chip.locked, [role="radio"].locked { opacity: .55; }
 .btn.locked:hover { opacity: .7; }
-/* Setup progress: one colour from red to green by score (set on the ring as --ring, --inner, --num). */
-html body .score-ring[style*="--ring"] { background: conic-gradient(var(--ring) calc(var(--p) * 1%), var(--rule) 0); }
+/* Setup progress: the inner circle goes from red to green with the score (--inner, --num); the bar stays indigo. */
+/* The bar keeps the brand colour at every score; only the inner circle changes colour. */
+html body .score-ring[style*="--ring"] { background: conic-gradient(from 0deg, #4F46E5, #7C3AED calc(var(--p) * 1%), var(--rule) 0); }
 html body .score-ring[style*="--ring"] > span { background: var(--inner); color: var(--num); }
 [data-theme="dark"] .score-ring[style*="--ring"] > span { background: var(--inner-dark); color: var(--num-dark); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme]) .score-ring[style*="--ring"] > span { background: var(--inner-dark); color: var(--num-dark); } }
+
+/* Phones: wide tables become stacked cards (one per row), so every column and button is on screen.
+   Each cell shows its column name (data-label) on the left; the row's title cell leads in bold. */
+@media (max-width: 640px) {
+  .table-scroll:has(table.stack) { overflow: visible; }
+  table.ledger.stack, table.ledger.stack tbody { display: block; width: 100%; }
+  table.ledger.stack thead { display: none; }
+  table.ledger.stack tr { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; padding: 12px 14px; border-bottom: 1px solid var(--rule); }
+  table.ledger.stack td { display: flex; flex-direction: column; gap: 2px; padding: 0; border: 0; text-align: left !important; min-width: 0; }
+  table.ledger.stack td::before { content: attr(data-label); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft, #667085); }
+  table.ledger.stack td.st-title { grid-column: 1 / -1; order: -1; font-weight: 700; font-size: 16px; }
+  table.ledger.stack td.st-title::before { display: none; }
+  table.ledger.stack td.st-actions { grid-column: 1 / -1; }
+  table.ledger.stack td.st-actions .btn { min-height: 40px; }
+}
