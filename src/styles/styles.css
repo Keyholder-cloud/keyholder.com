@@ -480,8 +480,9 @@ html body .drawer { z-index: 126; }
 .rc-item { all: unset; box-sizing: border-box; cursor: pointer; width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--rule); background: var(--paper); }
 .rc-item:hover { border-color: var(--primary); }
 .rc-item:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
-.rc-item strong { display: block; font-size: var(--t-15, 15px); }
-.rc-item .tiny { display: block; }
+.rc-item { height: 64px; }
+.rc-item strong { display: block; font-size: var(--t-15, 15px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-item .tiny { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rc-n { display: inline-flex; align-items: center; gap: 4px; color: var(--primary); font-weight: 700; font-size: 14px; }
 .rc-n.done { color: var(--pine); }
 
@@ -868,9 +869,9 @@ a.chip { text-decoration: none; }
 .all-in-ic svg { width: 0.7em; height: 0.7em; }
 /* Home: year to date. */
 .ytd-over { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 10px; }
-.ytd-over div { display: grid; gap: 2px; }
-.ytd-over span { font-size: 12px; color: var(--ink-soft, #667085); }
-.ytd-over strong { font-size: 15px; }
+.ytd-over div { display: grid; gap: 2px; padding: 12px 10px; border-radius: 14px; background: var(--paper); min-width: 0; }
+.ytd-over span { font-size: 12px; font-weight: 600; color: var(--ink-soft, #667085); }
+.ytd-over strong { font-family: var(--font-display); font-size: 18px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .side-sub { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft, #667085); margin: 4px 0 6px; }
 /* The second step: the other ways as light text links, Back as a quiet link at the start. */
 .two-step-form .ts-alt { justify-self: center; display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 6px 8px; color: var(--ink-blue, #4F46E5); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; }
@@ -910,12 +911,8 @@ a.chip { text-decoration: none; }
 /* Paid-only buttons on the free plan: greyed, with a lock; a tap explains and offers the upgrade. */
 .btn.locked, .chip.locked, [role="radio"].locked { opacity: .55; }
 .btn.locked:hover { opacity: .7; }
-/* Setup progress: the inner circle goes from red to green with the score (--inner, --num); the bar stays indigo. */
-/* The bar keeps the brand colour at every score; only the inner circle changes colour. */
+/* Setup progress: one brand-coloured bar, a plain inner circle. */
 html body .score-ring[style*="--ring"] { background: conic-gradient(from 0deg, #4F46E5, #7C3AED calc(var(--p) * 1%), var(--rule) 0); }
-html body .score-ring[style*="--ring"] > span { background: var(--inner); color: var(--num); }
-[data-theme="dark"] .score-ring[style*="--ring"] > span { background: var(--inner-dark); color: var(--num-dark); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme]) .score-ring[style*="--ring"] > span { background: var(--inner-dark); color: var(--num-dark); } }
 
 /* Phones: wide tables become stacked cards (one per row), so every column and button is on screen.
    Each cell shows its column name (data-label) on the left; the row's title cell leads in bold. */

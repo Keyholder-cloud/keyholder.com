@@ -25,7 +25,7 @@ import { Support } from './screens/Support';
 import { AnnouncementBar } from './support/Announcement';
 import { UpdateBar } from './components/UpdateBar';
 import { BioOffer } from './components/TwoStep';
-import { SampleBanner, Tour, PageSub, HelpButton } from './components/Guide';
+import { SampleBanner, Tour, PageSub, HelpButton, HelpPage } from './components/Guide';
 import { SetupCircle } from './components/Setup';
 
 export function App() {
@@ -166,6 +166,7 @@ function Shell() {
             <Route path="/paperwork/:tab" element={<Paperwork />} />
             <Route path="/todo" element={<Navigate to="/today" replace />} />
             <Route path="/tray" element={<Navigate to="/today" replace />} />
+            <Route path="/help" element={<HelpPage />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/settings/:tab" element={<Settings />} />
             <Route path="*" element={<Navigate to="/today" replace />} />

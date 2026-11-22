@@ -12,7 +12,7 @@ import { LinkBankButton, TaxPackPage } from './Money';
 import { MarkRentPaid } from '../components/forms';
 import { fmt } from '../lib/money';
 import { messageBody } from '../lib/templates';
-import { Letterhead, ReceiptLetter, methodLabel } from '../components/domain';
+import { Letterhead, ReceiptLetter } from '../components/domain';
 import { Drawer, Empty, Stamp, embedded } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { ResendReceipt, useMore } from '../components/More';
@@ -74,14 +74,14 @@ function Income() {
         <span className="soft">{rows.length} payments · <strong className="mono">{fmt(total)}</strong></span>
       </div>
       <div className="sheet tight table-scroll"><table className="ledger stack">
-        <thead><tr><th>Received</th><th>Tenant</th><th>Unit</th><th>For</th><th>How</th><th className="num">Amount</th><th>Receipt</th></tr></thead>
+        <thead><tr><th>Received</th><th>Tenant</th><th>Unit</th><th>For</th><th className="num">Amount</th><th>Receipt</th></tr></thead>
         <tbody>{shownRows.map((p) => {
           const l = state.leases.find((x) => x.id === p.leaseId); const t = state.tenants.find((x) => x.id === l?.tenantId); const u = state.units.find((x) => x.id === l?.unitId); const pr = state.properties.find((x) => x.id === u?.propertyId);
           const r = state.receipts.find((x) => x.paymentId === p.id && x.status !== 'superseded');
           return (
             <tr key={p.id}>
-              <td className="date" data-label="Received">{fmtDate(p.date)}</td><td className="st-title" data-label="Tenant">{t?.names.join(' & ')}</td><td data-label="Unit">{pr?.nickname.split(' ')[0]} · {u?.label}</td><td data-label="For">{fmtPeriod(p.period)}</td><td className="small" data-label="How">{methodLabel(p.method)}{p.source !== 'manual' ? ' · bank' : ''}</td><td className="num in" data-label="Amount">{fmt(p.amount)}</td>
-              <td className="st-actions" data-label="Receipt">{r ? <span className="spread" style={{ gap: 4, justifyContent: 'flex-start' }}><button className="btn small ghost" onClick={() => setOpen(r)}>#{r.number}{r.status === 'draft' ? ' (not sent)' : ''}</button><ResendReceipt receiptId={r.id} label={r.status === 'draft' ? 'Send' : 'Resend'} /></span> : '—'}</td>
+              <td className="date" data-label="Received">{fmtDate(p.date)}</td><td className="st-title" data-label="Tenant">{t?.names.join(' & ')}</td><td data-label="Unit">{pr?.nickname.split(' ')[0]} · {u?.label}</td><td data-label="For">{fmtPeriod(p.period)}</td><td className="num in" data-label="Amount">{fmt(p.amount)}</td>
+              <td className="st-actions" data-label="Receipt">{r ? <span className="spread" style={{ gap: 4, justifyContent: 'flex-start' }}><button className="btn small ghost" title={`Receipt #${r.number}`} aria-label={`View receipt #${r.number}`} onClick={() => setOpen(r)}><Icon name="receipt" size={16} />View</button><ResendReceipt receiptId={r.id} label={r.status === 'draft' ? 'Send' : 'Resend'} /></span> : '—'}</td>
             </tr>
           );
         })}</tbody>
@@ -140,11 +140,10 @@ function Letters() {
 }
 
 /** 12-month rule: rent can rise once every 12 months, with 90 days' written notice (N1 in Ontario). */
-function increaseText(start: string, prov: string, today: string): string {
+function nextIncrease(start: string, prov: string, today: string) {
   let next = addMonths(start, 12);
   while (next < today) next = addMonths(next, 12);
-  const g = province(prov as never).rentIncreaseGuidelinePct;
-  return `From ${fmtDate(next)}${g ? `, up to ${g}%` : ''} · give notice by ${fmtDate(addDays(next, -90))}`;
+  return { date: next, pct: province(prov as never).rentIncreaseGuidelinePct, noticeBy: addDays(next, -90) };
 }
 
 function Leases() {
@@ -153,12 +152,22 @@ function Leases() {
   if (!state.leases.length) return <div className="sheet"><Empty title="No leases yet." art={<SceneWelcome />}>Add a tenant to start a lease record.</Empty></div>;
   return (
     <>
-    <div className="sheet tight table-scroll"><table className="ledger">
-      <thead><tr><th>Tenant</th><th>Unit</th><th>Term</th><th className="num">Rent</th><th className="num">Last month's deposit</th><th>Email notices</th><th>Next rent increase</th></tr></thead>
+    <div className="sheet tight table-scroll"><table className="ledger stack leases-table">
+      <thead><tr><th>Tenant</th><th>Unit</th><th>Ends</th><th className="num">Rent</th><th className="num" title="Last month's rent deposit">Deposit</th><th title="Notices by email">Email</th><th>Next increase</th><th /></tr></thead>
       <tbody>{state.leases.map((l) => {
         const t = state.tenants.find((x) => x.id === l.tenantId); const u = state.units.find((x) => x.id === l.unitId); const p = state.properties.find((x) => x.id === u?.propertyId);
+        const n = l.end ? null : nextIncrease(l.start, p?.province ?? 'ON', today);
         return (
-          <tr key={l.id}><td><Link to={`/rent/tenant/${t?.id}`}>{t?.names.join(' & ')}</Link></td><td>{p?.nickname} · {u?.label}</td><td className="date">{fmtDate(l.start)} → {l.end ? fmtDate(l.end) : 'month-to-month'}</td><td className="num">{fmt(l.rent)}</td><td className="num">{fmt(l.lmrDeposit)}</td><td>{l.emailNoticeConsent ? 'Consented' : 'Paper only'}</td><td className="small">{l.end ? '—' : <>{increaseText(l.start, p?.province ?? 'ON', today)}<br /><button className="btn small" style={{ marginTop: 6 }} onClick={() => setInc(l)}>Prepare rent increase</button></>}</td></tr>
+          <tr key={l.id}>
+            <td className="st-title" data-label="Tenant"><Link to={`/rent/tenant/${t?.id}`}>{t?.names.join(' & ')}</Link></td>
+            <td data-label="Unit">{p?.nickname.split(' ')[0]} · {u?.label}</td>
+            <td className="date" data-label="Ends">{l.end ? fmtDate(l.end) : 'Monthly'}</td>
+            <td className="num" data-label="Rent">{fmt(l.rent)}</td>
+            <td className="num" data-label="Deposit">{l.lmrDeposit ? fmt(l.lmrDeposit) : '—'}</td>
+            <td data-label="Email">{l.emailNoticeConsent ? <Icon name="check" size={16} /> : <span className="soft">Paper</span>}</td>
+            <td className="date" data-label="Next increase" title={n ? `Give notice by ${fmtDate(n.noticeBy)}` : undefined}>{n ? <span className="inc-next">{fmtDate(n.date)} <span className="inc-up"><span aria-hidden>↑</span>{n.pct ? `${n.pct}%` : ''}</span></span> : '—'}</td>
+            <td className="st-actions">{n && <button className="btn small" onClick={() => setInc(l)}>Raise rent</button>}</td>
+          </tr>
         );
       })}</tbody>
     </table></div>

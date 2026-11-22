@@ -143,12 +143,10 @@ export function Expenses() {
   return (
     <>
       <nav className="tax-years" aria-label="Tax years" id="tax-years">{years.map((y) => {
-        const tot = state.expenses.filter((e) => e.date.startsWith(String(y))).reduce((a, e) => a + e.amount, 0);
         const gaps = gapCount(state, y, today);
         return (
           <button key={y} className={`tax-year${y === year ? ' on' : ''}`} aria-pressed={y === year} onClick={() => setYear(y)}>
             <span className="ty-y">{y}{y === cur && <span className="ty-cur">Current</span>}</span>
-            <span className="ty-t mono">{fmt(tot)}</span>
             <span className={`ty-g${gaps ? ' gap' : ''}`}>{gaps ? <><Icon name="alert" size={12} />{gaps} missing</> : <><Icon name="check" size={12} />Complete</>}</span>
           </button>
         );
@@ -394,20 +392,21 @@ export function ThePicture() {
 // =====================================================================================
 // Regular costs landlords often forget, many of them paid in cash. One tap adds one, marked
 // "paid in cash, no receipt" (the entry is the record), except driving, which needs a trip log.
-const REGULAR: { label: string; cat: ExpenseCategory; how: string; cash: boolean }[] = [
-  { label: 'Snow removal', cat: 'repairs', how: 'Each visit, or the season', cash: true },
-  { label: 'Lawn care and yard work', cat: 'repairs', how: 'Mowing, leaves, weeding', cash: true },
-  { label: 'Cleaning between tenants', cat: 'repairs', how: 'Move-out clean', cash: true },
-  { label: 'Small repairs and handyman', cat: 'repairs', how: 'Fixed like for like', cash: true },
-  { label: 'Pest control', cat: 'repairs', how: 'Visits and traps', cash: true },
-  { label: 'Garbage and junk removal', cat: 'repairs', how: 'Dump runs, bulky pickup', cash: true },
-  { label: 'Keys and lock changes', cat: 'repairs', how: 'New keys for a new tenant', cash: true },
-  { label: 'Smoke alarm batteries and filters', cat: 'supplies', how: 'Batteries, furnace filters, bulbs', cash: true },
-  { label: 'Stamps and printing', cat: 'office', how: 'Notices and letters', cash: true },
-  { label: 'Driving to the property', cat: 'vehicle', how: 'Keep a trip log: date, km, why', cash: false },
-  { label: 'Legal fees', cat: 'professional', how: 'Lawyer, paralegal, Landlord and Tenant Board filing', cash: false },
-  { label: 'Management or admin fees', cat: 'management', how: 'Property manager, bookkeeping, admin help', cash: false },
-  { label: 'Other', cat: 'other', how: 'Anything not in a category above', cash: false },
+// label: matched against what was filed (keep it stable); short: what the box shows.
+const REGULAR: { label: string; short: string; cat: ExpenseCategory; how: string; cash: boolean }[] = [
+  { label: 'Snow removal', short: 'Snow removal', cat: 'repairs', how: 'Each visit or season', cash: true },
+  { label: 'Lawn care and yard work', short: 'Lawn and yard', cat: 'repairs', how: 'Mowing, leaves', cash: true },
+  { label: 'Cleaning between tenants', short: 'Cleaning', cat: 'repairs', how: 'Move-out clean', cash: true },
+  { label: 'Small repairs and handyman', short: 'Small repairs', cat: 'repairs', how: 'Handyman, like for like', cash: true },
+  { label: 'Pest control', short: 'Pest control', cat: 'repairs', how: 'Visits and traps', cash: true },
+  { label: 'Garbage and junk removal', short: 'Junk removal', cat: 'repairs', how: 'Dump runs, pickup', cash: true },
+  { label: 'Keys and lock changes', short: 'Keys and locks', cat: 'repairs', how: 'For a new tenant', cash: true },
+  { label: 'Smoke alarm batteries and filters', short: 'Batteries and filters', cat: 'supplies', how: 'Alarms, furnace, bulbs', cash: true },
+  { label: 'Stamps and printing', short: 'Stamps and printing', cat: 'office', how: 'Notices, letters', cash: true },
+  { label: 'Driving to the property', short: 'Driving', cat: 'vehicle', how: 'Trip log: date, km', cash: false },
+  { label: 'Legal fees', short: 'Legal fees', cat: 'professional', how: 'Lawyer, paralegal, board', cash: false },
+  { label: 'Management or admin fees', short: 'Management fees', cat: 'management', how: 'Manager, bookkeeping', cash: false },
+  { label: 'Other', short: 'Other', cat: 'other', how: 'Anything else', cash: false },
 ];
 
 /**
@@ -418,6 +417,7 @@ export function RegularCosts({ prop, year }: { prop: Property; year: number }) {
   const { state, act, today } = useStore();
   const [add, setAdd] = useState<(typeof REGULAR)[number] | null>(null);
   const [showDone, setShowDone] = useState(false);
+  const [all, setAll] = useState(false);
   const mine = state.expenses.filter((e) => e.propertyId === prop.id && e.date.startsWith(String(year)));
   const key = (r: (typeof REGULAR)[number]) => `rc:${prop.id}:${year}:${r.label}`;
   const count = (r: (typeof REGULAR)[number]) => mine.filter((e) => e.category === r.cat && e.vendor.toLowerCase().startsWith(r.label.toLowerCase())).length;
@@ -432,7 +432,7 @@ export function RegularCosts({ prop, year }: { prop: Property; year: number }) {
       <li key={r.label} className={off ? 'rc-ignored' : undefined}>
         <button className="rc-item" onClick={() => setAdd(r)}>
           <CategoryIcon id={r.cat} />
-          <span><strong>{r.label}</strong><span className="tiny soft">{r.how}</span></span>
+          <span title={`${r.label}: ${r.how}`}><strong>{r.short}</strong><span className="tiny soft">{r.how}</span></span>
           <span className={`rc-n${n ? ' done' : ''}`}>{n ? <><Icon name="check" size={14} />{n}</> : off ? <span className="tiny">Ignored</span> : <Icon name="plus" size={16} />}</span>
         </button>
         {r !== other && !n && (
@@ -445,11 +445,11 @@ export function RegularCosts({ prop, year }: { prop: Property; year: number }) {
   return (
     <section className="sheet regular-costs" aria-labelledby="rc-title" id="regular-costs">
       <h2 id="rc-title" style={{ marginBottom: 4 }}>Regular costs you may be missing</h2>
-      <p className="small soft" style={{ marginTop: 0 }}>{pending.length ? `${pending.length} to check for ${prop.nickname} in ${year}. Tap one to add it, or × if it does not apply.` : `All checked for ${prop.nickname} in ${year}.`} Paid in cash? It still counts if you keep a record.</p>
-      <ul className="rc-list">{pending.map(row)}{row(other)}</ul>
+      <p className="small soft" style={{ marginTop: 0 }}>{pending.length ? `${pending.length} to check for ${year}. Tap to add, × if it does not apply.` : `All checked for ${year}.`} Cash counts too.</p>
+      <ul className="rc-list">{(all ? pending : pending.slice(0, 7)).map(row)}{row(other)}</ul>
+      {pending.length > 7 && <div className="more-row"><button className="btn ghost small" id="rc-more" onClick={() => setAll((x) => !x)}>{all ? 'Show less' : `Show ${pending.length - 7} more`}</button></div>}
       {settled.length > 0 && <button className="btn ghost small" onClick={() => setShowDone((x) => !x)}>{showDone ? 'Hide' : 'Show'} {settled.length} added or ignored</button>}
       {showDone && <ul className="rc-list">{settled.map(row)}</ul>}
-      <p className="tiny soft" style={{ marginBottom: 0 }}>For each one, keep the date, who you paid, what for and how much: Keyholder saves that as your record. Not sure if something counts? Ask your accountant.</p>
       {add && <ExpenseForm onClose={() => setAdd(null)} prefill={{ propertyId: prop.id, vendor: add === other ? '' : add.label, category: add.cat, scope: category(add.cat).sharedByDefault ? 'shared' : 'direct', ...(add.cash ? { cashNoReceipt: true } : {}), ...(String(year) < today.slice(0, 4) ? { date: `${year}-12-31` } : {}) }} />}
     </section>
   );

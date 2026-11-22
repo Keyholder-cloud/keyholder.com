@@ -10,7 +10,6 @@ import { OFFICIAL, REL, REL_LABEL, endOfRentalPeriod, hasOfficialForm, ltbValues
 import { ApiError, serverMode } from '../data/api';
 import { emailNotice, openOfficialPdf, pdfName } from '../data/officialForms';
 import * as sync from '../data/sync';
-import { Letterhead } from './domain';
 import { Drawer, Field, Seg, SlideToConfirm, Stamp } from './ui';
 import { Icon } from './Icon';
 
@@ -192,10 +191,8 @@ export function FormWizard({ lease, formId, onClose }: { lease: Lease; formId: s
       )}
 
       {/* The prepared document */}
-      <div className="letter">
-        <Letterhead state={state} />
-        <div className="spread"><div className="serif" style={{ fontSize: 'var(--t-20)' }}>{form.code}</div><Stamp kind={official && live ? 'sent' : 'draft'}>{official ? 'Official form' : form.official ? 'Summary' : 'Template'}</Stamp></div>
-        <div className="small" style={{ marginBottom: 8 }}>{form.title}</div>
+      <div className="letter fw-summary">
+        <div className="spread"><strong>What goes on the {form.code}</strong><Stamp kind={official && live ? 'sent' : 'draft'}>{official ? 'Official form' : form.official ? 'Summary' : 'Template'}</Stamp></div>
         <table><tbody>
           <tr><td>{fr ? 'Locataire / Tenant' : 'Tenant'}</td><td>{who}</td></tr>
           <tr><td>{fr ? 'Locateur / Landlord' : 'Landlord'}</td><td>{state.profile.name || '—'}</td></tr>
@@ -228,8 +225,10 @@ export function FormWizard({ lease, formId, onClose }: { lease: Lease; formId: s
         )}
       </div>
 
-      <h3 style={{ margin: '20px 0 8px' }}>Checks</h3>
-      <ul className="checks">{checks.map((c) => <li key={c.text} className={!c.ok ? 'bad' : c.warn ? 'warn' : 'ok'}><Icon name={c.ok && !c.warn ? 'check' : 'alert'} size={18} />{c.text}</li>)}</ul>
+      {/* Only what needs attention: a failing check (or a caution). Passed checks are counted, not listed. */}
+      {checks.some((c) => !c.ok || c.warn)
+        ? <><h3 style={{ margin: '16px 0 8px' }}>To fix</h3><ul className="checks">{checks.filter((c) => !c.ok || c.warn).map((c) => <li key={c.text} className={!c.ok ? 'bad' : 'warn'}><Icon name="alert" size={18} />{c.text}</li>)}</ul></>
+        : <p className="checks-ok small" id="fw-checks-ok"><Icon name="check" size={16} />All {checks.length} checks passed</p>}
 
       {form.kind === 'notice' && (
         <>
@@ -246,9 +245,9 @@ export function FormWizard({ lease, formId, onClose }: { lease: Lease; formId: s
       )}
       {(form.kind === 'agreement' || form.kind === 'report') && <p className="small soft" style={{ marginTop: 16 }}>Both you and the tenant sign. Keyholder keeps the signed copy with the lease.</p>}
 
-      <div className="callout warn" style={{ marginTop: 16 }}><strong>Before you approve:</strong> this is a legal document. Read it through{official && live ? ' (open the filled form above)' : ''}. Keyholder prepares it; you make the decision{official ? `, and approving signs it with your name, ${state.profile.name || 'from Settings'}` : ''}.</div>
+      <p className="small soft" style={{ marginTop: 16 }}><Icon name="info" size={14} /> A legal document: read it{official && live ? ' (open the form above)' : ''} before you approve{official ? `. Approving signs it as ${state.profile.name || 'you'}` : ''}.</p>
       {ok ? <SlideToConfirm label={form.kind === 'application' ? 'Slide to prepare the application' : form.kind === 'notice' ? 'Slide to approve and record' : 'Slide to approve'} onConfirm={() => void approve()} />
-        : <p className="urgent small">Fix the checks above before approving.</p>}
+        : <p className="urgent small">Fix the items above before approving.</p>}
     </Drawer>
   );
 }

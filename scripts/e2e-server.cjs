@@ -319,14 +319,14 @@ function watch(pg, errors, label) {
         await signIn(pg, email, password); await pg.waitForSelector('.rent-row:has-text("Rita")');
         await until(async () => (await api(pg, '/api/state')).body?.data?.profile?.emailUpdates === global.__e10b, 8000, 'change saved after signing in');
       });
-      await step(tag, 'E11 Help (side menu; phones: More) → Write to us opens its own popup and reaches the support inbox', async () => {
+      await step(tag, 'E11 Help (side menu; phones: More) is a page with a contact form that reaches the support inbox; the website Contact page works signed out', async () => {
         if (tag === 'phone') { await go(pg, 'more'); await pg.locator('.more-list .help-btn').click(); } else { await go(pg, 'today'); await pg.locator('.rail-foot .help-btn').click(); }
-        await pg.locator('.acct-modal button:has-text("Write to us")').click(); await pg.waitForSelector('#contact-title');
-        if (await pg.locator('#help-title').count()) throw new Error('Help is still open behind it');
-        await pg.fill('#ct-subject', `Question from ${tag}`); await pg.fill('#ct-message', 'How do I add a second property?');
-        await pg.locator('.contact-form >> text=Send').click(); await pg.waitForSelector('text=A person on our team will reply');
-        await pg.locator('.contact-card >> text=Done').click(); if (await pg.locator('.acct-modal').count()) throw new Error('popup still open');
+        await pg.waitForSelector('#help-title'); await pg.waitForSelector('#help-contact');
+        await pg.selectOption('#help-contact-topic', 'question'); await pg.fill('#help-contact-message', `Question from ${tag}: how do I add a second property?`);
+        await pg.locator('#help-contact >> text=Send message').click(); await pg.waitForSelector('#help-contact >> text=Message sent');
         await until(async () => (await outbox(email)).find((m) => m.kind === 'ticket-ack'), 4000, 'acknowledgement email');
+        const r = await pgB.request.post(BASE + 'api/contact', { headers: { origin: BASE.replace(/\/$/, ''), 'x-keyholder': '1' }, data: { name: 'Visitor', email: `visitor-${tag}@example.com`, topic: 'billing', message: 'Do you have a plan for 20 units?' } });
+        if (r.status() !== 201) throw new Error('website contact ' + r.status());
       });
       await step(tag, 'E12 Forgot password: the email link sets a new password and signs in', async () => {
         await go(pgB, 'settings'); await pgB.locator('.signout-icon:visible').click();

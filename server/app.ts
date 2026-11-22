@@ -847,6 +847,17 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     return { queued, to: people.map((p) => p.email) };
   });
 
+  // ---------------- Billing: cancel Landlord (back to free Starter, at once) ----------------
+  app.post('/api/billing/cancel', async (req) => {
+    const u = need(req);
+    if (u.role !== 'owner') fail(403, 'Only the account owner can change the plan.');
+    await db.tx(async (q) => {
+      await q.query(`update accounts set plan = 'starter', unit_price_cents = null where owner_id = $1`, [u.id]);
+      await audit(q, { actor: u.email, actorId: u.id, accountId: await accountFor(q, u.id), scope: 'app', action: 'Plan changed', detail: 'Landlord → Starter (cancelled)', ip: ip(req) });
+    });
+    return { plan: 'starter' };
+  });
+
   // ---------------- Help: a landlord writes to support ----------------
   app.post('/api/support/tickets', { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } }, async (req, reply) => {
     const u = need(req);
@@ -861,6 +872,23 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
       const staff = await q.query<{ email: string }>(`select email from users where role in ('super', 'admin') and disabled_at is null limit 5`);
       for (const s of staff) await queueMail(q, newTicketAdminMail(s.email, `${u.name} <${u.email}>`, b.subject, b.message, `${cfg.appUrl}/#/support/inbox`));
       await audit(q, { actor: u.email, actorId: u.id, accountId, scope: 'app', action: 'Support request sent', detail: b.subject, ip: ip(req) });
+    });
+    return reply.code(201).send({ ok: true });
+  });
+  // ---------------- Contact us (the website): anyone, signed in or not ----------------
+  app.post('/api/contact', { config: { rateLimit: { max: 3, timeWindow: '10 minutes' } } }, async (req, reply) => {
+    const b = z.object({ name: z.string().trim().min(1).max(120), email: z.string().trim().toLowerCase().email().max(254), topic: z.enum(['question', 'billing', 'bug', 'partnership', 'other']).default('question'),
+      message: z.string().trim().min(2).max(5000), website: z.string().max(0).optional() }).parse(req.body);
+    const id = `T-${Math.floor(100000 + Math.random() * 900000)}`;
+    const TOPIC = { question: 'A question', billing: 'Plans and billing', bug: 'Something is not working', partnership: 'Working together', other: 'Something else' } as const;
+    const subject = `Website: ${TOPIC[b.topic]}`;
+    await db.tx(async (q) => {
+      await q.query(`insert into support_tickets (id, account_id, user_id, email, name, subject, category, priority, messages) values ($1, null, null, $2, $3, $4, $5, 'normal', $6::jsonb)`,
+        [id, b.email, b.name, subject, b.topic === 'billing' || b.topic === 'bug' ? b.topic : 'question', JSON.stringify([{ from: 'customer', who: b.name, at: new Date().toISOString(), text: b.message }])]);
+      await queueMail(q, ticketAckMail(b.email, b.name, subject));
+      const staff = await q.query<{ email: string }>(`select email from users where role in ('super', 'admin') and disabled_at is null limit 5`);
+      for (const s of staff) await queueMail(q, newTicketAdminMail(s.email, `${b.name} <${b.email}>`, subject, b.message, `${cfg.appUrl}/#/support/inbox`));
+      await audit(q, { actor: b.email, actorId: null, accountId: null, scope: 'app', action: 'Contact form sent', detail: subject, ip: ip(req) });
     });
     return reply.code(201).send({ ok: true });
   });

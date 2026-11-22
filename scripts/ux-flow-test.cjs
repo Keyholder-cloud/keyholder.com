@@ -346,7 +346,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if (await pg.locator('.lp-hero >> text=/^(Sign in|Sign up|Start free)$/').count()) throw new Error('old buttons on the banner');
       if (tag === 'phone') { if (!(await pg.locator('.lp-signin-xs').isVisible())) throw new Error('no Sign in next to the menu'); }
       else for (const t of ['Sign in', 'Sign up']) if (!(await pg.locator(`.lp-nav-cta >> text=${t}`).isVisible())) throw new Error(`no ${t} at the top right`);
-      for (const p of ['', 'about', 'pricing']) {
+      for (const p of ['', 'features', 'about', 'pricing', 'contact']) {
         await pg.goto(BASE + '#/welcome/' + p); await pg.waitForTimeout(150);
         if (await pg.locator('text=/Try a demo|sample properties first/i').count()) throw new Error(`demo link on ${p || 'overview'}`);
         if (await pg.locator('text=Open my dashboard').count()) throw new Error(`"Open my dashboard" shown to a visitor on ${p || 'overview'}`);
@@ -354,22 +354,25 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.goto(BASE);
       if (await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) throw new Error('sideways scroll');
     });
-    await step(tag, 'D2 Hero: the money outcome (12 words or fewer), the toolkit line, Get started + How it works, a dashboard picture (no house photo), and the five jobs in one row', async () => {
+    await step(tag, 'D2 Hero: the headline alone (12 words or fewer, no subhead), Get started + How it works, a slider of 3 app pictures (no house photo), and the five jobs opening the Features page', async () => {
+      await pg.goto(BASE + '#/welcome'); await pg.waitForSelector('.lp-hero-h');
       const h = (await pg.locator('.lp-hero-h').textContent()).trim(); if (h.split(/\s+/).length > 12) throw new Error('headline too long: ' + h);
-      if (!/rental toolkit for landlords/i.test(await pg.locator('.lp-hero-lede').textContent())) throw new Error('no toolkit line');
-      await pg.waitForSelector('.lp-hero .lp-how-link'); await pg.waitForSelector('.kh-hero-mock'); if (await pg.locator('.lp-hero .lp-photo img').count()) throw new Error('house photo in the hero');
-      const jobs = (await pg.locator('.kh-job').allTextContents()).join(' | '); if (jobs !== 'Track expenses | Send receipts | Screen tenants | Write notices | File taxes') throw new Error('jobs: ' + jobs);
-      await pg.locator('.kh-job', { hasText: 'File taxes' }).click(); await pg.waitForSelector('#kh-tab-taxes[aria-selected="true"]');
+      if (await pg.locator('.lp-hero-lede').count()) throw new Error('subhead still under the headline');
+      await pg.waitForSelector('.lp-hero .lp-how-link'); if (await pg.locator('.lp-hero .lp-photo img').count()) throw new Error('house photo in the hero');
+      if ((await pg.locator('#hero-slider .kh-slide').count()) !== 3) throw new Error('slides');
+      await pg.locator('#hero-slider .kh-dots button').nth(1).click(); await pg.waitForSelector('#hero-slider .kh-dots button.on[aria-label="Rent and receipts"]');
+      const jobs = (await pg.locator('.lp-hero .kh-job').allTextContents()).join(' | '); if (jobs !== 'Track expenses | Send receipts | Screen tenants | Write notices | File taxes') throw new Error('jobs: ' + jobs);
+      await pg.locator('.lp-hero .kh-job', { hasText: 'File taxes' }).click(); await pg.waitForSelector('#kh-tab-taxes[aria-selected="true"]'); await pg.waitForSelector('h1:has-text("Everything a landlord does")');
+      await pg.goto(BASE + '#/welcome');
     });
     // The phone menu must really fill the screen (it once collapsed to a 40px strip that a test could still click into).
     const menuOpen = async () => { await pg.locator('.lp-burger').click(); const box = await pg.locator('.lp-menu').boundingBox(); if (!box || box.height < vp.height * 0.6) throw new Error(`menu only ${box ? Math.round(box.height) : 0}px tall`); };
     const menuGo = async (label) => { if (tag === 'phone') { await menuOpen(); await pg.locator(`.lp-menu >> text=${label}`).click(); } else await pg.locator(`.lp-links >> text=${label}`).click(); await pg.waitForTimeout(250); };
     await step(tag, 'D3 Menu → About → tap BC → BC forms; questions on the same page', async () => { await menuGo('About'); await pg.waitForSelector('h1:has-text("Made for Canadian landlords")'); await pg.waitForSelector('#faq .lp-faq'); await pg.locator('.lp-tile:has-text("BC")').click(); await pg.waitForSelector('.lp-map-info >> text=British Columbia'); await pg.waitForSelector('.lp-map-info >> text=RTB'); });
-    const tourInView = () => pg.waitForFunction(() => { const r = document.getElementById('explore')?.getBoundingClientRect(); return !!r && r.top >= -2 && r.top < window.innerHeight / 2; }, null, { timeout: 5000 });
-    await step(tag, 'D4 Every menu page opens, Features jumps to the feature explorer, browser back works', async () => {
-      for (const [l, h] of [['Pricing', 'Simple pricing'], ['About', 'Made for Canadian landlords'], ['Overview', 'Manage your rental property']]) { await menuGo(l); await pg.waitForSelector(`h1:has-text("${h}")`); }
-      await menuGo('Features'); await pg.waitForSelector('h1:has-text("Manage your rental property")'); await tourInView();
-      await pg.evaluate(() => window.scrollTo(0, 0)); await menuGo('Features'); await tourInView();
+    await step(tag, 'D4 Every menu page opens (Features and Contact are pages of their own), browser back works', async () => {
+      for (const [l, h] of [['Pricing', 'Simple pricing'], ['About', 'Made for Canadian landlords'], ['Features', 'Everything a landlord does'], ['Contact', 'Talk to a person'], ['Overview', 'Manage your rental property']]) { await menuGo(l); await pg.waitForSelector(`h1:has-text("${h}")`); }
+      await menuGo('Contact'); await pg.waitForSelector('#site-contact #site-contact-email'); await pg.waitForSelector('#site-contact-message');
+      await menuGo('Overview'); if (await pg.locator('#explore, #tour').count()) throw new Error('features still on the Overview');
       await menuGo('Pricing'); await pg.waitForSelector('h1:has-text("Simple pricing")');
       await pg.goBack(); await pg.waitForSelector('h1:has-text("Manage your rental property")');
       await menuGo('Overview');
@@ -413,10 +416,10 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'rent/tenant/t-maya'); await pg.locator('.crumb:has-text("Back to")').click(); await pg.waitForSelector('h1, .pcard');
       if (tag === 'phone') for (const p of ['portfolio', 'paperwork', 'settings']) { await go(pg, p); await pg.locator('.crumb:has-text("Back to More")').click(); await pg.waitForSelector('h1:has-text("More")'); }
     });
-    await step(tag, 'D16 Help (bottom of the side menu; phones: More → Help) opens plain answers', async () => {
+    await step(tag, 'D16 Help (bottom of the side menu; phones: More → Help) is a page: answers and a contact form', async () => {
       if (tag === 'phone') { await go(pg, 'more'); await pg.locator('.more-list .help-btn').click(); } else await pg.locator('.rail-foot .help-btn').click();
-      await pg.waitForSelector('#help-title');
-      await pg.locator('.help-list summary').first().click(); await pg.locator('[aria-label="Close help"]').click();
+      await pg.waitForSelector('#help-title'); await pg.waitForSelector('#help-contact');
+      await pg.locator('.help-list summary').first().click();
     });
     await step(tag, 'D17 Home is lean: no "Since your last visit", Coming up, Milestones or rent chips', async () => {
       await go(pg, 'today'); await pg.waitForSelector('.rent-card');
@@ -537,7 +540,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     pg = await (await b.newContext({ viewport: vp })).newPage();
     pg.on('pageerror', (e) => errsF.push(`F ${e.message}`));
     await step(tag, 'F1 Website photos and pictures load', async () => {
-      for (const p of ['', 'about', 'pricing']) {
+      for (const p of ['features', 'about', 'pricing']) {
         await pg.goto(BASE + '#/welcome/' + p); await pg.waitForTimeout(400);
         await pg.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 400) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 40)); } });
         await pg.waitForFunction(() => [...document.querySelectorAll('.lp img')].every((i) => i.complete), null, { timeout: 8000 });
@@ -548,7 +551,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     });
     await step(tag, 'F2 Phones: the Get started bar sits at the bottom once the page buttons scroll away', async () => {
       if (tag !== 'phone') return 'phone only';
-      await pg.goto(BASE); await pg.locator('#tour').scrollIntoViewIfNeeded(); await pg.waitForTimeout(800);
+      await pg.goto(BASE); await pg.locator('.lp-how .lp-step').nth(1).scrollIntoViewIfNeeded(); await pg.waitForTimeout(800);
       const box = await pg.locator('.lp-sticky').boundingBox();
       if (!box || Math.abs(box.y + box.height - vp.height) > 2) throw new Error('bar not at the bottom: ' + JSON.stringify(box));
     });
@@ -600,15 +603,16 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     const errsG = [];
     pg = await (await b.newContext({ viewport: vp, hasTouch: tag === 'phone' })).newPage();
     pg.on('pageerror', (e) => errsG.push(`G ${e.message}`));
-    const tour = async () => { await pg.goto(BASE + '#/welcome'); await pg.locator('#tour').scrollIntoViewIfNeeded(); await pg.waitForTimeout(500); };
+    const tour = async () => { await pg.goto(BASE + '#/welcome/features'); await pg.locator('#tour').scrollIntoViewIfNeeded(); await pg.waitForTimeout(500); };
     const active = () => pg.evaluate(() => { const on = document.querySelector('.mac-screen img.on'); const sel = document.querySelector('.lp-tour-tab[aria-selected="true"]'); return { alt: on?.getAttribute('alt') || '', loaded: !!on && on.complete && on.naturalWidth > 0, tab: sel?.textContent || '', count: document.querySelector('.lp-tour-count')?.textContent || '' }; });
-    await step(tag, 'G1 Overview: a tabbed feature explorer (5 jobs, arrow keys move), How it works in 3 steps on the blue-purple panel, who it is for, and the questions', async () => {
-      await pg.goto(BASE + '#/welcome'); await pg.waitForSelector('.lp-hero-h');
+    await step(tag, 'G1 Features: a tabbed feature explorer (5 jobs, arrow keys move); Overview: How it works in 3 steps on the blue-purple panel and who it is for; About: the questions', async () => {
+      await pg.goto(BASE + '#/welcome/features'); await pg.waitForSelector('.kh-tab');
       if ((await pg.locator('.kh-tab').count()) !== 5) throw new Error('explorer tabs');
       await pg.locator('#kh-tab-expenses').focus(); await pg.keyboard.press('ArrowRight'); await pg.waitForSelector('#kh-tab-taxes[aria-selected="true"]');
+      await pg.goto(BASE + '#/welcome'); await pg.waitForSelector('.lp-hero-h');
       const panel = await pg.locator('.lp-how-panel').evaluate((el) => getComputedStyle(el).backgroundImage); if (!/gradient/.test(panel)) throw new Error('How it works has no blue-purple background');
       if ((await pg.locator('.lp-how .lp-step').count()) !== 3) throw new Error('steps');
-      await pg.waitForSelector('.lp-who-line >> text=every landlord'); await pg.waitForSelector('#faq .lp-faq');
+      await pg.waitForSelector('.lp-who-line >> text=every landlord'); await pg.goto(BASE + '#/welcome/about'); await pg.waitForSelector('#faq .lp-faq');
     });
     await step(tag, 'G2 Tour: each of the 8 features shows its own screen, counter follows', async () => {
       await tour(); if ((await pg.locator('.lp-tour-tab').count()) !== 8) throw new Error('not 8 features');
@@ -869,7 +873,9 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     await step(tag, 'H23 Paperwork → Taxes: From is January 1; close the year step by step; Regular costs include legal, management and Other, and × stops a suggestion', async () => {
       await go(pg, 'paperwork/taxes'); const y = await pg.inputValue('#tax-from'); if (!/-01-01$/.test(y)) throw new Error('From ' + y);
       await pg.waitForSelector('#close-year .close-steps'); for (const t of ['Bank statements', 'Rent', 'Mortgage payments', 'Property tax and insurance']) await pg.waitForSelector(`#close-year >> text=${t}`);
-      for (const t of ['Legal fees', 'Management or admin fees', 'Other']) await pg.waitForSelector(`#regular-costs >> text=${t}`);
+      if ((await pg.locator('#regular-costs > .rc-list:first-of-type li').count()) > 8) throw new Error('more than 8 boxes before Show more');
+      if (await pg.locator('#rc-more').count()) await pg.click('#rc-more');
+      for (const t of ['Legal fees', 'Management fees', 'Other']) await pg.waitForSelector(`#regular-costs >> text=${t}`);
       await pg.locator('#regular-costs li:has-text("Snow removal") .rc-x').click(); await pg.waitForTimeout(200);
       if (await pg.locator('#regular-costs > .rc-list:first-of-type li:has-text("Snow removal")').count()) throw new Error('still suggested after ×');
     });
