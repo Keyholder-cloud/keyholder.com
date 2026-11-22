@@ -119,18 +119,24 @@ function UnitLine({ unit }: { unit: Unit }) {
   const prop = state.properties.find((p) => p.id === unit.propertyId);
   const sum = roomsPaid(state, unit, today);
   const pill = roomsPill(sum, fmtDay);
+  // Rooms fold under their unit (closed at first, so Home stays short); the arrow opens them.
+  const [open, setOpen] = useState(false);
+  const rooms = running.length + (free.length > 0 ? 1 : 0);
   return (
     <>
-      <li className={`rent-row unit-head${sum.late ? ' late' : ''}`}>
+      <li className={`rent-row unit-head${sum.late ? ' late' : ''}${open ? ' open' : ''}`}>
         <Link to={`/rent/property/${unit.propertyId}`} className="who-link">
           <span className="unit-ic" aria-hidden><Icon name="door" size={20} /></span>
           <span className="who-text" title={`${prop?.nickname} · ${roomsLine(state, unit, today)}`}><span className="who">Unit {unit.label} · by the room</span></span>
         </Link>
         <StatusPill tone={pill.tone} meaning={sum.rented ? "Each room's rent is tracked on its own row underneath." : undefined}>{pill.tone === 'paid' && <Icon name="check" size={16} />}{pill.label}</StatusPill>
-        <span className="row-act">{free.length > 0 && <Link className="btn add-tenant-quick" id={`home-add-${unit.id}`} to={`/rent/property/${unit.propertyId}/add-tenant?unit=${unit.id}`}><Icon name="plus" size={16} />Add tenant</Link>}</span>
+        <span className="row-act">
+          {free.length > 0 && <Link className="btn add-tenant-quick" id={`home-add-${unit.id}`} to={`/rent/property/${unit.propertyId}/add-tenant?unit=${unit.id}`}><Icon name="plus" size={16} />Add tenant</Link>}
+          <button type="button" className="rooms-toggle" id={`rooms-${unit.id}`} aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} the ${rooms} rooms of Unit ${unit.label}`} title={open ? 'Hide the rooms' : 'Show the rooms'} onClick={() => setOpen((x) => !x)}><Icon name="next" size={16} /></button>
+        </span>
       </li>
-      {running.map((l) => <RentLine key={l.id} unit={unit} lease={l} card={leaseStep(state, l, today)} room />)}
-      {free.length > 0 && <RentLine unit={unit} card={freeCard} free={free.length} room />}
+      {open && running.map((l) => <RentLine key={l.id} unit={unit} lease={l} card={leaseStep(state, l, today)} room />)}
+      {open && free.length > 0 && <RentLine unit={unit} card={freeCard} free={free.length} room />}
     </>
   );
 }

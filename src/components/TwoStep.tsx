@@ -39,6 +39,9 @@ export const rememberPasskeyHere = (id?: string, email?: string) => {
   } catch { /* fine */ }
 };
 
+/** This device's kind, as the server names devices: iPhone, iPad, Mac, Windows, Android. */
+export const deviceKind = () => { const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent; return (ua.match(/iPhone|iPad|Macintosh|Windows|Android/) ?? [''])[0].replace('Macintosh', 'Mac'); };
+
 /** This browser can use fingerprint or face (WebAuthn). */
 export const canUseBiometrics = () => typeof window !== 'undefined' && browserSupportsWebAuthn();
 
@@ -130,11 +133,12 @@ export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; on
   // Face ID leads only where it was added or used before; there, the code is one tap away.
   const [here, setHere] = useState(false);
   const [useCode, setUseCode] = useState(false);
-  const load = () => api<{ options: AuthOpts | null; app: boolean; email?: string }>('POST', '/api/auth/passkey/options', { ticket })
+  const load = () => api<{ options: AuthOpts | null; app: boolean; email?: string; kinds?: string[] }>('POST', '/api/auth/passkey/options', { ticket })
     .then((r) => {
       setOpts(r.options); setWays({ passkey: !!r.options && canUseBiometrics(), app: r.app });
       const mine = new Set(hereIds());
-      setHere(!!r.options?.allowCredentials?.some((c) => mine.has(c.id)) || (!!r.email && passkeyEmails().includes(r.email.toLowerCase())));
+      // Here: used or added in this browser, or the account has it on this kind of device (a Mac with Touch ID).
+      setHere(!!r.options?.allowCredentials?.some((c) => mine.has(c.id)) || (!!r.email && passkeyEmails().includes(r.email.toLowerCase())) || (!!deviceKind() && !!r.kinds?.includes(deviceKind())));
     }).catch(() => {});
   useEffect(() => { void load(); }, [ticket]);
   const biometric = () => {
@@ -172,16 +176,16 @@ export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; on
         <button type="button" className="link-btn small" id="ts-use-code" onClick={() => { setUseCode(true); setErr(''); }}>Use a code instead</button>
       </> : <>
         <label className="check" title="Skip this step on this browser next time. Not on a shared computer."><input id="ts-remember" type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />Remember this device</label>
-        {ways.passkey && !here && <p className="small soft two-step-elsewhere" id="ts-elsewhere"><Icon name="fingerprint" size={14} /> Enter a code once on this device; then you can use {bioName()} here.</p>}
+        {ways.passkey && !here && <p className="small soft two-step-elsewhere" id="ts-elsewhere"><Icon name="fingerprint" size={14} /> One code here, then {bioName()} next time.</p>}
         {mailed && <p className="small callout pine" role="status" id="ts-mailed" style={{ margin: 0 }}><Icon name="mail" size={14} /> Code sent to {mailed}. It works for 10 minutes; check spam if it is not there.</p>}
         <div className="field"><label htmlFor="ts-code">{mailed ? 'Code from the email' : ways.app ? 'App, email or backup code' : 'Email or backup code'}</label>
           <input id="ts-code" className="input two-step-input" value={code} onChange={(e) => { setCode(e.target.value); setErr(''); }} inputMode="text" autoComplete="one-time-code" autoFocus placeholder="123 456" maxLength={12} /></div>
         {err && <p className="small acct-error" role="alert">{err}</p>}
         <button className="btn primary acct-login-btn" disabled={!code.trim() || busy}>{busy ? 'Checking…' : 'Continue'}</button>
-        <button type="button" className="link-btn small" id="ts-email" disabled={busy} onClick={emailCode}><Icon name="mail" size={14} />{mailed ? 'Send another code' : 'No app? Email me a code'}</button>
-        {ways.passkey && here && <button type="button" className="link-btn small" onClick={() => setUseCode(false)}><Icon name="fingerprint" size={14} />Use {bioName()} instead</button>}
+        <button type="button" className="ts-alt" id="ts-email" disabled={busy} onClick={emailCode}><Icon name="mail" size={15} />{mailed ? 'Send another code' : 'Email me a code'}</button>
+        {ways.passkey && here && <button type="button" className="ts-alt" onClick={() => setUseCode(false)}><Icon name="fingerprint" size={15} />Use {bioName()} instead</button>}
       </>}
-      <button type="button" className="btn ghost small" onClick={onBack}><Icon name="back" size={14} />Back</button>
+      <button type="button" className="ts-back" onClick={onBack}><Icon name="back" size={14} />Back</button>
     </form>
   );
 }

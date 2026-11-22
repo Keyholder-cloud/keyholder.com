@@ -140,6 +140,8 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   const rp = (() => { const x = new URL(cfg.appUrl); return { id: x.hostname, origin: x.origin }; })();
   type PasskeyRow = { id: string; public_key: string; counter: string | number; transports: string[] | null; name: string; created_at: Date; last_used_at: Date | null };
   const passkeysOf = (userId: string) => db.query<PasskeyRow>('select * from passkeys where user_id = $1 order by created_at', [userId]);
+  /** The kinds of device that have fingerprint/face for this person (from each device's name: "Safari on Mac" → Mac). */
+  const kindsOf = (rows: PasskeyRow[]) => [...new Set(rows.map((r) => (r.name.match(/iPhone|iPad|Mac|Windows|Android|Linux/) ?? [''])[0]).filter(Boolean))];
   /** Checks a fingerprint/face answer against the person's devices and the challenge they were given. */
   const checkPasskey = async (u: User, response: AuthenticationResponseJSON, challenge: string | null | undefined): Promise<boolean> => {
     if (!challenge || !response?.id) return false;
@@ -487,7 +489,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     const options = await generateAuthenticationOptions({ rpID: rp.id, allowCredentials: mine.map((x) => ({ id: x.id, transports: x.transports ?? undefined })), userVerification: 'required' });
     if (ticket) await db.query('update two_step_tickets set challenge = $2 where token_hash = $1', [sha256(ticket), options.challenge]);
     else await db.query('update users set webauthn_challenge = $2, webauthn_challenge_at = now() where id = $1', [u!.id, options.challenge]);
-    return { options, app: !!u!.totp_secret, email: u!.email };
+    return { options, app: !!u!.totp_secret, email: u!.email, kinds: kindsOf(mine) };
   });
 
   // Sign in with Face ID alone (email, then fingerprint or face on a device where it was added). A passkey with
@@ -499,7 +501,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     // Same answer shape whether or not the account exists (nothing to learn from it).
     const options = await generateAuthenticationOptions({ rpID: rp.id, allowCredentials: mine.map((x) => ({ id: x.id, transports: x.transports ?? undefined })), userVerification: 'required' });
     if (u && mine.length) await db.query('update users set webauthn_challenge = $2, webauthn_challenge_at = now() where id = $1', [u.id, options.challenge]);
-    return { options };
+    return { options, kinds: kindsOf(mine) };
   });
   app.post('/api/auth/passkey/login', { config: authLimit }, async (req, reply) => {
     const b = z.object({ email: z.string().trim().max(200), passkey: z.any() }).parse(req.body);

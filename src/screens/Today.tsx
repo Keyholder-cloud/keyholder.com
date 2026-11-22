@@ -12,7 +12,7 @@ import { RentRows } from '../components/Journey';
 import { trayItems } from '../lib/tray';
 import { BankStatus } from '../components/domain';
 import { SceneEmptyHome } from '../components/Art';
-import { Greeting, MonthReview, NextStep, RentCard } from '../components/HomeCards';
+import { Greeting, MonthReview, YearToDate, NextStep, RentCard } from '../components/HomeCards';
 import type { Lease, Tenant, Unit } from '../data/types';
 import type { LedgerLine } from '../lib/finance';
 
@@ -81,7 +81,7 @@ export function Today() {
   let headline: React.ReactNode;
   if (notDue) headline = <>Rent is due {fmtDay(occupied[0].line.due)}.</>;
   else if (!late.length && pending.size) headline = <>{paid} of {occupied.length} paid. Please confirm {pending.size === 1 ? 'one payment' : `${pending.size} payments`}.</>;
-  else if (!late.length) headline = <><em className="all-in"><span aria-hidden>✓</span> All rent is in.</em> Nice work.</>;
+  else if (!late.length) headline = <><em className="all-in"><span className="all-in-ic" aria-hidden><Icon name="home" size={16} /></span>All rent is in.</em> Nice work.</>;
   else headline = <>{paid} of {occupied.length} paid. <span className="bad">{late.length === 1 ? `${firstName(late[0])} is late.` : `${late.length} tenants are late.`}</span></>;
 
   return (
@@ -92,7 +92,8 @@ export function Today() {
         <div className="home-main">
           <StandingCheck />
           <RentCard headline={headline} />
-          <div className="track-top"><BankStatus /></div>
+          {/* All rent in: nothing to check, so the bank line steps aside. */}
+          {!(occupied.length > 0 && !late.length && !pending.size && !notDue && paid === occupied.length) && <div className="track-top"><BankStatus /></div>}
           {offerTwoStep && !isHidden(state, 'two-step', today) && (
             <div className="sheet two-step-nudge" id="two-step-nudge">
               <span className="tile-ic lilac" aria-hidden><Icon name="lock" size={18} /></span>
@@ -104,6 +105,7 @@ export function Today() {
           <RentRows />
         </div>
         <aside className="home-side" aria-label="More for this month">
+          <YearToDate />
           <MonthReview />
         </aside>
       </div>

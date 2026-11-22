@@ -21,11 +21,11 @@ export interface User {
   /** Two-step sign-in: the authenticator secret (encrypted), one being set up, since when it is on, the last code step used, backup code hashes. */
   totp_secret?: string | null; totp_pending?: string | null; totp_enabled_at?: Date | null; totp_last_step?: string | number | null; backup_codes?: string[] | null;
   /** Fingerprint or face (passkeys): how many devices (filled in by the session lookup), and a challenge being answered. */
-  passkey_count?: number | string | null; webauthn_challenge?: string | null; webauthn_challenge_at?: Date | null;
+  passkey_count?: number | string | null; plan?: 'starter' | 'landlord' | null; webauthn_challenge?: string | null; webauthn_challenge_at?: Date | null;
 }
 export const publicUser = (u: User) => ({ id: u.id, email: u.email, name: u.name, role: u.role, emailVerified: !!u.email_verified_at, hasPassword: !!u.password_hash, google: !!u.google_sub,
   twoStep: !!u.totp_enabled_at, twoStepSince: u.totp_enabled_at ? new Date(u.totp_enabled_at).toISOString().slice(0, 10) : null, backupCodesLeft: u.totp_enabled_at ? (u.backup_codes ?? []).length : 0,
-  twoStepApp: !!u.totp_secret, passkeys: Number(u.passkey_count ?? 0) });
+  twoStepApp: !!u.totp_secret, passkeys: Number(u.passkey_count ?? 0), plan: u.plan === 'landlord' ? 'landlord' as const : 'starter' as const });
 
 // ---------------- Audit log ----------------
 export interface AuditIn { actor: string; actorId?: string | null; accountId?: string | null; scope: 'auth' | 'app' | 'admin' | 'system'; action: string; detail?: string; ip?: string | null }
@@ -36,7 +36,8 @@ export async function audit(q: Q, a: AuditIn) {
 
 // ---------------- Users ----------------
 // Each user with how many fingerprint/face devices they have (for two-step sign-in).
-const USER_COLS = 'u.*, (select count(*)::int from passkeys p where p.user_id = u.id) as passkey_count';
+// With the plan of the account they own (Starter or Landlord), for paid-only features.
+const USER_COLS = 'u.*, (select count(*)::int from passkeys p where p.user_id = u.id) as passkey_count, (select a.plan from accounts a where a.owner_id = u.id) as plan';
 export const userByEmail = (q: Q, email: string) => q.one<User>(`select ${USER_COLS} from users u where lower(u.email) = $1`, [normEmail(email)]);
 export const userById = (q: Q, id: string) => q.one<User>(`select ${USER_COLS} from users u where u.id = $1`, [id]);
 
@@ -122,7 +123,7 @@ export async function createSession(q: Q, userId: string, days: number, meta: { 
 export async function sessionUser(db: Q, token: string | undefined, days: number): Promise<User | undefined> {
   if (!token || token.length > 100) return undefined;
   const row = await db.one<User & { s_last: Date }>(
-    `select u.*, (select count(*)::int from passkeys p where p.user_id = u.id) as passkey_count, s.last_seen_at as s_last from sessions s join users u on u.id = s.user_id
+    `select u.*, (select count(*)::int from passkeys p where p.user_id = u.id) as passkey_count, (select a.plan from accounts a where a.owner_id = u.id) as plan, s.last_seen_at as s_last from sessions s join users u on u.id = s.user_id
      where s.token_hash = $1 and s.expires_at > now() and u.disabled_at is null`, [sha256(token)]);
   if (!row) return undefined;
   // Write at most once every 10 minutes per session, not on every request.

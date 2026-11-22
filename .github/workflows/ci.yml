@@ -1,5 +1,6 @@
-# Checks every push and pull request: types, unit and API tests, the build, then the browser tests
-# (the website on its own, and the website + app + API together against the real server).
+# Checks every push and pull request. Split into jobs that run at the same time, so a change is checked in
+# about 4 minutes instead of 11: types + unit/API tests + build, the real-server browser tests, and the
+# browser-only page and journey tests in 4 parts (sections A–J of scripts/ux-flow-test.cjs).
 name: CI
 on:
   push:
@@ -7,7 +8,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,11 +19,41 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - name: Install the browser for the end-to-end tests
-        run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
-      - name: End-to-end, website + app + API (real server)
-        run: node scripts/e2e-server.cjs
-      - name: End-to-end, every page and journey (browser-only mode)
+  e2e-server:
+    name: e2e (website + app + API, real server)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+      - run: node scripts/e2e-server.cjs
+  ui:
+    name: ui ${{ matrix.sections }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Balanced by number of checks; every section runs in exactly one part.
+        sections: ['A,C,E,G', 'B,F,I', 'D,J', 'H']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+      - name: Page and journey checks (browser-only mode)
+        env:
+          ONLY: ${{ matrix.sections }}
         run: |
           npx vite preview --port 4173 &
           for i in $(seq 1 60); do curl -sf http://localhost:4173 > /dev/null && break; sleep 1; done
