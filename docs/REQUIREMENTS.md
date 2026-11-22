@@ -360,4 +360,12 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Owner, 2026-11-21: "Remember this device should be a check box not a new page during login": a "Remember this
   device" checkbox on the second-step screen (applies to the code and to fingerprint/face).
 - Owner, 2026-11-21: "The margin/space above all the pages too big, cut down to 1/3": on computers Setup and
-  Settings sit at the top right beside the page title, and pages start 8px from the top.
+  Settings sit at the top right beside the page title, and pages start 35px from the top (owner: "too high up ... maybe 35px down").
+
+### R41. No market rent or rent-increase suggestions ☑
+- Owner, 2026-11-22: "How do you check for market rent and how do you recommend rent increases, please remove that
+  feature." (It compared rent with a fixed placeholder table per city and bedrooms, and suggested the earliest legal
+  date and the guideline cap.)
+- Removed: "$… below market · raise from … up to …" on Rentals/Tenants, "Rent compared with the area" on the
+  property, and "Rent increase possible" in Home's Coming up. Raise rent stays in each tenant's ⋯ menu (N1 etc.);
+  the owner chooses the amount. Pages start 35px from the top on computers.

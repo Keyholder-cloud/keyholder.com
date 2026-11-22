@@ -113,7 +113,7 @@ function tenantCard(state: AppState, lease: Lease, today: ISODate): JourneyCard 
     return null;
   }
 
-  // Rent increases are suggestions on the Rentals page (below-market rent), not steps here.
+  // Rent increases are the owner's choice (Raise rent in a tenant's ⋯ menu); Keyholder does not suggest them.
   return null;
 }
 

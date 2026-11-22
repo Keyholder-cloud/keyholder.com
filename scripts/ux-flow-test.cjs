@@ -191,11 +191,11 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if (!/^Rent paid · /.test(pill)) throw new Error('pill: ' + pill);
       return pill;
     });
-    await step(tag, 'B3b Rentals: below-market suggestion → Raise rent → N1 prepared', async () => {
-      await go(pg, 'rentals'); const sg = pg.locator('.unit-row', { hasText: 'Maya' }).locator('.suggest');
-      const text = (await sg.textContent()).slice(0, 90); await sg.locator('text=Raise rent').click(); await pg.waitForTimeout(200);
+    await step(tag, 'B3b Rentals: no market-rent or rent-increase suggestions; Raise rent (⋯) → N1 prepared', async () => {
+      await go(pg, 'rentals'); if ((await pg.locator('.suggest').count()) || (await pg.getByText('below market').count())) throw new Error('a rent suggestion is shown');
+      await pg.locator('.unit-row', { hasText: 'Maya' }).locator('.dots').click(); await pg.locator('[role=menuitem]:has-text("Raise rent")').click(); await pg.waitForTimeout(200);
       if (!(await pg.locator('.drawer h2:has-text("N1")').count())) throw new Error('N1 did not open'); await approve(pg);
-      return text;
+      await go(pg, 'rent/property/p-maple/value'); if (await pg.locator('text=Rent compared with the area').count()) throw new Error('market rent still on the property');
     });
     await step(tag, 'B3c Raise rent is always reachable: ⋯ on Rentals (its menu on top of the card) and the tenant page', async () => {
       await go(pg, 'rentals'); await pg.locator('.unit-row', { hasText: 'Jordan' }).locator('.dots').click();
