@@ -4,6 +4,7 @@ import { api, serverMode } from '../data/api';
 import { Drawer } from './ui';
 import { Icon } from './Icon';
 import { GoogleG } from './GoogleG';
+import { rememberPasskeyHere } from './TwoStep';
 
 // "Confirm it's you" before a sensitive change (adding or removing fingerprint/face, clearing all data).
 // Signing in counts for 10 minutes; after that the landlord confirms once more, their usual way first:
@@ -57,7 +58,7 @@ function ConfirmItScreen({ reason, ways, pending, onClose, onDone }: { reason: s
       if (!r.options) throw new Error('No fingerprint or face is set up for this account.');
       let passkey;
       try { passkey = await startAuthentication({ optionsJSON: r.options }); } catch { throw new Error('Fingerprint or face was cancelled, or is not set up on this device. Use another way below.'); }
-      await api('POST', '/api/auth/confirm', { passkey }); await onDone();
+      await api('POST', '/api/auth/confirm', { passkey }); rememberPasskeyHere(passkey.id); await onDone();
     } catch (x) { setErr((x as Error).message); setBusy(false); }
   };
   // The landlord's usual way leads: Google for Google accounts, else the password.

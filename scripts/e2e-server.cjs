@@ -616,16 +616,21 @@ function watch(pg, errors, label) {
         await p.waitForSelector('#ts-devices .two-step-devices li'); await p.keyboard.press('Escape');
         await p.waitForSelector('#ts-chip-bio >> text=Face/finger · 1');
         await p.click('#ts-chip-app'); await p.waitForSelector('#ts-app >> text=Set up.'); await p.keyboard.press('Escape');
-        // Signed out, then back in: fingerprint or face instead of the code.
+        // Another device (no fingerprint or face added there): the code leads, with a note; nothing is offered first.
+        const other = await (await b.newContext({ viewport: vp })).newPage(); watch(other, errors, 'other-device');
+        await signIn(other, email, password); await other.waitForSelector('#ts-elsewhere >> text=set up on another device');
+        if (await other.locator('button.btn#ts-biometric').count()) throw new Error('Face ID offered first on a device without it');
+        await other.context().close();
+        // Signed out, then back in on this device: fingerprint or face leads (the account data leaves the browser, which device it is stays).
         await p.evaluate(() => fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
-        await p.evaluate(() => localStorage.clear()); await p.goto(BASE + '#/welcome'); await p.reload(); await p.waitForSelector('.lp-hero-h');
+        await p.evaluate(() => { const k = localStorage.getItem('kh_passkeys_here'); localStorage.clear(); if (k) localStorage.setItem('kh_passkeys_here', k); }); await p.goto(BASE + '#/welcome'); await p.reload(); await p.waitForSelector('.lp-hero-h');
         await signIn(p, email, password);
-        await p.waitForSelector('#ts-biometric'); if (!(await p.locator('#ts-code').count())) throw new Error('no code box next to fingerprint');
+        await p.waitForSelector('button.btn.primary#ts-biometric'); if (!(await p.locator('#ts-code').count())) throw new Error('no code box next to fingerprint');
         await p.click('#ts-biometric'); await notNow(p);
         await p.waitForSelector('.rent-row, .rent-card, .start-steps', { timeout: 15000 });
         // Both are set up: the app's code works too, whichever is at hand.
         await p.evaluate(() => fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
-        await p.evaluate(() => localStorage.clear()); await p.goto(BASE + '#/welcome'); await p.reload(); await p.waitForSelector('.lp-hero-h');
+        await p.evaluate(() => { const k = localStorage.getItem('kh_passkeys_here'); localStorage.clear(); if (k) localStorage.setItem('kh_passkeys_here', k); }); await p.goto(BASE + '#/welcome'); await p.reload(); await p.waitForSelector('.lp-hero-h');
         await signIn(p, email, password); await p.waitForSelector('#ts-biometric');
         await p.fill('#ts-code', await nextCode(email.toLowerCase())); await p.click('.two-step-form >> text=Continue'); await notNow(p);
         await p.waitForSelector('.rent-row, .rent-card, .start-steps', { timeout: 15000 });
