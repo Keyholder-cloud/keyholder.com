@@ -910,3 +910,8 @@ a.chip { text-decoration: none; }
 /* Paid-only buttons on the free plan: greyed, with a lock; a tap explains and offers the upgrade. */
 .btn.locked, .chip.locked, [role="radio"].locked { opacity: .55; }
 .btn.locked:hover { opacity: .7; }
+/* Setup progress: one colour from red to green by score (set on the ring as --ring, --inner, --num). */
+html body .score-ring[style*="--ring"] { background: conic-gradient(var(--ring) calc(var(--p) * 1%), var(--rule) 0); }
+html body .score-ring[style*="--ring"] > span { background: var(--inner); color: var(--num); }
+[data-theme="dark"] .score-ring[style*="--ring"] > span { background: var(--inner-dark); color: var(--num-dark); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .score-ring[style*="--ring"] > span { background: var(--inner-dark); color: var(--num-dark); } }
