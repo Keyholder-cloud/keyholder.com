@@ -11,8 +11,7 @@ import { serverMode } from '../data/api';
 import { activeLeases, byRoom, currentLeases, hasSpace, leaseLedger, openRooms, paidOn, roomsLine, roomsPaid, roomsPill } from '../lib/finance';
 import { applicantPeople } from '../lib/people';
 import { addDays, daysBetween, fmtDate, fmtDay, fmtPeriod } from '../lib/dates';
-import { arrears, earliestIncrease, nextNotice, propertyOf } from '../lib/notices';
-import { rentVsMarket } from '../lib/silver';
+import { arrears, nextNotice, propertyOf } from '../lib/notices';
 import { AUTHORITY_URL, formsFor } from '../lib/forms';
 import { FormWizard } from '../components/FormWizard';
 import { reminderStage, trayItems } from '../lib/tray';
@@ -241,7 +240,6 @@ function LeaseRow({ unit, lease, tenant, room, place }: { unit: Unit; lease: Lea
           ...(room ? [] : [{ label: 'Edit unit', onClick: () => setEditUnit(true) }, { label: 'Delete unit', note: 'Has a tenant: end the lease first' }]),
         ]} />
       </span>
-      <RaiseRentSuggestion lease={lease} unit={unit} onRaise={() => setRaise(true)} />
       {ending && <EndLeaseDrawer lease={lease} onClose={() => setEnding(false)} />}
       {editUnit && <UnitForm propertyId={unit.propertyId} unit={unit} onClose={() => setEditUnit(false)} />}
       {deleting && <DeleteTenantDrawer tenant={tenant} onClose={() => setDeleting(false)} onEndInstead={() => { setDeleting(false); setEnding(true); }} />}
@@ -716,31 +714,3 @@ export function RaiseRent({ lease, onClose }: { lease: Lease; onClose: () => voi
  * its button, upward when the button is near the bottom of the screen, and follows the button when the page
  * scrolls. Escape, a click elsewhere, or the button leaving the screen closes it.
  */
-/** The rent suggestion: shown only when the rent is meaningfully below what similar units rent for nearby. */
-export function rentSuggestion(state: ReturnType<typeof useStore>['state'], lease: Lease, unit: Unit, today: string) {
-  const prop = propertyOf(state, lease);
-  if (!prop || lease.end) return null;
-  const mk = rentVsMarket(prop, unit);
-  if (mk.gap <= 5000) return null;
-  const form = formsFor(prop.province, 'rent-increase')[0];
-  const effective = earliestIncrease(state, lease, today, form);
-  const noticeBy = addDays(effective, -(form.noticeDays ?? 90));
-  const guide = province(prop.province).rentIncreaseGuidelinePct;
-  const capped = guide ? Math.round(lease.rent * (1 + guide / 100)) : undefined;
-  return { mk, form, effective, noticeBy, guide, capped, prov: prop.province, beds: unit.bedrooms };
-}
-
-function RaiseRentSuggestion({ lease, unit, onRaise }: { lease: Lease; unit: Unit; onRaise: () => void }) {
-  const { state, today } = useStore();
-  const sg = rentSuggestion(state, lease, unit, today);
-  if (!sg) return null;
-  return (
-    <div className="suggest">
-      <div title={`Similar ${sg.beds}-bedrooms nearby: about ${fmt0(sg.mk.market)} (estimate). Give notice by ${fmtDate(sg.noticeBy)}.`}>
-        <strong>{fmt0(sg.mk.gap)} below market</strong>
-        <span> · raise from {fmtDate(sg.effective)}{sg.capped ? ` · up to ${fmt(sg.capped)}` : ''}</span>
-      </div>
-      <button className="btn" onClick={onRaise}>Raise rent</button>
-    </div>
-  );
-}

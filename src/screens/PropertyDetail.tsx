@@ -8,7 +8,7 @@ import { propertyLevel, atLeast } from '../lib/levels';
 import { LevelSteps, LevelUpForm, PropertyCard } from '../components/levels';
 import { daysBetween, fmtDate } from '../lib/dates';
 import { adjustedCostBase, amortization, mortgageBalanceAt, mortgagePaidBetween, owedAt, ownEstimate, propertyValue } from '../lib/finance';
-import { LENDER_MAX_LTV, SELLING_COST_PCT, borrowingRoom, gainSincePurchase, rentVsMarket, returnComparison, roughSale } from '../lib/silver';
+import { LENDER_MAX_LTV, SELLING_COST_PCT, borrowingRoom, gainSincePurchase, returnComparison, roughSale } from '../lib/silver';
 import { fmt, fmt0 } from '../lib/money';
 import { RentRoll } from '../components/domain';
 import { MortgageForm, OwnerEstimateForm, PropertyForm } from '../components/forms';
@@ -226,7 +226,6 @@ function MortgageTab({ id }: { id: string }) {
 function SilverInsights({ p }: { p: Property }) {
   const { state, today } = useStore();
   const ret = returnComparison(state, p, today);
-  const units = state.units.filter((u) => u.propertyId === p.id);
   const room = borrowingRoom(state, p, today);
   const sale = roughSale(state, p, today);
   const max = Math.max(ret.yours ?? 0, ...ret.rows.map((r) => r.pct), 1);
@@ -242,21 +241,6 @@ function SilverInsights({ p }: { p: Property }) {
         )}
         <p className="tiny soft">Rent left over and mortgage paid down in the last 12 months, divided by your money in it (worth less what is owed).</p>
         <ul className="tiny soft bench-sources">{ret.rows.map((r) => <li key={r.key}>{r.label} {r.pct}%: {r.source}, {fmtDate(r.asOf)}</li>)}</ul>
-      </section>
-
-      <section className="sheet">
-        <h3>Rent compared with the area</h3>
-        <ul className="rows">{units.map((u) => {
-          const r = rentVsMarket(p, u);
-          return (
-            <li key={u.id} className="row" style={{ gridTemplateColumns: '64px 1fr auto' }}>
-              <span className="margin">Unit {u.label}</span>
-              <span><span className="title">{fmt0(u.rent)} now · about {fmt0(r.market)} nearby</span><span className="sub" style={{ display: 'block' }}>{u.bedrooms}-bedroom{r.fallback ? ' · Canada-wide average' : ''}</span></span>
-              <span className={r.gap > 5000 ? 'in' : 'soft'}>{r.gap > 5000 ? `${fmt0(r.gap)} below` : r.gap < -5000 ? `${fmt0(-r.gap)} above` : 'About right'}</span>
-            </li>
-          );
-        })}</ul>
-        <p className="tiny soft">Many provinces limit rent increases. We suggest the allowed amount at renewal.</p>
       </section>
 
       <section className="sheet">

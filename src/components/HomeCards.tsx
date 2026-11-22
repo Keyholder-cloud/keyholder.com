@@ -8,7 +8,6 @@ import { currentLeases, leaseLedger, picture } from '../lib/finance';
 import { addDays, addMonths, addPeriods, daysBetween, fmtPeriod, periodOf } from '../lib/dates';
 import { fmt0 } from '../lib/money';
 import { allJourneyCards, isHidden, prefKey } from '../lib/journey';
-import { earliestIncrease } from '../lib/notices';
 import { trayItems } from '../lib/tray';
 import { StepButton } from './Journey';
 
@@ -90,7 +89,6 @@ function upcoming(state: AppState, today: string): Ev[] {
   const out: Ev[] = [];
   const horizon = addDays(today, 120);
   const rent = new Map<string, { who: string[]; total: number; ids: string[] }>();
-  const raise = new Map<string, string[]>();
   const running = new Set(currentLeases(state, today).map((l) => l.id));
   for (const l of state.leases) {
     if (l.end && l.end < today) continue;
@@ -99,11 +97,8 @@ function upcoming(state: AppState, today: string): Ev[] {
     const next = leaseLedger(l, state.payments, today, addPeriods(periodOf(today), 1)).find((x) => x.due >= today && x.state !== 'paid');
     if (next) { const g = rent.get(next.due) ?? { who: [], total: 0, ids: [] }; g.who.push(name); g.total += next.charge - next.paid; g.ids.push(l.tenantId); rent.set(next.due, g); }
     if (l.end && l.end <= horizon) out.push({ date: l.end, title: `${name}'s lease ends`, sub: 'Renew or plan the move-out', icon: 'calendar', tone: 'sky', to: `/rent/tenant/${l.tenantId}` });
-    const inc = earliestIncrease(state, l, today);
-    if (inc <= horizon) raise.set(inc, [...(raise.get(inc) ?? []), name]);
   }
   for (const [date, g] of rent) out.push({ date, title: `Rent due from ${names(g.who)}`, sub: fmt0(g.total), icon: 'cash', tone: 'mint', to: g.ids.length === 1 ? `/rent/tenant/${g.ids[0]}` : '/rentals' });
-  for (const [date, who] of raise) out.push({ date, title: `Rent increase possible for ${names(who)}`, sub: 'From this date, with written notice', icon: 'trend', tone: 'lilac', to: '/rentals' });
   for (const m of state.mortgages) {
     if (m.termEnd >= today && m.termEnd <= addDays(today, 200)) {
       const p = state.properties.find((x) => x.id === m.propertyId);
