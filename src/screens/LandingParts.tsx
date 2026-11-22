@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../components/Icon';
 
 // The website's Overview, built around one goal: a landlord understands what Keyholder does, and why they need
@@ -9,8 +9,8 @@ import { Icon } from '../components/Icon';
 
 const money = (n: number) => n.toLocaleString('en-CA', { style: 'currency', currency: 'CAD', maximumFractionDigits: n % 1 ? 2 : 0 });
 
-/** The hero's picture: this year's profit for one property, the expenses Keyholder caught, an application waiting. */
-export function HeroMock() {
+/** A hero picture: this year's profit for one property, the expenses Keyholder caught, an application waiting. */
+function HeroMock() {
   return (
     <div className="kh-mock kh-hero-mock" role="img" aria-label="Keyholder dashboard (sample): this year's profit, the expenses caught from the bank, and one application to review">
       <div className="kh-mock-bar"><span /><span /><span /><em>Sample data</em></div>
@@ -27,6 +27,63 @@ export function HeroMock() {
           ))}
         </ul>
         <div className="kh-app"><span className="kh-av">SO</span><span>Sam Ortiz · Unit C<small>Application ready to review</small></span><span className="kh-btn">Review</span></div>
+      </div>
+    </div>
+  );
+}
+
+/** Rent in: a deposit matched as rent, then the receipt sent. */
+function IncomeMock() {
+  return (
+    <div className="kh-mock kh-hero-mock" role="img" aria-label="Keyholder (sample): a bank deposit matched as rent, and the receipt sent to the tenant">
+      <div className="kh-mock-bar"><span /><span /><span /><em>Sample data</em></div>
+      <div className="kh-mock-body">
+        <span className="kh-k">Rent in · November</span>
+        <ul className="kh-flow">
+          <li><span className="kh-flow-ic"><Icon name="bank" size={16} /></span><span>Deposit found<small>INTERAC E-TRF M CHEN</small></span><b>{money(1650)}</b></li>
+          <li><span className="kh-flow-ic"><Icon name="check" size={16} /></span><span>Marked as rent<small>Maya Chen · Unit A · November</small></span><span className="kh-tag ok">Paid</span></li>
+          <li><span className="kh-flow-ic"><Icon name="receipt" size={16} /></span><span>Receipt No. 1042 sent<small>PDF emailed to Maya</small></span><span className="kh-tag ok">Sent</span></li>
+        </ul>
+        <div className="kh-app"><span className="kh-av">JP</span><span>Jordan Patel · Unit B<small>Rent due Dec 1</small></span><span className="kh-btn">Mark paid</span></div>
+      </div>
+    </div>
+  );
+}
+
+/** The portfolio at a glance: net worth and each property. */
+function PortfolioMock() {
+  const rows: [string, number, number][] = [['48 Maple St', 10533, 72], ['12 Birch Ave', 6240, 48], ['301–90 King St', 3180, 30]];
+  return (
+    <div className="kh-mock kh-hero-mock" role="img" aria-label="Keyholder portfolio (sample): net worth across three properties, and the profit of each">
+      <div className="kh-mock-bar"><span /><span /><span /><em>Sample data</em></div>
+      <div className="kh-mock-body">
+        <div className="kh-grid3">
+          <div><span className="kh-k">Net worth</span><b>{money(912000)}</b></div><div><span className="kh-k">Properties</span><b>3</b></div><div className="kh-good"><span className="kh-k">Profit 2026</span><b>{money(19953)}</b></div>
+        </div>
+        <div className="kh-k" style={{ marginTop: 14 }}>Profit by property</div>
+        <ul className="kh-bars">{rows.map(([n, v, w]) => <li key={n}><span>{n}</span><i style={{ width: `${w}%` }} /><b>{money(v)}</b></li>)}</ul>
+      </div>
+    </div>
+  );
+}
+
+const SLIDES: [string, () => React.ReactNode][] = [['Profit and expenses', HeroMock], ['Rent and receipts', IncomeMock], ['Your portfolio', PortfolioMock]];
+/** The hero's pictures, one at a time: they move on by themselves (not when the visitor prefers less motion, or is pointing at it). */
+export function HeroSlider() {
+  const [i, setI] = useState(0);
+  const [hold, setHold] = useState(false);
+  useEffect(() => {
+    if (hold || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const t = setTimeout(() => setI((k) => (k + 1) % SLIDES.length), 6000);
+    return () => clearTimeout(t);
+  }, [i, hold]);
+  return (
+    <div className="kh-slider" id="hero-slider" aria-roledescription="carousel" aria-label="What Keyholder looks like" onMouseEnter={() => setHold(true)} onMouseLeave={() => setHold(false)} onFocus={() => setHold(true)} onBlur={() => setHold(false)}>
+      <div className="kh-slides" style={{ transform: `translateX(-${i * 100}%)` }}>
+        {SLIDES.map(([t, Pic], k) => <div key={t} className="kh-slide" aria-roledescription="slide" aria-label={`${k + 1} of ${SLIDES.length}: ${t}`} aria-hidden={k !== i}><Pic /></div>)}
+      </div>
+      <div className="kh-dots" role="tablist" aria-label="Pictures">
+        {SLIDES.map(([t], k) => <button key={t} role="tab" aria-selected={k === i} aria-label={t} className={k === i ? 'on' : ''} onClick={() => setI(k)}><span /></button>)}
       </div>
     </div>
   );
@@ -161,8 +218,9 @@ export const HOW: [string, string, string][] = [
 ];
 
 /** The tab chosen by the jobs strip. */
-export function useFeatureTab() {
-  const [tab, setTab] = useState('expenses');
+export function useFeatureTab(first?: string) {
+  const [tab, setTab] = useState(first ?? 'expenses');
+  useEffect(() => { if (first) requestAnimationFrame(() => document.getElementById('features-explorer')?.scrollIntoView({ block: 'start' })); }, []);
   const pick = (id: string) => { setTab(id); requestAnimationFrame(() => document.getElementById('features-explorer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })); };
   return { tab, setTab, pick };
 }

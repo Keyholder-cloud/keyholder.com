@@ -1,7 +1,8 @@
 import { SecurityPage } from './Security';
 import { useEffect, useRef, useState } from 'react';
 import { fmtPrice, useUnitPrice } from '../data/pricing';
-import { FeatureExplorer, HeroMock, HOW, JobsStrip, useFeatureTab } from './LandingParts';
+import { FeatureExplorer, HeroSlider, HOW, JobsStrip, useFeatureTab } from './LandingParts';
+import { ContactForm } from '../components/ContactForm';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import type { Province } from '../data/types';
@@ -31,11 +32,10 @@ const PAGES = [
   { id: 'features', label: 'Features', icon: 'sparkle' },
   { id: 'about', label: 'About', icon: 'map' },
   { id: 'pricing', label: 'Pricing', icon: 'cash' },
+  { id: 'contact', label: 'Contact', icon: 'mail' },
 ] as const;
 type PageId = (typeof PAGES)[number]['id'];
 const href = (id: string) => (id ? `/welcome/${id}` : '/welcome');
-/** "Features" is the tour on the Overview page, not a page of its own. */
-const toTour = () => requestAnimationFrame(() => document.getElementById('explore')?.scrollIntoView({ block: 'start' }));
 
 /** Adds "shown" to every .reveal element as it scrolls into view. */
 /**
@@ -57,19 +57,6 @@ function usePageCtaShown(key: string) {
     return () => io.disconnect();
   }, [key]);
   return shown;
-}
-
-/** True while the tour is in the middle of the screen, so the menu can light up "Features". */
-function useTourInView(on: boolean) {
-  const [inTour, setInTour] = useState(false);
-  useEffect(() => {
-    const el = document.getElementById('tour');
-    if (!on || !el || typeof IntersectionObserver === 'undefined') { setInTour(false); return; }
-    const io = new IntersectionObserver(([e]) => setInTour(e.isIntersecting), { rootMargin: '-45% 0px -45% 0px' });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [on]);
-  return inTour;
 }
 
 /** The one main button on the website's pages: Get started (Sign in and Sign up stay at the top right). */
@@ -113,18 +100,15 @@ export function Landing() {
   const home = state.profile.account?.provider === 'admin' ? '/support' : '/today';
   const start = () => nav(signedIn ? home : '/start');
   // Tapping the page you are already on: back to its top (or to the tour, for Features).
-  const same = (id: string) => { setMenu(false); if (id !== page) return; if (id === 'features') toTour(); else window.scrollTo(0, 0); };
+  const same = (id: string) => { setMenu(false); if (id === page) window.scrollTo(0, 0); };
 
   useEffect(() => { const on = () => setSolid(window.scrollY > 12); on(); window.addEventListener('scroll', on, { passive: true }); return () => window.removeEventListener('scroll', on); }, []);
-  useEffect(() => { setMenu(false); if (page === 'features' && !trust) toTour(); else window.scrollTo(0, 0); }, [page, trust]);
+  useEffect(() => { setMenu(false); window.scrollTo(0, 0); }, [page, trust]);
   useEffect(() => { document.title = trust ? 'Security & privacy · Keyholder' : idx === 0 ? 'Keyholder · Rental automation for Canadian landlords' : `${PAGES[idx].label} · Keyholder`; }, [idx, trust]);
   useEffect(() => { document.body.style.overflow = menu ? 'hidden' : ''; return () => { document.body.style.overflow = ''; }; }, [menu]);
   useReveal(trust ? 'security' : page);
   const ctaShown = usePageCtaShown(trust ? 'security' : page);
-  const overview = !trust && (page === '' || page === 'features');
-  const inTour = useTourInView(overview);
-  // Which menu item is lit: on the Overview, Features lights up while the tour is on screen.
-  const isOn = (id: string) => (trust ? false : overview ? (id === 'features' ? inTour : id === '' ? !inTour : false) : id === page);
+  const isOn = (id: string) => !trust && id === page;
 
   // Top right, always: Sign in and Sign up (or the dashboard for someone signed in).
   const ctas = signedIn
@@ -154,7 +138,9 @@ export function Landing() {
       )}
 
       <main>
-        {overview && <Overview start={start} />}
+        {!trust && page === '' && <Overview start={start} />}
+        {!trust && page === 'features' && <Features />}
+        {!trust && page === 'contact' && <Contact />}
         {trust && <SecurityPage />}
         {!trust && page === 'about' && <About section={section} />}
         {!trust && page === 'pricing' && <Pricing start={start} />}
@@ -182,6 +168,9 @@ export function Landing() {
           </nav>
           <nav aria-label="Get started">
             <p>Start</p><Link to="/start">Create a free account</Link><Link to="/signin">Sign in</Link>
+          </nav>
+          <nav aria-label="Help">
+            <p>Help</p><Link to="/welcome/contact">Contact us</Link><Link to="/welcome/questions">Questions</Link>
           </nav>
           <nav aria-label="Trust">
             <p>Trust</p><Link to="/welcome/security">Security &amp; privacy</Link><Link to="/welcome/security#bank">Bank connections (Plaid)</Link><Link to="/welcome/security#rights">Privacy policy</Link><Link to="/welcome/security#terms">Terms of use</Link>
@@ -257,8 +246,7 @@ const ModeBadge = ({ mode }: { mode: 'auto' | 'approve' }) => <span className={`
 
 
 function Overview({ start }: { start: () => void }) {
-  const ft = useFeatureTab();
-  const cents = useUnitPrice();
+  const nav = useNavigate();
   return (
     <>
       <section className="lp-hero">
@@ -267,23 +255,15 @@ function Overview({ start }: { start: () => void }) {
           <div className="lp-hero-copy">
             <p className="lp-pill"><Icon name="home" size={16} />For Canadian landlords</p>
             <h1 className="lp-hero-h">Manage your rental property <em>with ease.</em></h1>
-            <p className="lp-lede lp-hero-lede">The rental toolkit for landlords that takes away the manual effort: track every expense, send rent receipts, screen tenants, write notices and get your taxes ready.</p>
             <div className="btn-row lp-hero-ctas" data-cta>
               <GetStarted start={start} big />
               <a className="lp-how-link" href="#how" onClick={(e) => { e.preventDefault(); document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' }); }}>How it works<Icon name="next" size={16} /></a>
             </div>
             <p className="lp-go-note"><Icon name="check" size={16} />Connect your bank or upload a statement · No credit card required</p>
           </div>
-          <div className="lp-hero-visual"><HeroMock /></div>
+          <div className="lp-hero-visual"><HeroSlider /></div>
         </div>
-        <div className="lp-wrap"><JobsStrip onPick={ft.pick} /></div>
-      </section>
-
-      <section className="lp-sec" id="explore">
-        <div className="lp-wrap">
-          <SecHead kicker="What Keyholder does" title="Less money lost, less paperwork, fewer mistakes." />
-          <FeatureExplorer tab={ft.tab} setTab={ft.setTab} />
-        </div>
+        <div className="lp-wrap"><JobsStrip onPick={(id) => nav(`/welcome/features?tab=${id}`)} /></div>
       </section>
 
       <section className="lp-sec lp-how" id="how">
@@ -300,22 +280,52 @@ function Overview({ start }: { start: () => void }) {
                 </li>
               ))}
             </ol>
+            <p className="lp-see-all reveal"><Link className="lp-arrow" to="/welcome/features">See every feature</Link></p>
           </div>
         </div>
       </section>
-
-      <Tour />
 
       <section className="lp-sec lp-who">
         <div className="lp-wrap">
           <p className="lp-who-line"><strong>Who it’s for:</strong> every landlord in Canada who manages their own rentals, from a basement suite to many properties. You don’t need to be an accountant: Keyholder explains each step in plain words.</p>
         </div>
       </section>
+    </>
+  );
+}
 
-      <section className="lp-sec" id="faq">
-        <div className="lp-wrap lp-faq-wrap">
-          <SecHead kicker="Questions" title="Straight answers." />
-          {FAQ.map(([ic, q, a], i) => <details key={q} className="lp-faq"><summary><span className={`lp-tile-ic ${TONES[i % TONES.length]}`}><Icon name={ic} size={18} /></span>{q}</summary><p>{a.replace('{price}', fmtPrice(cents))}</p></details>)}
+/** Features: what Keyholder does, one tab per job, then real screens. */
+function Features() {
+  const loc = useLocation();
+  const ft = useFeatureTab(new URLSearchParams(loc.search).get('tab') ?? undefined);
+  return (
+    <>
+      <PageHead kicker="Features" icon="sparkle" title={<>Everything a landlord does, <em>in one place.</em></>}>Track expenses, send receipts, screen tenants, write notices and get your taxes ready.</PageHead>
+      <section className="lp-sec lp-sec-top0" id="explore">
+        <div className="lp-wrap">
+          <JobsStrip onPick={ft.pick} />
+          <SecHead kicker="What Keyholder does" title="Less money lost, less paperwork, fewer mistakes." />
+          <FeatureExplorer tab={ft.tab} setTab={ft.setTab} />
+        </div>
+      </section>
+      <Tour />
+    </>
+  );
+}
+
+/** Contact us: a form that reaches the support inbox. */
+function Contact() {
+  return (
+    <>
+      <PageHead kicker="Contact" icon="mail" title={<>Talk to a person. <em>We reply by email.</em></>}>Questions about Keyholder, your plan, or something not working: send us a note.</PageHead>
+      <section className="lp-sec lp-sec-top0">
+        <div className="lp-wrap lp-contact-grid">
+          <div className="lp-contact-card reveal"><ContactForm id="site-contact" title="Send us a message" /></div>
+          <ul className="lp-contact-side reveal">
+            <li><span className="lp-tile-ic mint"><Icon name="clock" size={18} /></span><span><strong>Usually within one business day</strong><span>A person on our team reads every message.</span></span></li>
+            <li><span className="lp-tile-ic lilac"><Icon name="info" size={18} /></span><span><strong>Quick answers</strong><span><Link to="/welcome/questions">Read the common questions</Link></span></span></li>
+            <li><span className="lp-tile-ic sky"><Icon name="lock" size={18} /></span><span><strong>Your details stay private</strong><span>Used only to reply to you.</span></span></li>
+          </ul>
         </div>
       </section>
     </>

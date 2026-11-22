@@ -20,7 +20,7 @@ const HIDE = '.sample-banner,.tour,.toasts{display:none!important} *,*::before,*
 const lateOptions = async (pg) => { await pg.locator('.unit-row', { hasText: 'Jordan' }).locator('text=Late rent options').click(); await pg.waitForSelector('.drawer'); };
 const SHOTS = [
   { id: 'rent', route: 'today', target: '.rent-row:has-text("Maya") .row-act .btn' },
-  { id: 'receipt', route: 'paperwork/income', open: async (pg) => { await pg.locator('table.ledger button.btn', { hasText: '#' }).first().click(); await pg.waitForSelector('.drawer .letter'); }, target: '.drawer .letter .stamp' },
+  { id: 'receipt', route: 'paperwork/income', open: async (pg) => { await pg.locator('table.ledger button.btn', { hasText: 'View' }).first().click(); await pg.waitForSelector('.drawer .letter'); }, target: '.drawer .letter .stamp' },
   { id: 'reminder', route: 'rentals', open: async (pg) => { await lateOptions(pg); await pg.locator('.drawer >> text=Write reminder').click(); await pg.waitForSelector('.drawer-foot >> text=Send now'); await pg.locator('.drawer button', { hasText: /^Gentle$/ }).click(); }, target: '.drawer-foot >> text=Send now' },
   { id: 'bills', route: 'paperwork/expenses', target: '.bank-row:has-text("ENBRIDGE") >> text=Add expense' },
   { id: 'value', route: 'portfolio', target: '.bars-h.big li >> nth=0' },

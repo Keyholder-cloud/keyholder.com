@@ -519,3 +519,13 @@ Status: ☐ to do · ◐ in progress · ☑ done
   effort. Home's year summary drops the "Worth · Owed" line. Income → Mark rent paid goes step by step: who paid,
   which month (each month shows what is due or paid), amount and date, then a done step with the receipt and a
   Send receipt (or Resend) button right there.
+- Owner (Nov 22, batch 2): website hero is the headline alone, with a 3-picture slider (profit and expenses, rent in
+  and receipts, portfolio). Features and Contact are pages of their own (Overview is shorter). Contact form on the
+  website (signed out, /api/contact) and on the app's Help page (answers left, form at the side). Link previews
+  (WhatsApp etc.) show og.jpg. Billing shows the two plan cards; Upgrade asks, Cancel switches to Starter at once.
+  Setup ring: plain inner circle. Home 2026 so far: each number in a box. Income list: no How or receipt number
+  (View + Send/Resend). Expenses: year buttons without totals; regular costs as same-size boxes, 8 then Show more.
+  Leases: end date only, next increase as date ↑ %. Prepare: compact summary; only failing checks are listed.
+- Owner (Nov 22): every email also goes out as a designed HTML version (card, buttons for links, a details table for
+  receipts, a big sign-in code); tenant emails lead with the landlord's name; Keyholder is only a tiny logo and line
+  at the bottom. The plain text stays as the fallback.

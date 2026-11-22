@@ -734,3 +734,42 @@ a.unit-who:hover strong, .unit-who.as-link:hover strong { text-decoration: under
 .mrp-month.paid { opacity: .55; cursor: default; }
 .mrp-receipt { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px; border: 1px solid var(--rule-strong); border-radius: 10px; }
 .mrp-receipt > span { display: inline-flex; gap: 6px; align-items: center; }
+
+/* Help page and contact form */
+.help-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--s-5, 20px); align-items: start; }
+@media (max-width: 860px) { .help-grid { grid-template-columns: 1fr; } }
+.help-page .help-list details { border-bottom: 1px solid var(--rule-strong); padding: 12px 0; }
+.help-page .help-list details:last-child { border-bottom: 0; }
+.help-page .help-list summary { cursor: pointer; font-weight: 600; }
+.contact-box { display: flex; flex-direction: column; gap: 10px; }
+.contact-box h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1.15rem; }
+.contact-box p { margin: 0; }
+.contact-box .btn { align-self: flex-start; }
+.contact-box .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 560px) { .contact-box .grid2 { grid-template-columns: 1fr; } }
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.inc-next { white-space: nowrap; }
+.inc-up { display: inline-flex; align-items: center; gap: 1px; color: var(--pine); font-weight: 700; }
+.leases-table td, .leases-table th { white-space: nowrap; }
+.letter.fw-summary { padding: 14px 16px; max-width: none; box-shadow: none; }
+.fw-summary table td { padding: 4px 0; font-size: var(--t-14); }
+.fw-summary table td:first-child { color: var(--ink-soft); width: 42%; padding-right: 10px; }
+.checks-ok { display: flex; align-items: center; gap: 6px; color: var(--pine); font-weight: 600; margin: 14px 0 0; }
+
+/* Billing: the two plans, as on the Pricing page */
+.bill-tiers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 14px; }
+@media (max-width: 760px) { .bill-tiers { grid-template-columns: minmax(0, 1fr); } }
+.bill-tier { position: relative; display: flex; flex-direction: column; padding: 22px; border-radius: 20px; border: 1px solid var(--rule-strong); background: var(--paper-raised); }
+.bill-tier.best { border: 1.5px solid var(--primary); }
+.bill-tier.on { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
+.bill-tier h3 { margin: 12px 0 0; font-size: 1.15rem; }
+.bill-flag { position: absolute; top: -12px; left: 22px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 11px; border-radius: 999px; background: var(--primary); color: var(--on-primary, #fff); font-size: 12px; font-weight: 700; }
+.bill-flag.on { background: var(--pine); }
+.bill-ic { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; }
+.bill-ic.mint { background: #DCFAE6; color: #067647; } .bill-ic.lilac { background: #EEF0FF; color: #4F46E5; }
+.bill-amt { font-family: var(--font-display); font-size: 2rem; font-weight: 700; margin: 10px 0 0; line-height: 1.1; }
+.bill-amt span { font-family: inherit; font-size: 14px; font-weight: 400; color: var(--ink-soft); margin-left: 8px; }
+.bill-per { margin: 6px 0 0; color: var(--ink-soft); font-size: 14px; }
+.bill-tier ul { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 9px; flex: 1; font-size: 14px; }
+.bill-tier li { display: flex; gap: 8px; align-items: flex-start; } .bill-tier li svg { color: var(--pine); flex: none; margin-top: 2px; }
+.bill-tier .btn { width: 100%; }

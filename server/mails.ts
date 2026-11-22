@@ -4,7 +4,8 @@ import { fmtPeriod } from '../src/lib/dates';
 import type { Mail, ReceiptAttachment } from './email';
 import { leaseLedger } from '../src/lib/finance';
 
-// The words in every email Keyholder sends. Plain text: it reads well everywhere, including old phones.
+// The words in every email Keyholder sends. Written as plain text (the fallback for text-only mail apps); the designed
+// HTML version is made from it when the email is sent (server/emailHtml.ts).
 
 const sign = '\n\n— Keyholder\nRental automation for Canadian landlords';
 
@@ -84,7 +85,7 @@ export function tenantMails(state: AppState, m: Message, accountId: string): Mai
       `Received from: ${tenant.names.join(' & ')}`,
       `Amount: ${fmt(pay.amount)}`,
       `For rent of: ${pay.period ? fmtPeriod(pay.period) : '—'}`,
-      `Paid on: ${pay.date}${pay.method ? ` (${pay.method === 'etransfer' ? 'e-Transfer' : pay.method})` : ''}`,
+      `Paid on: ${new Date(`${pay.date}T12:00:00`).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })}${pay.method ? ` (${pay.method === 'etransfer' ? 'e-Transfer' : pay.method})` : ''}`,
       prop ? `Rental: ${prop.address}${unit ? `, ${lease?.room ?? (/^[A-Z0-9]{1,3}$/i.test(unit.label) ? `Unit ${unit.label}` : unit.label)}` : ''}` : '',
       r.note ? `Note: ${r.note}` : '', '',
       `Your receipt is attached as a PDF. Keep it for your records.`, '', owner,

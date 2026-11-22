@@ -1,7 +1,6 @@
-import { api, useConn } from '../data/api';
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { createPortal } from 'react-dom';
+import { ContactForm } from './ContactForm';
+import { useEffect, useLayoutEffect, useState } from 'react';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Icon } from './Icon';
 import { useStore } from '../data/store';
 
@@ -173,79 +172,28 @@ const HELP: [string, string][] = [
   ['What do Bronze, Silver and Gold mean?', 'Your property card gets more useful as you add details, like what you paid. It is always free.'],
   ['Can Keyholder move my money?', 'No. It can only look at deposits and bills. It never sees your bank password.'],
 ];
-/** Write to us (with the Keyholder server): its own popup. Goes to the team's support inbox; replies come by email. */
-function ContactModal({ onClose }: { onClose: () => void }) {
-  const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
-  const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle');
-  const [err, setErr] = useState('');
-  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); }, [onClose]);
-  const ok = subject.trim().length >= 2 && message.trim().length >= 2;
-  return createPortal(
-    <div className="acct-modal" role="dialog" aria-modal="true" aria-labelledby="contact-title">
-      <div className="scrim" onClick={onClose} />
-      <div className="acct-modal-card contact-card">
-        <div className="acct-modal-head"><Icon name="mail" size={18} /><span>Write to us</span><button className="btn ghost small" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button></div>
-        {state === 'sent' ? (
-          <div role="status">
-            <h2 id="contact-title">Message sent</h2>
-            <p className="soft">A person on our team will reply by email, usually within one business day.</p>
-            <div className="btn-row" style={{ marginTop: 16 }}><button className="btn primary" onClick={onClose}>Done</button></div>
-          </div>
-        ) : (
-          <>
-            <h2 id="contact-title">Write to us</h2>
-            <p className="small soft">A person on our team reads every message and replies by email.</p>
-            <form className="stack contact-form" style={{ marginTop: 12 }} onSubmit={async (e) => {
-              e.preventDefault(); if (!ok) return;
-              setState('sending'); setErr('');
-              try { await api('POST', '/api/support/tickets', { subject: subject.trim(), message: message.trim() }); setState('sent'); }
-              catch (x) { setErr((x as Error).message); setState('idle'); }
-            }}>
-              <div className="field"><label htmlFor="ct-subject">What is it about?</label><input id="ct-subject" className="input" value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={140} autoFocus /></div>
-              <div className="field"><label htmlFor="ct-message">Your message</label><textarea id="ct-message" className="input" rows={5} value={message} onChange={(e) => setMessage(e.target.value)} maxLength={5000} /></div>
-              {err && <p className="small acct-error" role="alert">{err}</p>}
-              <div className="btn-row"><button className="btn primary" disabled={state === 'sending' || !ok}>{state === 'sending' ? 'Sending…' : 'Send'}</button><button type="button" className="btn ghost" onClick={onClose}>Cancel</button></div>
-            </form>
-          </>
-        )}
-      </div>
-    </div>,
-    document.body,
-  );
+/** Help is a link to the Help page (side menu; phones: More). */
+export function HelpButton({ compact, variant }: { compact?: boolean; variant?: 'more' }) {
+  return variant === 'more'
+    ? <Link to="/help" className="more-item help-btn"><Icon name="info" size={26} /><span><strong>Help</strong><span>Answers, contact us, the tour</span></span><Icon name="next" /></Link>
+    : <NavLink to="/help" className={({ isActive }) => `${compact ? 'btn ghost small' : 'nav-link'} help-btn${isActive ? ' active' : ''}`}><Icon name="info" size={compact ? 18 : 20} />Help</NavLink>;
 }
 
-export function HelpButton({ compact, variant }: { compact?: boolean; variant?: 'more' }) {
-  const conn = useConn();
-  // Help and Write to us are two separate popups; only one is open at a time.
-  const [view, setView] = useState<'help' | 'write' | null>(null);
-  const open = view === 'help';
-  const close = useCallback(() => setView(null), []);
+/** Help: plain answers on the left, a contact form at the side. */
+export function HelpPage() {
   const { act } = useStore();
   const nav = useNavigate();
-  useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setView(null); }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); }, [open]);
   return (
-    <>
-      {variant === 'more'
-        ? <button className="more-item help-btn" onClick={() => setView('help')}><Icon name="info" size={26} /><span><strong>Help</strong><span>Answers, write to us, the tour</span></span><Icon name="next" /></button>
-        : <button className={compact ? 'btn ghost small help-btn' : 'nav-link help-btn'} onClick={() => setView('help')}><Icon name="info" size={compact ? 18 : 20} />Help</button>}
-      {open && createPortal(
-        <div className="acct-modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
-          <div className="scrim" onClick={close} />
-          <div className="acct-modal-card help-card">
-            <div className="acct-modal-head"><Icon name="info" size={18} /><span>Help</span><button className="btn ghost small" onClick={close} aria-label="Close help"><Icon name="close" size={18} /></button></div>
-            <h2 id="help-title">How can we help?</h2>
-            <div className="help-list">{HELP.map(([q, a]) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}</div>
-            <div className="btn-row" style={{ marginTop: 16 }}>
-              {conn.mode === 'server' && conn.user?.role === 'owner' && <button className="btn primary" onClick={() => setView('write')}><Icon name="mail" size={16} />Write to us</button>}
-              <button className="btn" onClick={() => { setView(null); act.setProfile({ tourDone: false }); nav('/today'); }}>Show me around again</button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
-      {view === 'write' && <ContactModal onClose={close} />}
-    </>
+    <div className="page help-page">
+      <BackToMore />
+      <div className="page-head"><div><h1 id="help-title">Help</h1><PageSub>Plain answers, and a person when you need one.</PageSub></div></div>
+      <div className="help-grid">
+        <section aria-label="Questions">
+          <div className="help-list sheet">{HELP.map(([q, a]) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}</div>
+          <button className="btn" style={{ marginTop: 12 }} onClick={() => { act.setProfile({ tourDone: false }); nav('/today'); }}><Icon name="sparkle" size={16} />Show me around again</button>
+        </section>
+        <aside className="sheet"><ContactForm id="help-contact" /></aside>
+      </div>
+    </div>
   );
 }
-
