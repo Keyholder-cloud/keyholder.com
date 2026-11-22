@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { todayISO } from '../src/lib/dates';
 import type { FastifyInstance } from 'fastify';
 import type { AppState } from '../src/data/types';
 import { defaultProfile, emptyState, seedState } from '../src/data/seed';
@@ -408,7 +409,7 @@ describe('the super user', () => {
     const b = s.platform.benchmarks;
     expect((await put(sup, { ...s, platform: { ...s.platform, benchmarks: { savings: { ...b.savings, pct: 3.1 }, index: { ...b.index, pct: 6.9 }, gic: { ...b.gic, pct: 12 } } } }, { action: 'Comparison rates changed', detail: 'x' })).status).toBe(200);
     const live = (await call('GET', '/api/session')).body.config.benchmarks;
-    expect(live).toMatchObject({ savings: { pct: 3.1, asOf: new Date().toISOString().slice(0, 10) }, index: { pct: 6.9 }, gic: { pct: 2.8 } });
+    expect(live).toMatchObject({ savings: { pct: 3.1, asOf: todayISO() }, index: { pct: 6.9 }, gic: { pct: 2.8 } }); // the server's local date (not UTC)
     // Out-of-range rates are ignored.
     const s2 = await snap(sup);
     await put(sup, { ...s2, platform: { ...s2.platform, benchmarks: { ...s2.platform.benchmarks, savings: { ...s2.platform.benchmarks.savings, pct: 80 } } } });
