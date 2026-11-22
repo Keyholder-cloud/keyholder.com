@@ -10,7 +10,7 @@ const MAP = [
   [/^src\/screens\/(Landing|Security)/, 'C,D,G'], [/^src\/screens\/(Account|AuthLinks|Onboarding)/, 'D,E'],
   [/^src\/support\/|^src\/screens\/Support/, 'J'], [/^src\/screens\/Money|^src\/components\/StatementUpload|^src\/lib\/(taxyear|statements)/, 'F,H'],
   [/^src\/screens\/(Rentals|PropertyDetail|TenantDetail)|^src\/components\/(TenantActions|PropertyActions)/, 'B,H'],
-  [/^src\/components\/(HomeCards|Journey|levels|Setup)|^src\/lib\/score/, 'A,B,F'], [/^src\/screens\/Settings/, 'A,E'],
+  [/^src\/components\/(HomeCards|Journey|levels|Setup)|^src\/lib\/score/, 'A,B,F'], [/^src\/screens\/Settings|^src\/components\/Billing/, 'A,C,E,H'], [/^src\/App\.tsx/, 'C,D,E'],
   [/^src\/components\/Brand|^src\/assets/, 'I,G'], [/^src\/styles\//, 'A,B,H'],
 ];
 const sections = new Set(); let server = false, unit = false;

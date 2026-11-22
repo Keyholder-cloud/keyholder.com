@@ -470,3 +470,10 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Touch ID on a laptop set up before devices were tracked: the server tells which kinds of device have it
   (Mac, iPhone…), so that kind of device leads with Touch ID / Face ID. The second step's links are tidy
   ("Email me a code", a quiet Back); the note is one line: "One code here, then Touch ID next time."
+
+### R53. Settings in tabs with Billing; net worth on Home; "You kept" colour ☑
+- Settings: Profile (with two-step sign-in) · Preferences · Reminders · Data · Billing, each at /settings/<tab>;
+  old links (/settings#two-step) open the right tab; rows roomier. Billing: the plan (Starter free for good /
+  Landlord per unit), units and properties, what is included, and payment (no card until card payments open).
+- "2026 so far": Net worth first, with "Worth … · Owed …" under it.
+- "You kept" is green when positive, light red when negative.

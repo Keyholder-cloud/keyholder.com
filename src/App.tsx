@@ -167,6 +167,7 @@ function Shell() {
             <Route path="/todo" element={<Navigate to="/today" replace />} />
             <Route path="/tray" element={<Navigate to="/today" replace />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/settings/:tab" element={<Settings />} />
             <Route path="*" element={<Navigate to="/today" replace />} />
           </Routes>
         </main>
@@ -207,7 +208,7 @@ function More() {
     { to: '/tenants', icon: 'users', label: 'Tenants', sub: 'Everyone renting from you, and where' },
     { to: '/portfolio', icon: 'chart', label: 'Portfolio', sub: 'What your properties are worth and earn' },
     { to: '/paperwork', icon: 'paper', label: 'Paperwork', sub: 'Leases, notices, forms and taxes' },
-    { to: '/settings', icon: 'settings', label: 'Settings', sub: 'Your profile, rent tracking, reminders' },
+    { to: '/settings', icon: 'settings', label: 'Settings', sub: 'Profile, preferences, reminders, data, billing' },
   ];
   return (
     <div className="page">
