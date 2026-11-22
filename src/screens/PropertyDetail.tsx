@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, NavLink, useNavigate, useParams } from 'react-router-dom';
+import { Link, NavLink, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { FindTenantPage, NoticesTab, TenantsList, UnitsTab } from './Rentals';
 import { ArchivePropertyDrawer } from '../components/PropertyActions';
@@ -14,6 +14,7 @@ import { RentRoll } from '../components/domain';
 import { MortgageForm, OwnerEstimateForm, PropertyForm } from '../components/forms';
 import { Empty, Figure } from '../components/ui';
 import { Icon } from '../components/Icon';
+import { useMore } from '../components/More';
 
 export function PropertyDetail() {
   const { id, tab = 'units' } = useParams();
@@ -73,7 +74,9 @@ export function PropertyDetail() {
 // ---------------------------------------------------------------------------------
 function ValueTab({ id }: { id: string }) {
   const { state, today, act } = useStore();
-  const [form, setForm] = useState<'owner' | 'paid' | null>(null);
+  // From setup progress ("Do it"): ?open=paid opens "What you paid" right away.
+  const loc = useLocation();
+  const [form, setForm] = useState<'owner' | 'paid' | null>(() => (new URLSearchParams(loc.search).get('open') === 'paid' ? 'paid' : null));
   const p = state.properties.find((x) => x.id === id)!;
   const vi = propertyValue(state, p, today);
   const o = owedAt(state, p, today);
@@ -138,6 +141,8 @@ function MortgageTab({ id }: { id: string }) {
   const p = state.properties.find((x) => x.id === id)!;
   const m = state.mortgages.find((x) => x.propertyId === id);
   const rows = useMemo(() => (m ? amortization(m) : []), [m]);
+  const upcoming = rows.filter((r) => r.date > today);
+  const [upShown, upMore] = useMore(upcoming);
   const acb = adjustedCostBase(state, p);
   const value = propertyValue(state, p, today).value;
   const sellCost = Math.round(value * 0.05);
@@ -156,7 +161,6 @@ function MortgageTab({ id }: { id: string }) {
   const ytd = mortgagePaidBetween(m, `${today.slice(0, 4)}-01-01`, today, rows);
   const daysToRenew = daysBetween(today, m.termEnd);
   const next = rows.find((r) => r.date > today);
-  const upcoming = rows.filter((r) => r.date > today);
 
   return (
     <>
@@ -182,10 +186,10 @@ function MortgageTab({ id }: { id: string }) {
         <div className="more-body table-scroll">
           <table className="ledger">
             <thead><tr><th>Date</th><th className="num">Payment</th><th className="num">Interest</th><th className="num">Paid off</th><th className="num">Still owed</th></tr></thead>
-            <tbody>{upcoming.map((r) => (
+            <tbody>{upShown.map((r) => (
               <tr key={r.n}><td className="date">{fmtDate(r.date)}</td><td className="num">{fmt(r.payment)}</td><td className="num">{fmt(r.interest)}</td><td className="num in">{fmt(r.principal)}</td><td className="num">{fmt(r.balance)}</td></tr>
             ))}</tbody>
-          </table>
+          </table>{upMore}
           <p className="tiny soft">Paid off on {rows.length ? fmtDate(rows[rows.length - 1].date) : '—'} if the rate stays the same.</p>
         </div>
       </details>

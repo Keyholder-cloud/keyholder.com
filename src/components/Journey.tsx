@@ -143,7 +143,7 @@ function UnitLine({ unit }: { unit: Unit }) {
 
 /** `room`: a room of a unit rented by the room, shown underneath the unit's line. */
 function RentLine({ unit, lease, card, free, room }: { unit: Unit; lease?: Lease; card: JourneyCard | null; free?: number; room?: boolean }) {
-  const { state, today } = useStore();
+  const { state, act, today } = useStore();
   const [pay, setPay] = useState(false);
   const [late, setLate] = useState(false);
   const tenant = lease ? state.tenants.find((t) => t.id === lease.tenantId) : undefined;
@@ -159,6 +159,7 @@ function RentLine({ unit, lease, card, free, room }: { unit: Unit; lease?: Lease
   }
   // Paid and nothing left to do (the receipt is sent): the pill says so, with the day it was paid.
   const done = line?.state === 'paid' && !visible;
+  const doneReceipt = line?.state === 'paid' ? line.payments.map((p) => state.receipts.find((r) => r.paymentId === p.id && r.status !== 'superseded')).find(Boolean) : undefined;
   const meaning = done ? (line.payments.length ? 'Rent for this month is in, and the receipt was sent. Nothing left to do.' : 'Rent for this month counts as paid. Nothing left to do.') : undefined;
   return (
     <li className={`rent-row${room ? ' room-row' : ''}${st.tone === 'late' ? ' late' : ''}`}>
@@ -177,6 +178,8 @@ function RentLine({ unit, lease, card, free, room }: { unit: Unit; lease?: Lease
       <span className="row-act">
         {visible ? <StepButton c={visible} noAdd={room} /> : fallback}
         {visible && <RowMenu k={prefKey(visible)} />}
+        {/* Paid and the receipt sent: ⋯ → Resend receipt (a PDF copy). */}
+        {!visible && doneReceipt && <FloatMenu label="More for this rent" items={[{ label: 'Resend receipt', icon: 'send', onClick: () => act.resendReceipt(doneReceipt.id) }]} />}
       </span>
       {pay && lease && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}
       {late && lease && <LateRentDrawer lease={lease} onClose={() => setLate(false)} />}
@@ -252,7 +255,11 @@ export function ScoreList() {
               <span className="pts">+{i.points - i.earned}</span>
               <span className="title">{i.text}</span>
               <span className="row-act">
-                <button className="btn small" onClick={() => { if (i.levelUp && pr) setForm({ pid: pr.id, to: i.levelUp === 'gold' && !hasSilver(pr) ? 'silver' : i.levelUp }); else nav(i.to); }}>Do it</button>
+                <button className="btn small" onClick={() => {
+                  // Go there (the setup popup closes); "what you paid" opens its form on the property's Value tab.
+                  if (i.levelUp && pr) nav(i.levelUp === 'gold' && hasSilver(pr) ? `/rent/property/${pr.id}/mortgage` : `/rent/property/${pr.id}/value?open=paid`);
+                  else nav(i.to);
+                }}>Do it</button>
                 <RowMenu k={scoreKey(i)} />
               </span>
             </li>

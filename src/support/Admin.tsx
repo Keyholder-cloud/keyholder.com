@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/Icon';
+import { useMore } from '../components/More';
 import { PageHead } from '../screens/Support';
 import { addDays, daysBetween, fmtDate } from '../lib/dates';
 import { Status } from './charts';
@@ -17,6 +18,7 @@ export function Privacy() {
   const people = [...new Set(s.audit.map((a) => a.who))];
   const term = q.trim().toLowerCase();
   const log = s.audit.filter((a) => (!who || a.who === who) && (!term || `${a.action} ${a.detail}`.toLowerCase().includes(term)));
+  const [logShown, logMore] = useMore(log);
   return (
     <>
       <PageHead eyebrow="Admin" title="Privacy & audit" sub="Data requests (30-day limit) and team activity" />
@@ -40,7 +42,7 @@ export function Privacy() {
             <select className="input" aria-label="Person" value={who} onChange={(e) => setWho(e.target.value)}><option value="">Everyone</option>{people.map((p) => <option key={p}>{p}</option>)}</select>
           </div></div>
         <div className="table-scroll"><table className="ledger"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Details</th></tr></thead>
-          <tbody>{log.slice(0, 100).map((a) => <tr key={a.id}><td className="date">{new Date(a.at).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td><td>{a.who}</td><td><strong>{a.action}</strong></td><td>{a.detail}</td></tr>)}</tbody></table></div>
+          <tbody>{logShown.map((a) => <tr key={a.id}><td className="date">{new Date(a.at).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</td><td>{a.who}</td><td><strong>{a.action}</strong></td><td>{a.detail}</td></tr>)}</tbody></table></div>{logMore}
         {log.length === 0 && <p className="sp-muted">No matches</p>}
       </section>
     </>

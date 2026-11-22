@@ -4,6 +4,7 @@ import type { Db, Q } from './db';
 import type { Keys } from './keys';
 import type { PdfValue } from '../src/lib/ltbForms';
 import { fillOfficial } from './officialForms';
+import { receiptPdf, type ReceiptPdfData } from './receiptPdf';
 
 // Email goes through an outbox table: whatever creates an email only writes a row (inside its own
 // transaction), and the sender delivers queued rows in the background with retries. With
@@ -11,7 +12,11 @@ import { fillOfficial } from './officialForms';
 
 /** An official form attached to an email: made from these values when the email is sent. */
 export interface FormAttachment { formId: string; values: Record<string, PdfValue>; filename: string }
-export interface Mail { to: string; toName?: string; replyTo?: string; subject: string; text: string; kind: string; accountId?: string | null; dedupeKey?: string; sendAfter?: Date; attachment?: FormAttachment }
+/** A rent receipt PDF, made when the email is sent (server/receiptPdf.ts). */
+export interface ReceiptAttachment { kind: 'receipt'; receipt: ReceiptPdfData; filename: string }
+type Attachment = FormAttachment | ReceiptAttachment;
+const isReceipt = (a: Attachment): a is ReceiptAttachment => (a as ReceiptAttachment).kind === 'receipt';
+export interface Mail { to: string; toName?: string; replyTo?: string; subject: string; text: string; kind: string; accountId?: string | null; dedupeKey?: string; sendAfter?: Date; attachment?: Attachment }
 
 /** Addresses that must never get real email: sample data and reserved test domains. */
 export const undeliverable = (email: string) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || /@(example\.(com|org|net)|[^@]*\.(test|invalid|example|localhost))$/i.test(email);
@@ -29,12 +34,13 @@ export async function queueMail(q: Q, m: Mail): Promise<string | null> {
   return rows[0]?.id ?? null;
 }
 
-type Row = { id: string; to_email: string; to_name: string | null; reply_to: string | null; subject: string; text_body: string; attempts: number; attachment: FormAttachment | null };
+type Row = { id: string; to_email: string; to_name: string | null; reply_to: string | null; subject: string; text_body: string; attempts: number; attachment: Attachment | null };
 
 async function deliver(em: Config['email'], m: Row): Promise<{ providerId?: string }> {
   const to = m.to_name ? `${m.to_name.replace(/[<>"]/g, '')} <${m.to_email}>` : m.to_email;
-  // An official form goes as a PDF attachment, made now from the values kept with the email.
-  const pdf = m.attachment && em.provider !== 'log' ? Buffer.from(await fillOfficial(m.attachment.formId, m.attachment.values)).toString('base64') : null;
+  // An official form or a rent receipt goes as a PDF attachment, made now from the details kept with the email.
+  const pdf = m.attachment && em.provider !== 'log'
+    ? Buffer.from(isReceipt(m.attachment) ? await receiptPdf(m.attachment.receipt) : await fillOfficial(m.attachment.formId, m.attachment.values)).toString('base64') : null;
   if (em.provider === 'resend') {
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST', headers: { Authorization: `Bearer ${em.resendKey}`, 'Content-Type': 'application/json' },

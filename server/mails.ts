@@ -1,7 +1,8 @@
 import type { AppState, Message } from '../src/data/types';
 import { fmt } from '../src/lib/money';
 import { fmtPeriod } from '../src/lib/dates';
-import type { Mail } from './email';
+import type { Mail, ReceiptAttachment } from './email';
+import { leaseLedger } from '../src/lib/finance';
 
 // The words in every email Keyholder sends. Plain text: it reads well everywhere, including old phones.
 
@@ -53,6 +54,7 @@ export function tenantMails(state: AppState, m: Message, accountId: string): Mai
   const replyTo = state.profile.account?.email || state.profile.email || undefined;
   let subject = m.subject || 'A message from your landlord';
   let text = m.body;
+  let attachment: ReceiptAttachment | undefined;
   if (m.kind === 'receipt') {
     const r = state.receipts.find((x) => x.id === m.receiptId);
     const pay = state.payments.find((p) => p.id === r?.paymentId);
@@ -60,7 +62,22 @@ export function tenantMails(state: AppState, m: Message, accountId: string): Mai
     const unit = state.units.find((u) => u.id === lease?.unitId);
     const prop = state.properties.find((p) => p.id === unit?.propertyId);
     if (!r || !pay) return [];
-    subject = `Rent receipt #${r.number}${pay.period ? ` for ${fmtPeriod(pay.period)}` : ''}`;
+    // Sent again (Resend): a later message for the same receipt.
+    const copy = state.messages.some((x) => x.kind === 'receipt' && x.receiptId === r.id && x.id !== m.id && (x.sentAt ?? '') < (m.sentAt ?? ''));
+    subject = `${copy ? 'Copy: ' : ''}Rent receipt #${r.number}${pay.period ? ` for ${fmtPeriod(pay.period)}` : ''}`;
+    const method = pay.method === 'etransfer' ? 'e-Transfer' : pay.method ? pay.method[0].toUpperCase() + pay.method.slice(1) : 'Not stated';
+    const room = unit ? (lease?.room ?? (/^[A-Z0-9]{1,3}$/i.test(unit.label) ? `Unit ${unit.label}` : unit.label)) : '';
+    const line = lease && pay.period ? leaseLedger(lease, state.payments, (m.sentAt ?? new Date().toISOString()).slice(0, 10)).find((x) => x.period === pay.period) : undefined;
+    attachment = {
+      kind: 'receipt', filename: `Rent receipt ${r.number}${pay.period ? ` - ${fmtPeriod(pay.period)}` : ''}.pdf`,
+      receipt: {
+        number: r.number, issued: (r.sentAt ?? m.sentAt ?? new Date().toISOString()).slice(0, 10), copy,
+        landlord: { name: owner, email: replyTo, phone: state.profile.phone },
+        tenant: tenant.names.join(' & '), rental: prop ? `${prop.address}${room ? `, ${room}` : ''}` : (room || '—'),
+        period: pay.period ? fmtPeriod(pay.period) : '—', amount: fmt(pay.amount), paidOn: pay.date, method,
+        balance: line && line.paid < line.charge ? fmt(line.charge - line.paid) : undefined, note: r.note,
+      },
+    };
     text = [
       `Hi ${tenant.names.map((n) => n.split(' ')[0]).join(' & ')},`, '',
       `Thank you. This is your receipt for rent.`, '',
@@ -71,14 +88,14 @@ export function tenantMails(state: AppState, m: Message, accountId: string): Mai
       `Paid on: ${pay.date}${pay.method ? ` (${pay.method === 'etransfer' ? 'e-Transfer' : pay.method})` : ''}`,
       prop ? `Rental: ${prop.address}${unit ? `, ${lease?.room ?? (/^[A-Z0-9]{1,3}$/i.test(unit.label) ? `Unit ${unit.label}` : unit.label)}` : ''}` : '',
       r.note ? `Note: ${r.note}` : '', '',
-      `Keep this email for your records.`, '', owner,
+      `Your receipt is attached as a PDF. Keep it for your records.`, '', owner,
     ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n');
   }
   if (!text.trim()) return [];
   return people.filter((p) => p.email).map((p) => ({
     kind: m.kind, to: p.email!, toName: p.name, replyTo, accountId, subject,
     text: `${text}\n\n—\nSent for ${owner} by Keyholder. Reply to this email to reach your landlord.`,
-    dedupeKey: `msg:${accountId}:${m.id}:${p.email!.toLowerCase()}`,
+    dedupeKey: `msg:${accountId}:${m.id}:${p.email!.toLowerCase()}`, attachment,
   }));
 }
 

@@ -902,3 +902,6 @@ a.chip { text-decoration: none; }
 /* "You kept": green when positive, light red when the costs were more than the rent. */
 .review-grid .kept.neg { background: #FEE4E2; }
 .review-grid .kept.neg strong { color: #D92D20; }
+/* Long lists: "Show more" under the first 8 lines. */
+.more-row { display: flex; justify-content: center; padding: 8px 0 4px; }
+.resend-receipt { white-space: nowrap; }
