@@ -886,7 +886,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'settings'); if ((await pg.locator('.settings-tabs .tab').count()) !== 5) throw new Error('tabs');
       await go(pg, 'settings#rent-tracking'); await pg.waitForSelector('#st-tab-preferences.on'); await pg.waitForSelector('#rent-tracking');
       await pg.click('#st-tab-billing'); await pg.waitForSelector('#billing-plan >> text=Your plan'); await pg.waitForSelector('#billing-pay >> text=No card on file');
-      await go(pg, 'today'); await pg.waitForSelector('#ytd >> text=Net worth'); await pg.waitForSelector('#ytd-worth >> text=Owed');
+      await go(pg, 'today'); await pg.waitForSelector('#ytd >> text=Net worth'); if (await pg.$('#ytd-worth')) throw new Error('worth/owed line should be gone');
     });
     await step(tag, 'H27 Resend a rent receipt from Income and from a tenant\'s messages; long lists show 8 lines, then Show more', async () => {
       await go(pg, 'income'); await pg.waitForSelector('.resend-receipt');
