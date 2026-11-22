@@ -44,6 +44,13 @@ export function BioOffer() {
   );
 }
 
+// Which fingerprint/face devices (passkey ids) were added or used in this browser. A passkey lives on the
+// device that made it (unless the phone's keychain synced it), so the sign-in screen leads with Face ID only
+// where it is known to be; elsewhere it asks for the code once and offers Face ID for that device afterwards.
+const HERE_KEY = 'kh_passkeys_here';
+const hereIds = (): string[] => { try { return JSON.parse(localStorage.getItem(HERE_KEY) ?? '[]'); } catch { return []; } };
+export const rememberPasskeyHere = (id?: string) => { if (!id) return; try { localStorage.setItem(HERE_KEY, JSON.stringify([...new Set([...hereIds(), id])].slice(-10))); } catch { /* fine */ } };
+
 /** This browser can use fingerprint or face (WebAuthn). */
 export const canUseBiometrics = () => typeof window !== 'undefined' && browserSupportsWebAuthn();
 
@@ -53,15 +60,17 @@ async function addThisDevice(): Promise<{ backupCodes: string[] | null; user: Se
   let response;
   try { response = await startRegistration({ optionsJSON }); }
   catch (e) { throw new Error((e as Error).name === 'InvalidStateError' ? 'This device is already added.' : 'Fingerprint or face was cancelled or is not set up on this device.'); }
-  return api('POST', '/api/auth/passkey/register', { response });
+  const r = await api<{ backupCodes: string[] | null; user: ServerUser }>('POST', '/api/auth/passkey/register', { response });
+  rememberPasskeyHere(response.id);
+  return r;
 }
 
 /** Asks for fingerprint or face to confirm it is you (a signed-in action, or `ticket` at sign-in). */
 async function confirmWithBiometrics(ticket?: string) {
   const r = await api<{ options: Parameters<typeof startAuthentication>[0]['optionsJSON'] | null }>('POST', '/api/auth/passkey/options', ticket ? { ticket } : {});
   if (!r.options) throw new Error('No fingerprint or face is set up for this account.');
-  try { return await startAuthentication({ optionsJSON: r.options }); }
-  catch { throw new Error('Fingerprint or face was cancelled. Try again, or use a code.'); }
+  try { const a = await startAuthentication({ optionsJSON: r.options }); rememberPasskeyHere(a.id); return a; }
+  catch { throw new Error('Fingerprint or face is not set up on this device, or was cancelled. Use your code this time.'); }
 }
 
 /** The code step of signing in, after the password (or Google) was right. */
@@ -73,9 +82,15 @@ export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; on
   const [remember, setRemember] = useState(false);
   // Which ways this account can do the second step.
   const [ways, setWays] = useState<{ passkey: boolean; app: boolean }>({ passkey: false, app: true });
+  // Face ID leads only where it was added or used before; elsewhere: the code once, then the offer.
+  const [here, setHere] = useState(false);
   useEffect(() => {
-    api<{ options: unknown; app: boolean }>('POST', '/api/auth/passkey/options', { ticket })
-      .then((r) => setWays({ passkey: !!r.options && canUseBiometrics(), app: r.app })).catch(() => {});
+    api<{ options: { allowCredentials?: { id: string }[] } | null; app: boolean }>('POST', '/api/auth/passkey/options', { ticket })
+      .then((r) => {
+        setWays({ passkey: !!r.options && canUseBiometrics(), app: r.app });
+        const mine = new Set(hereIds());
+        setHere(!!r.options?.allowCredentials?.some((c) => mine.has(c.id)));
+      }).catch(() => {});
   }, [ticket]);
   const biometric = async () => {
     setBusy(true); setErr('');
@@ -100,14 +115,17 @@ export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; on
       <div className="two-step-head"><span className="tile-ic lilac" aria-hidden><Icon name="lock" size={20} /></span>
         <div><strong>Confirm it's you</strong></div></div>
       <label className="check" title="Skip this step on this browser next time. Not on a shared computer."><input id="ts-remember" type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />Remember this device</label>
-      {ways.passkey && <>
+      {ways.passkey && here && <>
         <button type="button" className="btn primary acct-login-btn" id="ts-biometric" disabled={busy} onClick={biometric}><Icon name="fingerprint" size={18} />Use fingerprint or face</button>
         <div className="acct-or"><span>or a code</span></div>
       </>}
+      {ways.passkey && !here && (
+        <p className="small soft two-step-elsewhere" id="ts-elsewhere"><Icon name="fingerprint" size={14} /> Face ID or fingerprint is set up on another device, not this one yet. Enter your code this once; Keyholder then offers it for this device. <button type="button" className="link-btn" id="ts-biometric" disabled={busy} onClick={biometric}>Try it anyway</button></p>
+      )}
       <div className="field"><label htmlFor="ts-code">{ways.app ? 'App or backup code' : 'Backup code'}</label>
         <input id="ts-code" className="input two-step-input" value={code} onChange={(e) => { setCode(e.target.value); setErr(''); }} inputMode="text" autoComplete="one-time-code" autoFocus placeholder="123 456" maxLength={12} /></div>
       {err && <p className="small acct-error" role="alert">{err}</p>}
-      <button className={`btn ${ways.passkey ? '' : 'primary '}acct-login-btn`} disabled={!code.trim() || busy}>{busy ? 'Checking…' : 'Continue'}</button>
+      <button className={`btn ${ways.passkey && here ? '' : 'primary '}acct-login-btn`} disabled={!code.trim() || busy}>{busy ? 'Checking…' : 'Continue'}</button>
       <button type="button" className="btn ghost small" onClick={onBack}><Icon name="back" size={14} />Back</button>
     </form>
   );

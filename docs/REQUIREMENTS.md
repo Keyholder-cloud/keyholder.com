@@ -443,3 +443,6 @@ Status: ☐ to do · ◐ in progress · ☑ done
   Clear all data now runs on the server (new epoch, so an open copy elsewhere cannot bring data back).
 - Authenticator app on a phone: no QR code; "Open in my authenticator app" (otpauth link) and the key with
   Copy key. Computers keep the QR code, with the key and the link under it.
+- Follow-up (owner, 9:16 a.m.): on the phone, "Use fingerprint or face" opened the QR code for borrowing another
+  device's passkey. Now Face ID leads at sign-in only on a device where it was added or used; elsewhere the code
+  leads with a note ("set up on another device … Try it anyway"), then the app offers Face ID for that device.
