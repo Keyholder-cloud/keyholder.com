@@ -312,7 +312,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     }
     if (want('C')) ok(tag, 'C Every internal link lands on a real page', bad.length === 0, bad.slice(0, 6).join(' | ') || `${pages.length} pages swept`);
     // Navigation bars
-    await step(tag, 'C2 Menu: Home, Portfolio, Rentals, Income, Expenses, Paperwork, Help at the bottom; Settings at the top right, a small Sign out icon there on Settings only; Settings starts with one Preferences card (Appearance, Two-step, Rent tracking), then Profile (phones: Home, Income, Rentals raised in the middle, Expenses, More)', async () => {
+    await step(tag, 'C2 Menu: Home, Portfolio, Rentals, Income, Expenses, Paperwork, Help at the bottom; Settings at the top right, a small Sign out icon there on Settings only; Settings in tabs (Profile with two-step first; Preferences: Appearance, Rent tracking) (phones: Home, Income, Rentals raised in the middle, Expenses, More)', async () => {
       const labels = tag === 'phone' ? ['Home', 'Income', 'Rentals', 'Expenses', 'More'] : ['Home', 'Portfolio', 'Rentals', 'Income', 'Expenses', 'Paperwork'];
       const order = (await pg.locator(tag === 'phone' ? '.bottombar a' : '.rail .nav-link').allTextContents()).join(' ').replace(/\d+/g, '');
       if (!(tag === 'phone' ? /Home.*Income.*Rentals.*Expenses.*More/ : /Home.*Portfolio.*Rentals.*Income.*Expenses.*Paperwork/).test(order)) throw new Error('order: ' + order);
@@ -323,10 +323,12 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.locator(`${top} [aria-label="Settings"]`).click(); await pg.waitForSelector('h1:has-text("Your Keyholder")');
       if (!(await pg.locator(`${top} .signout-icon`).isVisible())) throw new Error('no small Sign out icon at the top right of Settings');
       if (await pg.locator('.page > .page-head >> text=Sign out').count()) throw new Error('a big Sign out button is still by the title');
-      const order2 = (await pg.locator('.section-title').allTextContents()).join(' | ');
-      if (!/^Preferences \| Your profile \| Receipts and reminders/.test(order2)) throw new Error('Settings order: ' + order2);
-      const prefs = (await pg.locator('#preferences .pref-t').allTextContents()).join(' | ');
-      if (prefs !== 'Appearance | Two-step sign-in | Rent tracking') throw new Error('Preferences: ' + prefs);
+      // Settings in tabs: Profile first (with two-step sign-in), then Preferences (Appearance, Rent tracking).
+      const tabs = (await pg.locator('.settings-tabs .tab').allTextContents()).join(' | ');
+      if (tabs !== 'Profile | Preferences | Reminders | Data | Billing') throw new Error('Settings tabs: ' + tabs);
+      await pg.waitForSelector('#profile #profile-form'); await pg.waitForSelector('#pref-two-step');
+      await pg.click('#st-tab-preferences'); await pg.waitForSelector('#preferences .pref-t'); const prefs = (await pg.locator('#preferences .pref-t').allTextContents()).join(' | ');
+      if (prefs !== 'Appearance | Rent tracking') throw new Error('Preferences: ' + prefs);
       if (tag === 'phone') { const hub = pg.locator('.bottombar a').nth(2); if (!(await hub.evaluate((a) => a.classList.contains('hub') && a.textContent.includes('Rentals')))) throw new Error('Rentals is not the raised middle button'); }
       if (await pg.locator('.bottombar .capture, .rail >> text=Add a receipt').count()) throw new Error('receipt still in the menu');
       for (const l of labels) { await pg.locator(tag === 'phone' ? `.bottombar >> text=${l}` : `.rail >> text=${l}`).first().click(); await pg.waitForSelector(`h1:has-text("${l === 'Home' ? 'Home' : l === 'Settings' ? 'Your Keyholder' : l}")`, { state: 'attached' }); }
