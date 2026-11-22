@@ -920,19 +920,20 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.goto(BASE + '#/welcome'); await pg.waitForTimeout(500);
       if (tag === 'phone') {
         if (!(await hidden('.lp-sticky'))) throw new Error('shown at the top, next to the page button');
-        await scrollTo('#tour'); if (await hidden('.lp-sticky')) throw new Error('not shown by the tour');
+        await scrollTo('.lp-how .lp-step:nth-child(2)'); if (await hidden('.lp-sticky')) throw new Error('not shown mid-page');
         await scrollTo('.lp-cta-card'); if (!(await hidden('.lp-sticky'))) throw new Error('shown next to the closing card');
       } else {
-        for (const sel of ['#tour', '.lp-cta-card']) { if (await hidden('.lp-nav-cta')) throw new Error('hidden before ' + sel); await scrollTo(sel); }
+        for (const sel of ['.lp-how .lp-step:nth-child(2)', '.lp-cta-card']) { if (await hidden('.lp-nav-cta')) throw new Error('hidden before ' + sel); await scrollTo(sel); }
         if (await hidden('.lp-nav-cta')) throw new Error('hidden next to the closing card');
         await pg.goto(BASE + '#/welcome/pricing'); await pg.waitForTimeout(500); if (await hidden('.lp-nav-cta')) throw new Error('hidden on Pricing');
       }
     });
-    await step(tag, 'I3 The menu lights up Features while the tour is on screen', async () => {
+    await step(tag, 'I3 The menu lights up the page you are on (Overview, Features, Contact)', async () => {
       if (tag === 'phone') return 'computer menu';
-      await pg.goto(BASE + '#/welcome'); await pg.waitForTimeout(400);
-      if ((await pg.locator('.lp-links a.on').textContent()) !== 'Overview') throw new Error('top: not Overview');
-      await scrollTo('#tour'); if ((await pg.locator('.lp-links a.on').textContent()) !== 'Features') throw new Error('tour: not Features');
+      for (const [r, l] of [['', 'Overview'], ['features', 'Features'], ['contact', 'Contact']]) {
+        await pg.goto(BASE + '#/welcome/' + r); await pg.waitForTimeout(300);
+        if ((await pg.locator('.lp-links a.on').textContent()) !== l) throw new Error(`${r || 'overview'}: not ${l}`);
+      }
     });
     await step(tag, 'I4 Provinces opens on the province of the device (Vancouver → BC)', async () => {
       await pg.goto(BASE + '#/welcome/provinces'); await pg.waitForSelector('.lp-tile.on');
