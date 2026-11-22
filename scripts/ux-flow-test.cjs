@@ -367,11 +367,11 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     await step(tag, 'D3 Menu → About → tap BC → BC forms; questions on the same page', async () => { await menuGo('About'); await pg.waitForSelector('h1:has-text("Made for Canadian landlords")'); await pg.waitForSelector('#faq .lp-faq'); await pg.locator('.lp-tile:has-text("BC")').click(); await pg.waitForSelector('.lp-map-info >> text=British Columbia'); await pg.waitForSelector('.lp-map-info >> text=RTB'); });
     const tourInView = () => pg.waitForFunction(() => { const r = document.getElementById('explore')?.getBoundingClientRect(); return !!r && r.top >= -2 && r.top < window.innerHeight / 2; }, null, { timeout: 5000 });
     await step(tag, 'D4 Every menu page opens, Features jumps to the feature explorer, browser back works', async () => {
-      for (const [l, h] of [['Pricing', 'Simple pricing'], ['About', 'Made for Canadian landlords'], ['Overview', 'Keep every expense']]) { await menuGo(l); await pg.waitForSelector(`h1:has-text("${h}")`); }
-      await menuGo('Features'); await pg.waitForSelector('h1:has-text("Keep every expense")'); await tourInView();
+      for (const [l, h] of [['Pricing', 'Simple pricing'], ['About', 'Made for Canadian landlords'], ['Overview', 'Manage your rental property']]) { await menuGo(l); await pg.waitForSelector(`h1:has-text("${h}")`); }
+      await menuGo('Features'); await pg.waitForSelector('h1:has-text("Manage your rental property")'); await tourInView();
       await pg.evaluate(() => window.scrollTo(0, 0)); await menuGo('Features'); await tourInView();
       await menuGo('Pricing'); await pg.waitForSelector('h1:has-text("Simple pricing")');
-      await pg.goBack(); await pg.waitForSelector('h1:has-text("Keep every expense")');
+      await pg.goBack(); await pg.waitForSelector('h1:has-text("Manage your rental property")');
       await menuGo('Overview');
       if (await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) throw new Error('sideways scroll');
     });
