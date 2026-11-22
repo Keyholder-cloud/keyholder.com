@@ -1,6 +1,7 @@
 import { SecurityPage } from './Security';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fmtPrice, useUnitPrice } from '../data/pricing';
+import { FeatureExplorer, HeroMock, HOW, JobsStrip, useFeatureTab } from './LandingParts';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import type { Province } from '../data/types';
@@ -10,7 +11,6 @@ import { Brand } from '../components/Brand';
 import { AnnouncementBar } from '../support/Announcement';
 import { province } from '../lib/jurisdiction';
 import { AUTHORITY_URL, formsFor } from '../lib/forms';
-import heroPhoto from '../assets/photos/home-modern.webp';
 import keysPhoto from '../assets/photos/keys.webp';
 import aptPhoto from '../assets/photos/apartment.webp';
 import shotRent from '../assets/screens/rent.webp';
@@ -35,7 +35,7 @@ const PAGES = [
 type PageId = (typeof PAGES)[number]['id'];
 const href = (id: string) => (id ? `/welcome/${id}` : '/welcome');
 /** "Features" is the tour on the Overview page, not a page of its own. */
-const toTour = () => requestAnimationFrame(() => document.getElementById('tour')?.scrollIntoView({ block: 'start' }));
+const toTour = () => requestAnimationFrame(() => document.getElementById('explore')?.scrollIntoView({ block: 'start' }));
 
 /** Adds "shown" to every .reveal element as it scrolls into view. */
 /**
@@ -186,7 +186,7 @@ export function Landing() {
           <nav aria-label="Trust">
             <p>Trust</p><Link to="/welcome/security">Security &amp; privacy</Link><Link to="/welcome/security#bank">Bank connections (Plaid)</Link><Link to="/welcome/security#rights">Privacy policy</Link><Link to="/welcome/security#terms">Terms of use</Link>
           </nav>
-          <p className="lp-legal">Keyholder prepares documents and information. It does not give legal or tax advice, file returns, or hold or move money. Check notice periods and forms with your province's tenancy board before you serve one. Screens show sample properties. Photos from Unsplash. © 2026 Keyholder.</p>
+          <p className="lp-legal">Keyholder is not a law firm or a tax advisor. It prepares documents and numbers for your review; it does not give legal or tax advice, file returns, or hold or move money. Check notice periods and forms with your province's tenancy board before you serve one. Screens show sample properties. Photos from Unsplash. © 2026 Keyholder.</p>
         </div>
       </footer>
 
@@ -253,25 +253,12 @@ function CountUp({ to, decimals = 0, prefix = '', suffix = '' }: { to: number; d
 
 // ================================================================ Overview
 const TONES = ['lilac', 'mint', 'sky', 'peach', 'sun', 'rose'] as const;
-const AUTO: [string, string, string][] = [['receipt', 'Receipts', 'mint'], ['bell', 'Reminders', 'peach'], ['paper', 'Notices', 'lilac'], ['print', 'Taxes', 'sun']];
 const ModeBadge = ({ mode }: { mode: 'auto' | 'approve' }) => <span className={`mode-badge ${mode}`}><Icon name={mode === 'auto' ? 'sparkle' : 'check'} size={13} />{mode === 'auto' ? 'Automatic' : 'You approve'}</span>;
 
-/** Sharp line icons for the three set-up steps (24 px grid, even stroke). */
-function StepIcon({ name }: { name: 'home' | 'bank' | 'tap' }) {
-  const d = {
-    home: 'M3.5 10.5 12 3.75l8.5 6.75M5.75 9v11.25h7.5M18.25 9v4.5M18.5 16v5.5M15.75 18.75h5.5',
-    bank: 'M3.5 9.25 12 4l8.5 5.25M5.5 10.75v6.5M9.83 10.75v6.5M14.17 10.75v6.5M18.5 10.75v6.5M3.5 20.25h17',
-    tap: 'M9.25 9.25 19.75 13l-4.5 1.75-1.75 4.5zM4.5 4.5l2 2M9.25 2.75V5.5M2.75 9.25H5.5M4.75 13.75l1.75-1.75M13.75 4.75 12 6.5',
-  }[name];
-  return <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={d} /></svg>;
-}
-const STEPS: ['home' | 'bank' | 'tap', string, string, string][] = [
-  ['home', 'Add your property', 'Address, units and tenants.', 'About 10 min'],
-  ['bank', 'Connect your bank', 'View only. Or skip it.', 'About 5 min'],
-  ['tap', 'Tap to approve', 'Nothing is sent without you.', 'One tap'],
-];
 
 function Overview({ start }: { start: () => void }) {
+  const ft = useFeatureTab();
+  const cents = useUnitPrice();
   return (
     <>
       <section className="lp-hero">
@@ -279,34 +266,37 @@ function Overview({ start }: { start: () => void }) {
         <div className="lp-wrap lp-hero-grid">
           <div className="lp-hero-copy">
             <p className="lp-pill"><Icon name="home" size={16} />For Canadian landlords</p>
-            <h1 className="lp-hero-h">Rental automation that gives you your <em>weekends back.</em></h1>
-            <p className="lp-lede lp-hero-lede">Keyholder automates the busywork of renting. You approve, it does the rest.</p>
-            <ul className="lp-auto" aria-label="What Keyholder automates">
-              {AUTO.map(([ic, label, tone]) => <li key={label}><span className={`lp-tile-ic ${tone}`}><Icon name={ic} size={16} /></span>{label}</li>)}
-            </ul>
-            <div className="btn-row" data-cta>
-              <GetStarted start={start} big note />
+            <h1 className="lp-hero-h">Keep every expense. <em>Get back what you’re owed at tax time.</em></h1>
+            <p className="lp-lede lp-hero-lede">The rental toolkit for landlords: expenses, rent receipts, tenant applications, notices and your year-end taxes in one place.</p>
+            <div className="btn-row lp-hero-ctas" data-cta>
+              <GetStarted start={start} big />
+              <a className="lp-how-link" href="#how" onClick={(e) => { e.preventDefault(); document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' }); }}>How it works<Icon name="next" size={16} /></a>
             </div>
+            <p className="lp-go-note"><Icon name="check" size={16} />Connect your bank or upload a statement · No credit card required</p>
           </div>
-          <div className="lp-hero-visual">
-            <Photo src={heroPhoto} alt="A modern two-storey rental home with wood and grey panels and a green lawn" className="hero" />
-            <WeekStrip />
-          </div>
+          <div className="lp-hero-visual"><HeroMock /></div>
+        </div>
+        <div className="lp-wrap"><JobsStrip onPick={ft.pick} /></div>
+      </section>
+
+      <section className="lp-sec" id="explore">
+        <div className="lp-wrap">
+          <SecHead kicker="What Keyholder does" title="Less money lost, less paperwork, fewer mistakes." />
+          <FeatureExplorer tab={ft.tab} setTab={ft.setTab} />
         </div>
       </section>
 
-      <section className="lp-sec lp-how">
+      <section className="lp-sec lp-how" id="how">
         <div className="lp-wrap">
           <div className="lp-how-panel">
-            <SecHead kicker="How it works" title="3 steps. 15 minutes." />
+            <SecHead kicker="How it works" title="3 steps." />
             <ol className="lp-steps">
-              {STEPS.map(([ic, t, d, time], i) => (
+              {HOW.map(([ic, t, d], i) => (
                 <li key={t} className="lp-step reveal" style={{ transitionDelay: `${i * 80}ms` }}>
-                  <div className="lp-step-top"><span className="lp-step-ic"><StepIcon name={ic} /></span><span className="lp-step-n">Step {i + 1}</span></div>
+                  <div className="lp-step-top"><span className="lp-step-ic"><Icon name={ic} size={22} /></span><span className="lp-step-n">Step {i + 1}</span></div>
                   <h3>{t}</h3>
                   <p>{d}</p>
-                  <span className="lp-step-time"><Icon name={i < 2 ? 'clock' : 'check'} size={14} />{time}</span>
-                  {i < STEPS.length - 1 && <span className="lp-step-arrow" aria-hidden><Icon name="next" size={16} /></span>}
+                  {i < HOW.length - 1 && <span className="lp-step-arrow" aria-hidden><Icon name="next" size={16} /></span>}
                 </li>
               ))}
             </ol>
@@ -315,6 +305,19 @@ function Overview({ start }: { start: () => void }) {
       </section>
 
       <Tour />
+
+      <section className="lp-sec lp-who">
+        <div className="lp-wrap">
+          <p className="lp-who-line"><strong>Who it’s for:</strong> every landlord in Canada who manages their own rentals, from a basement suite to many properties. You don’t need to be an accountant: Keyholder explains each step in plain words.</p>
+        </div>
+      </section>
+
+      <section className="lp-sec" id="faq">
+        <div className="lp-wrap lp-faq-wrap">
+          <SecHead kicker="Questions" title="Straight answers." />
+          {FAQ.map(([ic, q, a], i) => <details key={q} className="lp-faq"><summary><span className={`lp-tile-ic ${TONES[i % TONES.length]}`}><Icon name={ic} size={18} /></span>{q}</summary><p>{a.replace('{price}', fmtPrice(cents))}</p></details>)}
+        </div>
+      </section>
     </>
   );
 }
@@ -564,50 +567,3 @@ const HeroLines = () => (
   </div>
 );
 
-// ================================================================ "Your week" strip over the hero photo
-// Three cards show at a time: the middle one is in focus, the two beside it fade out. It steps from Monday to
-// Sunday and starts again. Pauses on hover; stays still for people who turn motion off.
-const WEEK: { day: string; ic?: string; tone?: string; t: string; d: string }[] = [
-  { day: 'Mon', ic: 'receipt', tone: 'mint', t: 'Maya paid $1,650', d: 'Receipt sent' },
-  { day: 'Tue', ic: 'bell', tone: 'peach', t: 'Reminder sent', d: 'To Jordan & Priya' },
-  { day: 'Wed', ic: 'bank', tone: 'lilac', t: 'Bank checked', d: '2 deposits found' },
-  { day: 'Thu', ic: 'print', tone: 'sun', t: '3 bills sorted', d: 'Ready for taxes' },
-  { day: 'Fri', ic: 'chart', tone: 'sky', t: 'Month summary', d: 'You kept $726' },
-  { day: 'Sat', t: 'Yours', d: 'Nothing to do' },
-  { day: 'Sun', t: 'Yours', d: 'Nothing to do' },
-];
-const SunIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden>
-    <circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
-  </svg>
-);
-function WeekStrip() {
-  const [i, setI] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const [still] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-  useEffect(() => {
-    if (still || paused) return;
-    const t = setTimeout(() => setI((x) => (x + 1) % WEEK.length), 2200);
-    return () => clearTimeout(t);
-  }, [i, paused, still]);
-  const n = WEEK.length;
-  return (
-    <div className="lp-week" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
-      <p className="lp-week-label"><Icon name="sparkle" size={14} />Your week with Keyholder</p>
-      <ol className="lp-week-track" aria-label="A week with Keyholder: Monday to Friday done for you, the weekend is yours">
-        {WEEK.map((w, k) => {
-          const off = ((k - i + n + Math.floor(n / 2)) % n) - Math.floor(n / 2); // -3..3, 0 is the middle
-          const free = !w.ic;
-          return (
-            <li key={w.day} className={`lp-week-card${off === 0 ? ' on' : ''}${free ? ' free' : ''}`} style={{ '--off': off } as CSSProperties} data-off={off} aria-hidden={off !== 0}>
-              <span className="lp-week-dn">{w.day}</span>
-              {free ? <span className="lp-week-sun"><SunIcon /></span> : <span className={`lp-tile-ic ${w.tone}`}><Icon name={w.ic!} size={18} /></span>}
-              <span className="lp-week-txt"><strong>{free ? <em>{w.t}</em> : w.t}</strong><span>{w.d}</span></span>
-              {!free && <span className="lp-week-ok" aria-label="Done"><Icon name="check" size={12} /></span>}
-            </li>
-          );
-        })}
-      </ol>
-    </div>
-  );
-}

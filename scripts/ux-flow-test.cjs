@@ -354,18 +354,24 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.goto(BASE);
       if (await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) throw new Error('sideways scroll');
     });
-    await step(tag, 'D2 Hero: modern rental photo, slow line background, "Your week" strip steps Mon → Sun (3 cards), 4 icon pills on one line', async () => { await pg.waitForSelector('.lp-week-card.on'); if (await pg.locator('.lp-hero .lp-photo img').count() !== 1) throw new Error('hero photo missing'); if (await pg.locator('.lp-hero-bg path').count() < 6) throw new Error('background lines missing'); if (await pg.locator('.lp-hero .lp-auto li .lp-tile-ic').count() !== 4) throw new Error('hero icons missing'); const tops = await pg.locator('.lp-auto li').evaluateAll((ls) => new Set(ls.map((l) => Math.round(l.getBoundingClientRect().top))).size); if (tops !== 1) throw new Error('pills on ' + tops + ' lines'); const shown = await pg.locator('.lp-week-card').evaluateAll((x) => x.filter((e) => getComputedStyle(e).opacity !== '0').length); if (shown !== 3) throw new Error(shown + ' cards showing'); const a = await pg.locator('.lp-week-card.on .lp-week-dn').textContent(); await pg.waitForTimeout(2700); const b2 = await pg.locator('.lp-week-card.on .lp-week-dn').textContent(); if (a === b2) throw new Error('stuck on ' + a); return a + ' → ' + b2; });
+    await step(tag, 'D2 Hero: the money outcome (12 words or fewer), the toolkit line, Get started + How it works, a dashboard picture (no house photo), and the five jobs in one row', async () => {
+      const h = (await pg.locator('.lp-hero-h').textContent()).trim(); if (h.split(/\s+/).length > 12) throw new Error('headline too long: ' + h);
+      if (!/rental toolkit for landlords/i.test(await pg.locator('.lp-hero-lede').textContent())) throw new Error('no toolkit line');
+      await pg.waitForSelector('.lp-hero .lp-how-link'); await pg.waitForSelector('.kh-hero-mock'); if (await pg.locator('.lp-hero .lp-photo img').count()) throw new Error('house photo in the hero');
+      const jobs = (await pg.locator('.kh-job').allTextContents()).join(' | '); if (jobs !== 'Track expenses | Send receipts | Screen tenants | Write notices | File taxes') throw new Error('jobs: ' + jobs);
+      await pg.locator('.kh-job', { hasText: 'File taxes' }).click(); await pg.waitForSelector('#kh-tab-taxes[aria-selected="true"]');
+    });
     // The phone menu must really fill the screen (it once collapsed to a 40px strip that a test could still click into).
     const menuOpen = async () => { await pg.locator('.lp-burger').click(); const box = await pg.locator('.lp-menu').boundingBox(); if (!box || box.height < vp.height * 0.6) throw new Error(`menu only ${box ? Math.round(box.height) : 0}px tall`); };
     const menuGo = async (label) => { if (tag === 'phone') { await menuOpen(); await pg.locator(`.lp-menu >> text=${label}`).click(); } else await pg.locator(`.lp-links >> text=${label}`).click(); await pg.waitForTimeout(250); };
     await step(tag, 'D3 Menu → About → tap BC → BC forms; questions on the same page', async () => { await menuGo('About'); await pg.waitForSelector('h1:has-text("Made for Canadian landlords")'); await pg.waitForSelector('#faq .lp-faq'); await pg.locator('.lp-tile:has-text("BC")').click(); await pg.waitForSelector('.lp-map-info >> text=British Columbia'); await pg.waitForSelector('.lp-map-info >> text=RTB'); });
-    const tourInView = () => pg.waitForFunction(() => { const r = document.getElementById('tour')?.getBoundingClientRect(); return !!r && r.top >= 0 && r.top < window.innerHeight / 2; }, null, { timeout: 5000 });
-    await step(tag, 'D4 Every menu page opens, Features jumps to the tour, browser back works', async () => {
-      for (const [l, h] of [['Pricing', 'Simple pricing'], ['About', 'Made for Canadian landlords'], ['Overview', 'Rental automation']]) { await menuGo(l); await pg.waitForSelector(`h1:has-text("${h}")`); }
-      await menuGo('Features'); await pg.waitForSelector('h1:has-text("Rental automation")'); await tourInView();
+    const tourInView = () => pg.waitForFunction(() => { const r = document.getElementById('explore')?.getBoundingClientRect(); return !!r && r.top >= -2 && r.top < window.innerHeight / 2; }, null, { timeout: 5000 });
+    await step(tag, 'D4 Every menu page opens, Features jumps to the feature explorer, browser back works', async () => {
+      for (const [l, h] of [['Pricing', 'Simple pricing'], ['About', 'Made for Canadian landlords'], ['Overview', 'Keep every expense']]) { await menuGo(l); await pg.waitForSelector(`h1:has-text("${h}")`); }
+      await menuGo('Features'); await pg.waitForSelector('h1:has-text("Keep every expense")'); await tourInView();
       await pg.evaluate(() => window.scrollTo(0, 0)); await menuGo('Features'); await tourInView();
       await menuGo('Pricing'); await pg.waitForSelector('h1:has-text("Simple pricing")');
-      await pg.goBack(); await pg.waitForSelector('h1:has-text("Rental automation")');
+      await pg.goBack(); await pg.waitForSelector('h1:has-text("Keep every expense")');
       await menuGo('Overview');
       if (await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) throw new Error('sideways scroll');
     });
@@ -596,15 +602,13 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     pg.on('pageerror', (e) => errsG.push(`G ${e.message}`));
     const tour = async () => { await pg.goto(BASE + '#/welcome'); await pg.locator('#tour').scrollIntoViewIfNeeded(); await pg.waitForTimeout(500); };
     const active = () => pg.evaluate(() => { const on = document.querySelector('.mac-screen img.on'); const sel = document.querySelector('.lp-tour-tab[aria-selected="true"]'); return { alt: on?.getAttribute('alt') || '', loaded: !!on && on.complete && on.naturalWidth > 0, tab: sel?.textContent || '', count: document.querySelector('.lp-tour-count')?.textContent || '' }; });
-    await step(tag, 'G1 Overview: short hero description, no ticks; How it works on a blue-purple panel with 3 short steps', async () => {
+    await step(tag, 'G1 Overview: a tabbed feature explorer (5 jobs, arrow keys move), How it works in 3 steps on the blue-purple panel, who it is for, and the questions', async () => {
       await pg.goto(BASE + '#/welcome'); await pg.waitForSelector('.lp-hero-h');
-      if (await pg.locator('.lp-ticks').count()) throw new Error('hero ticks still there');
-      const lede = (await pg.locator('.lp-hero-lede').textContent()).trim(); if (lede.length > 80) throw new Error('hero description too long: ' + lede.length);
+      if ((await pg.locator('.kh-tab').count()) !== 5) throw new Error('explorer tabs');
+      await pg.locator('#kh-tab-expenses').focus(); await pg.keyboard.press('ArrowRight'); await pg.waitForSelector('#kh-tab-taxes[aria-selected="true"]');
       const panel = await pg.locator('.lp-how-panel').evaluate((el) => getComputedStyle(el).backgroundImage); if (!/gradient/.test(panel)) throw new Error('How it works has no blue-purple background');
-      if ((await pg.locator('.lp-step-time').count()) !== 3) throw new Error('step time chips missing');
-      await pg.waitForSelector('.lp-how h2:has-text("3 steps. 15 minutes.")');
-      if ((await pg.locator('.lp-step').count()) !== 3 || (await pg.locator('.lp-step-ic svg').count()) !== 3) throw new Error('steps or icons missing');
-      const longest = await pg.$$eval('.lp-step p', (ps) => Math.max(...ps.map((x) => x.textContent.length))); if (longest > 40) throw new Error('step text too long: ' + longest);
+      if ((await pg.locator('.lp-how .lp-step').count()) !== 3) throw new Error('steps');
+      await pg.waitForSelector('.lp-who-line >> text=every landlord'); await pg.waitForSelector('#faq .lp-faq');
     });
     await step(tag, 'G2 Tour: each of the 8 features shows its own screen, counter follows', async () => {
       await tour(); if ((await pg.locator('.lp-tour-tab').count()) !== 8) throw new Error('not 8 features');
