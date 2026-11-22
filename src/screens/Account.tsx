@@ -8,7 +8,8 @@ import { Brand } from '../components/Brand';
 import { SceneWelcome } from '../components/Art';
 import { api, ApiError, getConn, isStaff, serverMode, setUser, type ServerUser } from '../data/api';
 import * as sync from '../data/sync';
-import { TwoStepCode } from '../components/TwoStep';
+import { bioName, canUseBiometrics, passkeyEmails, rememberPasskeyHere, TwoStepCode } from '../components/TwoStep';
+import { startAuthentication } from '@simplewebauthn/browser';
 
 // Sign up / sign in. With the Keyholder server (Stage 2), accounts are real: email and password (or Google,
 // when it is set up on the server), and the data is saved to the account. Without a server (the Claude
@@ -231,15 +232,44 @@ function CentralLogin({ onAccount, onTwoStep }: { onAccount: (email: string) => 
     } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   };
   const edit = (f: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => { f(e.target.value); setWrong(false); setErr(''); };
+  // Face ID sign-in: on a device where this account added Face ID, the email is filled in and one tap on
+  // "Sign in with Face ID" signs in (no password, no code). Its options are fetched before the tap, because
+  // Safari shows Face ID only straight after a tap.
+  const [bioOpts, setBioOpts] = useState<Parameters<typeof startAuthentication>[0]['optionsJSON'] | null>(null);
+  const [usePassword, setUsePassword] = useState(false);
+  useEffect(() => { if (server && !user) { const last = passkeyEmails().slice(-1)[0]; if (last) setUserName(last); } }, []);
+  const bioKnown = server && canUseBiometrics() && passkeyEmails().includes(user.trim().toLowerCase());
+  const loadBio = () => api<{ options: Parameters<typeof startAuthentication>[0]['optionsJSON'] }>('POST', '/api/auth/passkey/login-options', { email: user.trim() }).then((r) => setBioOpts(r.options)).catch(() => setBioOpts(null));
+  useEffect(() => { setBioOpts(null); if (bioKnown) void loadBio(); }, [bioKnown, user]);
+  const bioSignIn = () => {
+    if (!bioOpts) return;
+    setBusy(true); setErr('');
+    startAuthentication({ optionsJSON: bioOpts })
+      .catch(() => { throw new Error(`${bioName()} was cancelled. Tap to try again, or use your password.`); })
+      .then(async (passkey) => {
+        const r = await api<{ user: ServerUser }>('POST', '/api/auth/passkey/login', { email: user.trim(), passkey });
+        rememberPasskeyHere(passkey.id, r.user.email);
+        await afterSignIn(r.user, act, nav);
+      })
+      .catch((x) => { setErr((x as Error).message); setBusy(false); void loadBio(); });
+  };
+  const bioFirst = bioKnown && !usePassword;
   if (forgot) return <ForgotPassword email={user.includes('@') ? user.trim() : ''} onBack={() => setForgot(false)} />;
   return (
     <form className="acct-login" onSubmit={submit}>
       <div className="field"><label htmlFor="login-user">Email or username</label><input id="login-user" className="input" value={user} onChange={edit(setUserName)} autoComplete="username" autoCapitalize="none" placeholder="you@example.com" /></div>
-      <div className="field"><label htmlFor="login-pass">Password</label><input id="login-pass" type="password" className="input" value={pass} onChange={edit(setPass)} autoComplete="current-password" /></div>
-      {wrong && <p className="small acct-error" role="alert">That email, username or password is not right.</p>}
-      {err && <p className="small acct-error" role="alert">{err}</p>}
-      <button className="btn primary acct-login-btn" disabled={!user.trim() || !pass || busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
-      {server && <button type="button" className="btn ghost small acct-forgot" onClick={() => setForgot(true)}>Forgot your password?</button>}
+      {bioFirst ? <>
+        <button type="button" className="btn primary acct-login-btn" id="login-bio" disabled={busy || !bioOpts} onClick={bioSignIn}><Icon name="fingerprint" size={18} />{busy ? 'Look at your device…' : `Sign in with ${bioName()}`}</button>
+        {err && <p className="small acct-error" role="alert">{err}</p>}
+        <button type="button" className="link-btn small" id="login-use-password" onClick={() => { setUsePassword(true); setErr(''); }}>Use my password instead</button>
+      </> : <>
+        <div className="field"><label htmlFor="login-pass">Password</label><input id="login-pass" type="password" className="input" value={pass} onChange={edit(setPass)} autoComplete="current-password" /></div>
+        {wrong && <p className="small acct-error" role="alert">That email, username or password is not right.</p>}
+        {err && <p className="small acct-error" role="alert">{err}</p>}
+        <button className="btn primary acct-login-btn" disabled={!user.trim() || !pass || busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+        {server && <button type="button" className="btn ghost small acct-forgot" onClick={() => setForgot(true)}>Forgot your password?</button>}
+        {bioKnown && <button type="button" className="link-btn small" onClick={() => setUsePassword(false)}><Icon name="fingerprint" size={14} />Sign in with {bioName()} instead</button>}
+      </>}
     </form>
   );
 }

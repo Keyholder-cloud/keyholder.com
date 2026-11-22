@@ -81,3 +81,9 @@ export function tenantMails(state: AppState, m: Message, accountId: string): Mai
     dedupeKey: `msg:${accountId}:${m.id}:${p.email!.toLowerCase()}`,
   }));
 }
+
+/** Two-step sign-in by email: the 6-digit code for a device without Face ID or an authenticator app. */
+export const twoStepCodeMail = (to: string, name: string, code: string): Mail => ({
+  kind: 'two-step-code', to, toName: name, subject: `${code} is your Keyholder sign-in code`,
+  text: `Hi ${first(name)},\n\nYour Keyholder sign-in code is ${code}. It works once, for 10 minutes.\n\nIf you did not just sign in, do not share it: change your password in Keyholder, Settings.${sign}`,
+});

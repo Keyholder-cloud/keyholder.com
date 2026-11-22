@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
@@ -11,8 +11,8 @@ import type { AppState } from '../src/data/types';
 import { emptyState } from '../src/data/seed';
 import type { Config } from './config';
 import type { Db } from './db';
-import { queueMail, recordError } from './email';
-import { newTicketAdminMail, resetMail, ticketAckMail, welcomeMail } from './mails';
+import { queueMail, recordError, sendDue } from './email';
+import { newTicketAdminMail, resetMail, ticketAckMail, twoStepCodeMail, welcomeMail } from './mails';
 import { burnPasswordCheck, newToken, normEmail, passwordProblem, sha256, verifyPassword, hashPassword } from './security';
 import { backupHash, checkCode, looksLikeBackup, newBackupCodes, newSecret, otpauthUri } from './totp';
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from '@simplewebauthn/server';
@@ -281,12 +281,32 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   // The second step: the code from the authenticator app, or a backup code. `trust`: skip the code here for 30 days.
   // Limited per sign-in (each ticket allows 5 wrong codes); a new ticket needs the password again.
   const ticketLimit = { rateLimit: { hook: 'preHandler' as const, max: 10, timeWindow: '1 minute', keyGenerator: (r: FastifyRequest) => `${r.ip}:${String((r.body as { ticket?: string })?.ticket ?? '').slice(0, 16)}` } };
-  app.post('/api/auth/two-step', { config: ticketLimit }, async (req, reply) => {
-    const b = z.object({ ticket: z.string().min(10).max(100), code: z.string().max(20).optional(), passkey: z.any().optional(), trust: z.boolean().optional() }).parse(req.body);
-    const t = await db.one<{ user_id: string; attempts: number; challenge: string | null }>(`select user_id, attempts, challenge from two_step_tickets where token_hash = $1 and used_at is null and expires_at > now()`, [sha256(b.ticket)]);
+  // A 6-digit code by email (a device with no Face ID and no authenticator app). Used once, 10 minutes,
+  // at most 3 per sign-in; the email shows only partly on screen.
+  app.post('/api/auth/two-step/email', { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } }, async (req) => {
+    const { ticket } = z.object({ ticket: z.string().min(10).max(100) }).parse(req.body);
+    const t = await db.one<{ user_id: string; attempts: number; email_sends: number }>(`select user_id, attempts, email_sends from two_step_tickets where token_hash = $1 and used_at is null and expires_at > now()`, [sha256(ticket)]);
     const u = t && t.attempts < 5 ? await userById(db, t.user_id) : undefined;
     if (!u || u.disabled_at || !twoStepOn(u)) fail(400, 'This sign-in has expired. Please sign in again.');
-    const how = b.passkey ? ((await checkPasskey(u!, b.passkey, t!.challenge)) ? 'passkey' : null) : b.code ? await secondFactor(u!, b.code) : null;
+    if (t!.email_sends >= 3) fail(429, 'Three codes were sent already. Check your inbox (and spam), or sign in again.');
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    await db.query(`update two_step_tickets set email_code_hash = $2, email_code_at = now(), email_sends = email_sends + 1, expires_at = greatest(expires_at, now() + interval '10 minutes') where token_hash = $1`, [sha256(ticket), sha256(`email:${code}`)]);
+    await queueMail(db, twoStepCodeMail(u!.email, u!.name, code));
+    if (cfg.worker === 'inline') void sendDue(cfg, db, 5, keys).catch(() => undefined); // now, not at the next tick
+    await audit(db, { actor: u!.email, actorId: u!.id, scope: 'auth', action: 'Sign-in code emailed', ip: ip(req) });
+    const [name, domain] = u!.email.split('@');
+    return { sentTo: `${name.slice(0, 1)}•••@${domain}` };
+  });
+
+  app.post('/api/auth/two-step', { config: ticketLimit }, async (req, reply) => {
+    const b = z.object({ ticket: z.string().min(10).max(100), code: z.string().max(20).optional(), passkey: z.any().optional(), trust: z.boolean().optional() }).parse(req.body);
+    const t = await db.one<{ user_id: string; attempts: number; challenge: string | null; email_code_hash: string | null; email_code_at: Date | null }>(`select user_id, attempts, challenge, email_code_hash, email_code_at from two_step_tickets where token_hash = $1 and used_at is null and expires_at > now()`, [sha256(b.ticket)]);
+    const u = t && t.attempts < 5 ? await userById(db, t.user_id) : undefined;
+    if (!u || u.disabled_at || !twoStepOn(u)) fail(400, 'This sign-in has expired. Please sign in again.');
+    // An emailed code (if one was sent in the last 10 minutes), else the app or a backup code.
+    const emailOk = !!b.code && !!t!.email_code_hash && !!t!.email_code_at && Date.now() - new Date(t!.email_code_at).getTime() < 10 * 60_000
+      && t!.email_code_hash === sha256(`email:${b.code.replace(/\s/g, '')}`);
+    const how = b.passkey ? ((await checkPasskey(u!, b.passkey, t!.challenge)) ? 'passkey' : null) : emailOk ? 'email' : b.code ? await secondFactor(u!, b.code) : null;
     if (!how) {
       await db.query('update two_step_tickets set attempts = attempts + 1 where token_hash = $1', [sha256(b.ticket)]);
       await audit(db, { actor: u!.email, actorId: u!.id, scope: 'auth', action: 'Sign-in failed', detail: 'Wrong two-step code', ip: ip(req) });
@@ -295,7 +315,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     await db.query('update two_step_tickets set used_at = now() where token_hash = $1', [sha256(b.ticket)]);
     await startSession(req, reply, u!);
     if (b.trust) await rememberDevice(req, reply, u!);
-    await audit(db, { actor: u!.email, actorId: u!.id, scope: 'auth', action: 'Signed in', detail: how === 'backup' ? 'Two-step: backup code' : how === 'passkey' ? 'Two-step: fingerprint or face' : 'Two-step: authenticator code', ip: ip(req) });
+    await audit(db, { actor: u!.email, actorId: u!.id, scope: 'auth', action: 'Signed in', detail: how === 'backup' ? 'Two-step: backup code' : how === 'email' ? 'Two-step: emailed code' : how === 'passkey' ? 'Two-step: fingerprint or face' : 'Two-step: authenticator code', ip: ip(req) });
     return { user: publicUser((await userById(db, u!.id))!) };
   });
 
@@ -468,6 +488,31 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     if (ticket) await db.query('update two_step_tickets set challenge = $2 where token_hash = $1', [sha256(ticket), options.challenge]);
     else await db.query('update users set webauthn_challenge = $2, webauthn_challenge_at = now() where id = $1', [u!.id, options.challenge]);
     return { options, app: !!u!.totp_secret };
+  });
+
+  // Sign in with Face ID alone (email, then fingerprint or face on a device where it was added). A passkey with
+  // the device's own fingerprint/face check is both steps at once: something you have and something you are.
+  app.post('/api/auth/passkey/login-options', { config: authLimit }, async (req) => {
+    const { email } = z.object({ email: z.string().trim().max(200) }).parse(req.body);
+    const u = await userByEmail(db, email);
+    const mine = u && !u.disabled_at ? await passkeysOf(u.id) : [];
+    // Same answer shape whether or not the account exists (nothing to learn from it).
+    const options = await generateAuthenticationOptions({ rpID: rp.id, allowCredentials: mine.map((x) => ({ id: x.id, transports: x.transports ?? undefined })), userVerification: 'required' });
+    if (u && mine.length) await db.query('update users set webauthn_challenge = $2, webauthn_challenge_at = now() where id = $1', [u.id, options.challenge]);
+    return { options };
+  });
+  app.post('/api/auth/passkey/login', { config: authLimit }, async (req, reply) => {
+    const b = z.object({ email: z.string().trim().max(200), passkey: z.any() }).parse(req.body);
+    const u = await userByEmail(db, b.email);
+    const fresh = !!u?.webauthn_challenge_at && Date.now() - new Date(u.webauthn_challenge_at).getTime() < 5 * 60_000;
+    if (!u || u.disabled_at || !fresh || !(await checkPasskey(u, b.passkey, u.webauthn_challenge))) {
+      if (u) await audit(db, { actor: u.email, actorId: u.id, scope: 'auth', action: 'Sign-in failed', detail: 'Fingerprint or face', ip: ip(req) });
+      fail(401, 'That did not work. Sign in with your password or Google instead.');
+    }
+    await db.query('update users set webauthn_challenge = null, last_login_at = now() where id = $1', [u!.id]);
+    await startSession(req, reply, u!);
+    await audit(db, { actor: u!.email, actorId: u!.id, scope: 'auth', action: 'Signed in', detail: 'Fingerprint or face (no password)', ip: ip(req) });
+    return { user: publicUser((await userById(db, u!.id))!) };
   });
 
   app.post('/api/auth/logout', async (req, reply) => {

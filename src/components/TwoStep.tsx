@@ -14,91 +14,131 @@ import { useConfirmIt } from './ConfirmIt';
 
 const BIO_OFFER_KEY = 'kh_offer_bio';
 const BIO_OFFER_NO = 'kh_offer_bio_no';
+type RegOpts = Parameters<typeof startRegistration>[0]['optionsJSON'];
+type AuthOpts = Parameters<typeof startAuthentication>[0]['optionsJSON'];
 
-/**
- * After signing in with a code on a phone or computer that can use fingerprint or face, a one-line offer:
- * "Use Face ID on this device next time". Signing in just now counts as confirming it is you, so one tap adds
- * it. "Not now" hides it on this device for good (it stays in Settings → Two-step sign-in).
- */
-export function BioOffer() {
-  const { user } = useConn();
-  const [show, setShow] = useState(() => { try { return sessionStorage.getItem(BIO_OFFER_KEY) === '1' && localStorage.getItem(BIO_OFFER_NO) !== '1'; } catch { return false; } });
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
-  const [confirm, confirmScreen] = useConfirmIt('Before adding fingerprint or face on this device, confirm it is you.');
-  if (!show || !user || !serverMode()) return null;
-  const close = (never: boolean) => { try { sessionStorage.removeItem(BIO_OFFER_KEY); if (never) localStorage.setItem(BIO_OFFER_NO, '1'); } catch { /* fine */ } setShow(false); };
-  const add = () => confirm(async () => {
-    setBusy(true); setMsg('');
-    try { const r = await addThisDevice(); setUser(r.user); close(false); }
-    catch (x) { setMsg((x as Error).message); setBusy(false); }
-  }, 'passkey');
-  return (
-    <div className="callout sky bio-offer" role="region" aria-label="Fingerprint or face" id="bio-offer">
-      <Icon name="fingerprint" size={18} />
-      <span style={{ flex: 1, minWidth: 180 }}><strong>Skip the code next time?</strong> Use Face ID, Touch ID or your fingerprint on this device.{msg && <span className="small acct-error" style={{ display: 'block' }}>{msg}</span>}</span>
-      <button className="btn primary small" id="bio-offer-yes" disabled={busy} onClick={add}>{busy ? 'Follow the prompt…' : 'Set it up'}</button>
-      <button className="btn ghost small" id="bio-offer-no" onClick={() => close(true)}>Not now</button>
-      {confirmScreen}
-    </div>
-  );
-}
+/** What this device calls it: Face ID on iPhone and iPad, Touch ID on a Mac, and so on. */
+export const bioName = () => {
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent;
+  return /iPhone|iPad/.test(ua) ? 'Face ID' : /Macintosh/.test(ua) ? 'Touch ID' : /Android/.test(ua) ? 'fingerprint' : /Windows/.test(ua) ? 'Windows Hello' : 'fingerprint or face';
+};
 
-// Which fingerprint/face devices (passkey ids) were added or used in this browser. A passkey lives on the
-// device that made it (unless the phone's keychain synced it), so the sign-in screen leads with Face ID only
-// where it is known to be; elsewhere it asks for the code once and offers Face ID for that device afterwards.
+// Which fingerprint/face devices (passkey ids) and which accounts (emails) were added or used in this
+// browser. A passkey lives on the device that made it, so sign-in leads with Face ID only where it is known to
+// be; elsewhere it asks for a code once and offers Face ID for that device afterwards.
 const HERE_KEY = 'kh_passkeys_here';
-const hereIds = (): string[] => { try { return JSON.parse(localStorage.getItem(HERE_KEY) ?? '[]'); } catch { return []; } };
-export const rememberPasskeyHere = (id?: string) => { if (!id) return; try { localStorage.setItem(HERE_KEY, JSON.stringify([...new Set([...hereIds(), id])].slice(-10))); } catch { /* fine */ } };
+const EMAILS_KEY = 'kh_passkey_emails';
+const readList = (k: string): string[] => { try { return JSON.parse(localStorage.getItem(k) ?? '[]'); } catch { return []; } };
+const hereIds = () => readList(HERE_KEY);
+/** Accounts that can sign in with Face ID on this device (newest last). */
+export const passkeyEmails = () => readList(EMAILS_KEY);
+export const rememberPasskeyHere = (id?: string, email?: string) => {
+  try {
+    if (id) localStorage.setItem(HERE_KEY, JSON.stringify([...new Set([...hereIds(), id])].slice(-10)));
+    if (email) localStorage.setItem(EMAILS_KEY, JSON.stringify([...passkeyEmails().filter((e) => e !== email.toLowerCase()), email.toLowerCase()].slice(-5)));
+  } catch { /* fine */ }
+};
 
 /** This browser can use fingerprint or face (WebAuthn). */
 export const canUseBiometrics = () => typeof window !== 'undefined' && browserSupportsWebAuthn();
 
-/** Asks for fingerprint or face to add this device; returns backup codes when it turned two-step sign-in on. */
-async function addThisDevice(): Promise<{ backupCodes: string[] | null; user: ServerUser }> {
-  const optionsJSON = await api<Parameters<typeof startRegistration>[0]['optionsJSON']>('POST', '/api/auth/passkey/register-options', {});
+// Safari (iPhone, Mac) shows Face ID or Touch ID only straight after a tap: anything fetched from the server
+// must be ready before the tap. So the options are fetched first, and the tap calls the prompt directly.
+const fetchRegOpts = () => api<RegOpts>('POST', '/api/auth/passkey/register-options', {}).catch(() => null);
+async function finishAdd(opts: RegOpts): Promise<{ backupCodes: string[] | null; user: ServerUser }> {
   let response;
-  try { response = await startRegistration({ optionsJSON }); }
-  catch (e) { throw new Error((e as Error).name === 'InvalidStateError' ? 'This device is already added.' : 'Fingerprint or face was cancelled or is not set up on this device.'); }
+  try { response = await startRegistration({ optionsJSON: opts }); }
+  catch (e) { throw new Error((e as Error).name === 'InvalidStateError' ? 'This device is already added.' : `${bioName()} was cancelled. Tap again to try once more.`); }
   const r = await api<{ backupCodes: string[] | null; user: ServerUser }>('POST', '/api/auth/passkey/register', { response });
-  rememberPasskeyHere(response.id);
+  rememberPasskeyHere(response.id, r.user.email);
   return r;
 }
 
-/** Asks for fingerprint or face to confirm it is you (a signed-in action, or `ticket` at sign-in). */
-async function confirmWithBiometrics(ticket?: string) {
-  const r = await api<{ options: Parameters<typeof startAuthentication>[0]['optionsJSON'] | null }>('POST', '/api/auth/passkey/options', ticket ? { ticket } : {});
-  if (!r.options) throw new Error('No fingerprint or face is set up for this account.');
-  try { const a = await startAuthentication({ optionsJSON: r.options }); rememberPasskeyHere(a.id); return a; }
-  catch { throw new Error('Fingerprint or face is not set up on this device, or was cancelled. Use your code this time.'); }
+/**
+ * Adding Face ID on this device: options are fetched ahead; if the sign-in is not recent, "Confirm it's you"
+ * comes first and the button then reads "Scan Face ID now" (a second tap, so Safari allows the prompt).
+ */
+function useAddDevice(reason: string, onAdded: (r: { backupCodes: string[] | null; user: ServerUser }) => void) {
+  const [opts, setOpts] = useState<RegOpts | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  // Confirmed just now: the next tap opens Face ID (the button says so).
+  const [armed, setArmed] = useState(false);
+  const [confirm, confirmScreen] = useConfirmIt(reason);
+  useEffect(() => { if (serverMode()) void fetchRegOpts().then(setOpts); }, []);
+  const start = () => {
+    setErr('');
+    if (!opts) { void confirm(async () => { const o = await fetchRegOpts(); setOpts(o); setArmed(!!o); }, 'passkey'); return; }
+    setArmed(false);
+    setBusy(true);
+    finishAdd(opts).then(onAdded).catch((x) => { setErr((x as Error).message); void fetchRegOpts().then(setOpts); }).finally(() => setBusy(false));
+  };
+  return { start, busy, err, ready: !!opts, armed, confirmScreen };
 }
 
-/** The code step of signing in, after the password (or Google) was right. */
+/**
+ * After signing in with a code on a phone or computer that can use fingerprint or face, a one-line offer:
+ * "Use Face ID next time?". One tap adds it. "Not now" hides it on this device for good (Settings has it too).
+ */
+export function BioOffer() {
+  const { user } = useConn();
+  const [show, setShow] = useState(() => { try { return sessionStorage.getItem(BIO_OFFER_KEY) === '1' && localStorage.getItem(BIO_OFFER_NO) !== '1'; } catch { return false; } });
+  const close = (never: boolean) => { try { sessionStorage.removeItem(BIO_OFFER_KEY); if (never) localStorage.setItem(BIO_OFFER_NO, '1'); } catch { /* fine */ } setShow(false); };
+  if (!show || !user || !serverMode()) return null;
+  return <BioOfferBar onClose={close} />;
+}
+function BioOfferBar({ onClose }: { onClose: (never: boolean) => void }) {
+  const add = useAddDevice(`Before adding ${bioName()} on this device, confirm it is you.`, (r) => { setUser(r.user); onClose(false); });
+  return (
+    <div className="callout sky bio-offer" role="region" aria-label={bioName()} id="bio-offer">
+      <Icon name="fingerprint" size={18} />
+      <span style={{ flex: 1, minWidth: 180 }}><strong>Use {bioName()} next time?</strong> Sign in with just your email and {bioName()} on this device.{add.err && <span className="small acct-error" style={{ display: 'block' }}>{add.err}</span>}</span>
+      <button className="btn primary small" id="bio-offer-yes" disabled={add.busy} onClick={add.start}>{add.busy ? 'Look at your device…' : add.armed ? `Now tap to scan ${bioName()}` : `Set up ${bioName()}`}</button>
+      <button className="btn ghost small" id="bio-offer-no" onClick={() => onClose(true)}>Not now</button>
+      {add.confirmScreen}
+    </div>
+  );
+}
+
+/** Asks for fingerprint or face to confirm it is you, with options fetched before the tap. */
+async function authWith(opts: AuthOpts) {
+  try { const a = await startAuthentication({ optionsJSON: opts }); rememberPasskeyHere(a.id); return a; }
+  catch { throw new Error(`${bioName()} was cancelled, or is not set up on this device. Use a code this time.`); }
+}
+
+/** The second step of signing in, after the password (or Google) was right. */
 export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; onSignedIn: (u: ServerUser) => Promise<void> | void; onBack: () => void }) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   // "Remember this device": this browser skips the second step next time.
   const [remember, setRemember] = useState(false);
-  // Which ways this account can do the second step.
+  // Which ways this account can do the second step, and the Face ID options (fetched before the tap).
   const [ways, setWays] = useState<{ passkey: boolean; app: boolean }>({ passkey: false, app: true });
-  // Face ID leads only where it was added or used before; elsewhere: the code once, then the offer.
+  const [opts, setOpts] = useState<AuthOpts | null>(null);
+  // Face ID leads only where it was added or used before; there, the code is one tap away.
   const [here, setHere] = useState(false);
-  useEffect(() => {
-    api<{ options: { allowCredentials?: { id: string }[] } | null; app: boolean }>('POST', '/api/auth/passkey/options', { ticket })
-      .then((r) => {
-        setWays({ passkey: !!r.options && canUseBiometrics(), app: r.app });
-        const mine = new Set(hereIds());
-        setHere(!!r.options?.allowCredentials?.some((c) => mine.has(c.id)));
-      }).catch(() => {});
-  }, [ticket]);
-  const biometric = async () => {
+  const [useCode, setUseCode] = useState(false);
+  const load = () => api<{ options: AuthOpts | null; app: boolean }>('POST', '/api/auth/passkey/options', { ticket })
+    .then((r) => {
+      setOpts(r.options); setWays({ passkey: !!r.options && canUseBiometrics(), app: r.app });
+      const mine = new Set(hereIds());
+      setHere(!!r.options?.allowCredentials?.some((c) => mine.has(c.id)));
+    }).catch(() => {});
+  useEffect(() => { void load(); }, [ticket]);
+  const biometric = () => {
+    if (!opts) return;
     setBusy(true); setErr('');
-    try {
-      const passkey = await confirmWithBiometrics(ticket);
-      const r = await api<{ user: ServerUser }>('POST', '/api/auth/two-step', { ticket, passkey, trust: remember });
-      await onSignedIn(r.user);
-    } catch (x) { setErr((x as Error).message); setBusy(false); }
+    authWith(opts)
+      .then(async (passkey) => { const r = await api<{ user: ServerUser }>('POST', '/api/auth/two-step', { ticket, passkey, trust: remember }); rememberPasskeyHere(undefined, r.user.email); await onSignedIn(r.user); })
+      .catch((x) => { setErr((x as Error).message); setBusy(false); void load(); });
+  };
+  // No app and no Face ID on this device: a code by email (up to 3 per sign-in).
+  const [mailed, setMailed] = useState('');
+  const emailCode = async () => {
+    setBusy(true); setErr('');
+    try { const r = await api<{ sentTo: string }>('POST', '/api/auth/two-step/email', { ticket }); setMailed(r.sentTo); setCode(''); }
+    catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   };
   const submit = async (e: FormEvent) => {
     e.preventDefault(); if (!code.trim() || busy) return;
@@ -110,22 +150,26 @@ export function TwoStepCode({ ticket, onSignedIn, onBack }: { ticket: string; on
       await onSignedIn(r.user);
     } catch (x) { setErr((x as Error).message); setBusy(false); }
   };
+  const bioFirst = ways.passkey && here && !useCode;
   return (
     <form className="acct-login two-step-form" onSubmit={submit}>
       <div className="two-step-head"><span className="tile-ic lilac" aria-hidden><Icon name="lock" size={20} /></span>
         <div><strong>Confirm it's you</strong></div></div>
-      <label className="check" title="Skip this step on this browser next time. Not on a shared computer."><input id="ts-remember" type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />Remember this device</label>
-      {ways.passkey && here && <>
-        <button type="button" className="btn primary acct-login-btn" id="ts-biometric" disabled={busy} onClick={biometric}><Icon name="fingerprint" size={18} />Use fingerprint or face</button>
-        <div className="acct-or"><span>or a code</span></div>
+      {bioFirst ? <>
+        <button type="button" className="btn primary acct-login-btn" id="ts-biometric" disabled={busy || !opts} onClick={biometric}><Icon name="fingerprint" size={18} />{busy ? 'Look at your device…' : `Use ${bioName()}`}</button>
+        {err && <p className="small acct-error" role="alert">{err}</p>}
+        <button type="button" className="link-btn small" id="ts-use-code" onClick={() => { setUseCode(true); setErr(''); }}>Use a code instead</button>
+      </> : <>
+        <label className="check" title="Skip this step on this browser next time. Not on a shared computer."><input id="ts-remember" type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />Remember this device</label>
+        {ways.passkey && !here && <p className="small soft two-step-elsewhere" id="ts-elsewhere"><Icon name="fingerprint" size={14} /> Enter a code once on this device; then you can use {bioName()} here.</p>}
+        {mailed && <p className="small callout pine" role="status" id="ts-mailed" style={{ margin: 0 }}><Icon name="mail" size={14} /> Code sent to {mailed}. It works for 10 minutes; check spam if it is not there.</p>}
+        <div className="field"><label htmlFor="ts-code">{mailed ? 'Code from the email' : ways.app ? 'App, email or backup code' : 'Email or backup code'}</label>
+          <input id="ts-code" className="input two-step-input" value={code} onChange={(e) => { setCode(e.target.value); setErr(''); }} inputMode="text" autoComplete="one-time-code" autoFocus placeholder="123 456" maxLength={12} /></div>
+        {err && <p className="small acct-error" role="alert">{err}</p>}
+        <button className="btn primary acct-login-btn" disabled={!code.trim() || busy}>{busy ? 'Checking…' : 'Continue'}</button>
+        <button type="button" className="link-btn small" id="ts-email" disabled={busy} onClick={emailCode}><Icon name="mail" size={14} />{mailed ? 'Send another code' : 'No app? Email me a code'}</button>
+        {ways.passkey && here && <button type="button" className="link-btn small" onClick={() => setUseCode(false)}><Icon name="fingerprint" size={14} />Use {bioName()} instead</button>}
       </>}
-      {ways.passkey && !here && (
-        <p className="small soft two-step-elsewhere" id="ts-elsewhere"><Icon name="fingerprint" size={14} /> Face ID or fingerprint is set up on another device, not this one yet. Enter your code this once; Keyholder then offers it for this device. <button type="button" className="link-btn" id="ts-biometric" disabled={busy} onClick={biometric}>Try it anyway</button></p>
-      )}
-      <div className="field"><label htmlFor="ts-code">{ways.app ? 'App or backup code' : 'Backup code'}</label>
-        <input id="ts-code" className="input two-step-input" value={code} onChange={(e) => { setCode(e.target.value); setErr(''); }} inputMode="text" autoComplete="one-time-code" autoFocus placeholder="123 456" maxLength={12} /></div>
-      {err && <p className="small acct-error" role="alert">{err}</p>}
-      <button className={`btn ${ways.passkey && here ? '' : 'primary '}acct-login-btn`} disabled={!code.trim() || busy}>{busy ? 'Checking…' : 'Continue'}</button>
       <button type="button" className="btn ghost small" onClick={onBack}><Icon name="back" size={14} />Back</button>
     </form>
   );
@@ -173,14 +217,9 @@ export function TwoStepSetup({ onDone, team, appOnly }: { onDone: () => void; te
     setBusy(true); setErr('');
     try { setSetup(await api<{ secret: string; uri: string }>('POST', '/api/auth/two-step/setup', {})); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   };
-  const [confirmIt, confirmScreen] = useConfirmIt('Before turning on fingerprint or face sign-in, confirm it is you.');
-  const biometric = () => confirmIt(async () => {
-    setBusy(true); setErr('');
-    try {
-      const r = await addThisDevice();
-      if (r.backupCodes) { setCodes(r.backupCodes); setDone(r.user); } else { setUser(r.user); onDone(); }
-    } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
-  }, 'passkey');
+  const addDev = useAddDevice(`Before turning on ${bioName()} sign-in, confirm it is you.`, (r) => { if (r.backupCodes) { setCodes(r.backupCodes); setDone(r.user); } else { setUser(r.user); onDone(); } });
+  const biometric = addDev.start;
+  const confirmScreen = addDev.confirmScreen;
   const confirm = async (e: FormEvent) => {
     e.preventDefault(); if (!code.trim() || busy) return;
     setBusy(true); setErr('');
@@ -207,8 +246,8 @@ export function TwoStepSetup({ onDone, team, appOnly }: { onDone: () => void; te
           <Icon name="lock" size={20} /><span><strong>Authenticator app</strong><span className="small soft">A 6-digit code from Google Authenticator, Microsoft Authenticator or 1Password. Works on any device.</span></span>
         </button>
       </div>
-      {busy && <p className="small soft" role="status">Follow the prompt on your device…</p>}
-      {err && <p className="small acct-error" role="alert">{err}</p>}
+      {(busy || addDev.busy) && <p className="small soft" role="status">Look at your device…</p>}
+      {(err || addDev.err) && <p className="small acct-error" role="alert">{err || addDev.err}</p>}
       {confirmScreen}
     </div>
   );
@@ -260,6 +299,9 @@ function CodeAction({ title, button, path, danger, onClose }: { title: string; b
   const [err, setErr] = useState('');
   const { user } = useConn();
   const bio = !!user?.passkeys && canUseBiometrics();
+  const [opts, setOpts] = useState<AuthOpts | null>(null);
+  const loadOpts = () => api<{ options: AuthOpts | null }>('POST', '/api/auth/passkey/options', {}).then((r) => setOpts(r.options)).catch(() => {});
+  useEffect(() => { if (bio) void loadOpts(); }, [bio]);
   const send = async (body: object) => {
     setBusy(true); setErr('');
     try {
@@ -269,9 +311,10 @@ function CodeAction({ title, button, path, danger, onClose }: { title: string; b
     } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   };
   const go = (e: FormEvent) => { e.preventDefault(); if (code.trim() && !busy) void send({ code: code.trim() }); };
-  const withBio = async () => {
+  const withBio = () => {
+    if (!opts) return;
     setBusy(true); setErr('');
-    try { await send({ passkey: await confirmWithBiometrics() }); } catch (x) { setErr((x as Error).message); setBusy(false); }
+    authWith(opts).then((passkey) => send({ passkey })).catch((x) => { setErr((x as Error).message); setBusy(false); void loadOpts(); });
   };
   return (
     <Drawer title={title} onClose={onClose}>
@@ -301,11 +344,8 @@ function Devices({ user }: { user: ServerUser }) {
   const load = () => api<Device[]>('GET', '/api/auth/passkeys').then(setList).catch(() => setList([]));
   useEffect(() => { void load(); }, [user.passkeys]);
   // Adding or removing a device: confirm it is you first (unless you signed in in the last 10 minutes).
-  const [confirm, confirmScreen] = useConfirmIt('Before changing fingerprint or face sign-in, confirm it is you.');
-  const add = () => confirm(async () => {
-    setBusy(true); setErr('');
-    try { const r = await addThisDevice(); setUser(r.user); if (r.backupCodes) setCodes(r.backupCodes); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
-  }, 'passkey');
+  const [confirm, confirmScreen] = useConfirmIt(`Before changing ${bioName()} sign-in, confirm it is you.`);
+  const addDev = useAddDevice(`Before adding ${bioName()} on this device, confirm it is you.`, (r) => { setUser(r.user); if (r.backupCodes) setCodes(r.backupCodes); void load(); });
   const remove = (id: string) => confirm(async () => {
     setBusy(true); setErr('');
     try { const r = await api<{ user: ServerUser }>('POST', '/api/auth/passkey/remove', { id }); setUser(r.user); } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
@@ -319,10 +359,10 @@ function Devices({ user }: { user: ServerUser }) {
             <button className="btn small ghost" disabled={busy} onClick={() => remove(d.id)}>Remove</button></li>))}</ul>
       ) : <div className="small soft">No device yet.</div>}
       {canUseBiometrics()
-        ? <button className="btn small" id="ts-add-device" disabled={busy} onClick={add}><Icon name="plus" size={14} />Add fingerprint or face on this device</button>
+        ? <button className="btn small" id="ts-add-device" disabled={busy || addDev.busy} onClick={addDev.start}><Icon name="plus" size={14} />{addDev.busy ? 'Look at your device…' : addDev.armed ? `Now tap to scan ${bioName()}` : `Add ${bioName()} on this device`}</button>
         : <div className="tiny soft">This browser cannot use fingerprint or face.</div>}
-      {err && <p className="small acct-error" role="alert">{err}</p>}
-      {confirmScreen}
+      {(err || addDev.err) && <p className="small acct-error" role="alert">{err || addDev.err}</p>}
+      {confirmScreen}{addDev.confirmScreen}
       {codes && <Drawer title="Two-step sign-in is on" onClose={() => setCodes(null)}><BackupCodes codes={codes} /><div className="btn-row" style={{ marginTop: 16 }}><button className="btn primary" id="ts-done" onClick={() => setCodes(null)}>I saved my backup codes</button></div></Drawer>}
     </div>
   );
