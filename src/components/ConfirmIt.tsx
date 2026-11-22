@@ -1,10 +1,10 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { startAuthentication } from '@simplewebauthn/browser';
 import { api, serverMode } from '../data/api';
 import { Drawer } from './ui';
 import { Icon } from './Icon';
 import { GoogleG } from './GoogleG';
-import { rememberPasskeyHere } from './TwoStep';
+import { bioName, rememberPasskeyHere } from './TwoStep';
 
 // "Confirm it's you" before a sensitive change (adding or removing fingerprint/face, clearing all data).
 // Signing in counts for 10 minutes; after that the landlord confirms once more, their usual way first:
@@ -39,6 +39,10 @@ function ConfirmItScreen({ reason, ways, pending, onClose, onDone }: { reason: s
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // Face ID options are fetched before the tap (Safari shows Face ID only straight after a tap).
+  const [opts, setOpts] = useState<Parameters<typeof startAuthentication>[0]['optionsJSON'] | null>(null);
+  const loadOpts = () => api<{ options: Parameters<typeof startAuthentication>[0]['optionsJSON'] | null }>('POST', '/api/auth/passkey/options', {}).then((r) => setOpts(r.options)).catch(() => {});
+  useEffect(() => { if (ways.passkey && canBio()) void loadOpts(); }, []);
   const send = async (body: object) => {
     setBusy(true); setErr('');
     try { await api('POST', '/api/auth/confirm', body); await onDone(); } catch (x) { setErr((x as Error).message); setBusy(false); }
@@ -51,15 +55,13 @@ function ConfirmItScreen({ reason, ways, pending, onClose, onDone }: { reason: s
     try { sessionStorage.setItem(PENDING_KEY, pending); } catch { /* still works, without reopening */ }
     window.location.href = '/api/auth/google/start?intent=verify';
   };
-  const bio = async () => {
+  const bio = () => {
+    if (!opts) return;
     setBusy(true); setErr('');
-    try {
-      const r = await api<{ options: Parameters<typeof startAuthentication>[0]['optionsJSON'] | null }>('POST', '/api/auth/passkey/options', {});
-      if (!r.options) throw new Error('No fingerprint or face is set up for this account.');
-      let passkey;
-      try { passkey = await startAuthentication({ optionsJSON: r.options }); } catch { throw new Error('Fingerprint or face was cancelled, or is not set up on this device. Use another way below.'); }
-      await api('POST', '/api/auth/confirm', { passkey }); rememberPasskeyHere(passkey.id); await onDone();
-    } catch (x) { setErr((x as Error).message); setBusy(false); }
+    startAuthentication({ optionsJSON: opts })
+      .catch(() => { throw new Error(`${bioName()} was cancelled, or is not set up on this device. Use another way below.`); })
+      .then(async (passkey) => { await api('POST', '/api/auth/confirm', { passkey }); rememberPasskeyHere(passkey.id); await onDone(); })
+      .catch((x) => { setErr((x as Error).message); setBusy(false); void loadOpts(); });
   };
   // The landlord's usual way leads: Google for Google accounts, else the password.
   const googleFirst = ways.google && !ways.password;
@@ -75,7 +77,7 @@ function ConfirmItScreen({ reason, ways, pending, onClose, onDone }: { reason: s
         </>}
         {!googleFirst && ways.google && <button type="button" className="btn acct-google" id="ci-google" onClick={google} disabled={busy}><GoogleG />Continue with Google</button>}
         {(ways.passkey && canBio()) || ways.app ? <div className="acct-or"><span>or</span></div> : null}
-        {ways.passkey && canBio() && <button type="button" className="btn" id="ci-bio" onClick={bio} disabled={busy}><Icon name="fingerprint" size={16} />Fingerprint or face</button>}
+        {ways.passkey && canBio() && <button type="button" className="btn" id="ci-bio" onClick={bio} disabled={busy}><Icon name="fingerprint" size={16} />{bioName()}</button>}
         {ways.app && <>
           <div className="field"><label htmlFor="ci-code">Code from your authenticator app</label>
             <input id="ci-code" className="input two-step-input" inputMode="numeric" autoComplete="one-time-code" maxLength={12} value={code} onChange={(e) => { setCode(e.target.value); setPassword(''); setErr(''); }} /></div>

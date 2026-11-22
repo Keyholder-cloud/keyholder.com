@@ -98,7 +98,9 @@ async function receiptImage(browser) {
   return receiptPath;
 }
 async function signIn(pg, email, password) {
-  await go(pg, 'signin'); await pg.fill('#login-user', email); await pg.fill('#login-pass', password); await pg.click('.acct-login >> text=Sign in');
+  await go(pg, 'signin'); await pg.fill('#login-user', email); await pg.waitForTimeout(150);
+  if (await pg.locator('#login-use-password').count()) await pg.click('#login-use-password'); // Face ID offered first on this device
+  await pg.fill('#login-pass', password); await pg.click('.acct-login >> text=Sign in');
 }
 // ---- Two-step sign-in: an authenticator app (RFC 6238) for the test, per person ----
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -606,37 +608,54 @@ function watch(pg, errors, label) {
         await p.fill('#ts-code', await nextCode(email.toLowerCase())); await p.click('.two-step-form >> text=Continue'); await notNow(p);
         await p.waitForSelector('.rent-row, .rent-card, .start-steps');
         // Signed in with a code on a device that can use fingerprint or face: it is offered once.
-        await p.waitForSelector('#bio-offer >> text=Skip the code next time?'); await p.click('#bio-offer-no');
+        await p.waitForSelector('#bio-offer >> text=next time?'); await p.click('#bio-offer-no');
         // An hour later, adding it asks to confirm it is you (password here) before the fingerprint prompt.
         await p.evaluate(() => fetch('/api/dev/age-session', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
         await go(p, 'settings#two-step'); await p.click('#ts-chip-bio'); await p.waitForSelector('#ts-devices >> text=No device yet');
         await p.click('#ts-add-device'); await p.waitForSelector('#confirm-it');
         await p.fill('#ci-pass', 'not-my-password'); await p.click('#ci-go'); await p.waitForSelector('#confirm-it .acct-error >> text=not right');
         await p.fill('#ci-pass', password); await p.click('#ci-go');
+        // Safari opens Face ID only straight after a tap: the button now says to tap once more.
+        await p.waitForSelector('#ts-add-device >> text=Now tap to scan'); await p.click('#ts-add-device');
         await p.waitForSelector('#ts-devices .two-step-devices li'); await p.keyboard.press('Escape');
         await p.waitForSelector('#ts-chip-bio >> text=Face/finger · 1');
         await p.click('#ts-chip-app'); await p.waitForSelector('#ts-app >> text=Set up.'); await p.keyboard.press('Escape');
         // Another device (no fingerprint or face added there): the code leads, with a note; nothing is offered first.
         const other = await (await b.newContext({ viewport: vp })).newPage(); watch(other, errors, 'other-device');
-        await signIn(other, email, password); await other.waitForSelector('#ts-elsewhere >> text=set up on another device');
+        const ocdp = await other.context().newCDPSession(other); await ocdp.send('WebAuthn.enable');
+        await ocdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+        await signIn(other, email, password); await other.waitForSelector('#ts-elsewhere >> text=Enter a code once');
         if (await other.locator('button.btn#ts-biometric').count()) throw new Error('Face ID offered first on a device without it');
+        // No app at hand: a code by email signs in; then one tap adds Face ID on this device.
+        await other.click('#ts-email'); await other.waitForSelector('#ts-mailed');
+        const mail = (await outbox(email)).find((m) => m.kind === 'two-step-code'); if (!mail) throw new Error('no code email');
+        await other.fill('#ts-code', mail.subject.slice(0, 6)); await other.click('.two-step-form >> text=Continue'); await notNow(other);
+        await other.waitForSelector('#bio-offer'); await other.click('#bio-offer-yes'); await other.waitForSelector('#bio-offer', { state: 'detached' });
+        const meO = (await api(other, '/api/session')).body.user; if (meO.passkeys !== 2) throw new Error('devices: ' + meO.passkeys);
         await other.context().close();
         // Signed out, then back in on this device: fingerprint or face leads (the account data leaves the browser, which device it is stays).
         await p.evaluate(() => fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
-        await p.evaluate(() => { const k = localStorage.getItem('kh_passkeys_here'); localStorage.clear(); if (k) localStorage.setItem('kh_passkeys_here', k); }); await p.goto(BASE + '#/welcome'); await p.reload(); await p.waitForSelector('.lp-hero-h');
+        await p.evaluate(() => { const keep = ['kh_passkeys_here', 'kh_passkey_emails'].map((k) => [k, localStorage.getItem(k)]); localStorage.clear(); for (const [k, v] of keep) if (v) localStorage.setItem(k, v); }); await p.goto(BASE + '#/welcome'); await p.reload(); await p.waitForSelector('.lp-hero-h');
         await signIn(p, email, password);
-        await p.waitForSelector('button.btn.primary#ts-biometric'); if (!(await p.locator('#ts-code').count())) throw new Error('no code box next to fingerprint');
+        await p.waitForSelector('button.btn.primary#ts-biometric'); if (await p.locator('#ts-code').count()) throw new Error('code box shown next to Face ID'); await p.waitForSelector('#ts-use-code');
         await p.click('#ts-biometric'); await notNow(p);
         await p.waitForSelector('.rent-row, .rent-card, .start-steps', { timeout: 15000 });
         // Both are set up: the app's code works too, whichever is at hand.
         await p.evaluate(() => fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
-        await p.evaluate(() => { const k = localStorage.getItem('kh_passkeys_here'); localStorage.clear(); if (k) localStorage.setItem('kh_passkeys_here', k); }); await p.goto(BASE + '#/welcome'); await p.reload(); await p.waitForSelector('.lp-hero-h');
-        await signIn(p, email, password); await p.waitForSelector('#ts-biometric');
+        await p.evaluate(() => { const keep = ['kh_passkeys_here', 'kh_passkey_emails'].map((k) => [k, localStorage.getItem(k)]); localStorage.clear(); for (const [k, v] of keep) if (v) localStorage.setItem(k, v); }); await p.goto(BASE + '#/welcome'); await p.reload(); await p.waitForSelector('.lp-hero-h');
+        await signIn(p, email, password); await p.waitForSelector('#ts-biometric'); await p.click('#ts-use-code');
         await p.fill('#ts-code', await nextCode(email.toLowerCase())); await p.click('.two-step-form >> text=Continue'); await notNow(p);
         await p.waitForSelector('.rent-row, .rent-card, .start-steps', { timeout: 15000 });
+        // Face ID alone: on this device the sign-in page has the email filled in and "Sign in with Face ID"; no password, no code.
+        await p.evaluate(() => fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
+        await p.evaluate(() => { const keep = ['kh_passkeys_here', 'kh_passkey_emails'].map((k) => [k, localStorage.getItem(k)]); localStorage.clear(); for (const [k, v] of keep) if (v) localStorage.setItem(k, v); }); await p.goto(BASE + '#/welcome'); await p.reload(); await p.waitForSelector('.lp-hero-h');
+        await go(p, 'signin'); await p.waitForSelector('#login-bio:not([disabled])');
+        if ((await p.inputValue('#login-user')).toLowerCase() !== email.toLowerCase()) throw new Error('email not filled in');
+        if (await p.locator('#login-pass').count()) throw new Error('password asked before Face ID');
+        await p.click('#login-bio'); await notNow(p); await p.waitForSelector('.rent-row, .rent-card, .start-steps', { timeout: 15000 });
         // Removing it leaves the app; two-step stays on.
-        await go(p, 'settings#two-step'); await p.click('#ts-chip-bio'); await p.locator('#ts-devices li >> text=Remove').click(); await p.waitForSelector('#ts-devices >> text=No device yet');
-        const me = (await api(p, '/api/session')).body.user; if (!me.twoStep || me.passkeys !== 0) throw new Error('session: ' + JSON.stringify(me));
+        await go(p, 'settings#two-step'); await p.click('#ts-chip-bio'); await p.locator('#ts-devices li >> text=Remove').first().click(); await until(async () => (await p.locator('#ts-devices .two-step-devices li').count()) === 1, 8000, 'one device left');
+        const me = (await api(p, '/api/session')).body.user; if (!me.twoStep || me.passkeys !== 1) throw new Error('session: ' + JSON.stringify(me));
         await ctx.close();
       });
       await step(tag, 'E34b Authenticator app set up on a phone: no QR code to scan with the same phone; an Open in app link and the key to copy', async () => {

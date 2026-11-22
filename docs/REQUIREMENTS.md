@@ -446,3 +446,15 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Follow-up (owner, 9:16 a.m.): on the phone, "Use fingerprint or face" opened the QR code for borrowing another
   device's passkey. Now Face ID leads at sign-in only on a device where it was added or used; elsewhere the code
   leads with a note ("set up on another device … Try it anyway"), then the app offers Face ID for that device.
+
+### R51. Email code, Face ID straight from the tap, email → Face ID sign-in ☑
+- Owner: "Email me a code works" — on the second step, "No app? Email me a code": 6 digits to the account
+  email, once, 10 minutes, 3 per sign-in (migration 012).
+- Owner: Face ID on the phone never finished being added: Safari opens Face ID only straight after a tap, and
+  the app fetched from the server first. Now everything is fetched before the tap; after "Confirm it's you"
+  the button says "Now tap to scan Face ID".
+- Owner: "Once it is setup, confirm is you should only be scanning your fingerprint or your faceID once you
+  enter the email." On a device with Face ID, the sign-in page fills in the email and shows "Sign in with Face
+  ID" (no password, no code; "Use my password instead" is a link). The second step there shows only "Use Face
+  ID" ("Use a code instead" is a link). Words follow the device: Face ID, Touch ID, fingerprint, Windows Hello.
+- Owner: "Remove try it anyway" — removed; elsewhere: "Enter a code once on this device; then you can use Face ID here."

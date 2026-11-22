@@ -811,4 +811,29 @@ describe('two-step sign-in (authenticator app)', () => {
     const acts = (await db.query<{ action: string }>(`select action from audit_log where lower(actor) = 'robin@lee.ca'`)).map((a) => a.action);
     expect(acts).toEqual(expect.arrayContaining(['Confirm it is you failed', 'Confirmed it is them', 'All data cleared']));
   });
+
+  it('two-step by email: a 6-digit code to the account email signs in once (no app or Face ID needed); at most 3 per sign-in', async () => {
+    await call('POST', '/api/auth/signup', { body: { name: 'Sam Ortiz', email: 'sam@ortiz.ca', password: 'willow-court-2026' } });
+    await db.query(`update users set totp_enabled_at = now(), backup_codes = '[]' where lower(email) = 'sam@ortiz.ca'`);
+    const login = await call('POST', '/api/auth/login', { body: { email: 'sam@ortiz.ca', password: 'willow-court-2026' } });
+    expect(login.body.twoStep).toBe(true);
+    const ticket = login.body.ticket as string;
+    const sent = await call('POST', '/api/auth/two-step/email', { body: { ticket } });
+    expect(sent.body.sentTo).toBe('s•••@ortiz.ca');
+    const code = (await latestMail('sam@ortiz.ca', 'two-step-code')).subject.slice(0, 6);
+    expect(code).toMatch(/^\d{6}$/);
+    expect((await call('POST', '/api/auth/two-step', { body: { ticket, code: code === '000000' ? '111111' : '000000' } })).status).toBe(401);
+    const ok = await call('POST', '/api/auth/two-step', { body: { ticket, code } });
+    expect(ok.body.user.email).toBe('sam@ortiz.ca');
+    expect((await call('POST', '/api/auth/two-step', { body: { ticket, code } })).status).toBe(400); // used
+    const t2 = (await call('POST', '/api/auth/login', { body: { email: 'sam@ortiz.ca', password: 'willow-court-2026' } })).body.ticket;
+    for (let i = 0; i < 3; i++) expect((await call('POST', '/api/auth/two-step/email', { body: { ticket: t2 } })).status).toBe(200);
+    expect((await call('POST', '/api/auth/two-step/email', { body: { ticket: t2 } })).status).toBe(429);
+  });
+
+  it('Face ID sign-in (no password): options for any email, and a wrong or missing answer is refused', async () => {
+    const o = await call('POST', '/api/auth/passkey/login-options', { body: { email: 'nobody-here@ortiz.ca' } });
+    expect(o.status).toBe(200); expect(o.body.options.challenge).toBeTruthy();
+    expect((await call('POST', '/api/auth/passkey/login', { body: { email: 'sam@ortiz.ca', passkey: { id: 'x', response: {} } } })).status).toBe(401);
+  });
 });

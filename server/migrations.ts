@@ -320,4 +320,12 @@ create index if not exists data_requests_status on data_requests (status, receiv
     id: '011_session_verified',
     sql: `alter table sessions add column if not exists verified_at timestamptz;`,
   },
+  {
+    // Two-step by email: a 6-digit code sent to the account's email, for a device with no Face ID or app yet.
+    // Hashed, used once, 10 minutes, at most 3 sent per sign-in.
+    id: '012_two_step_email_code',
+    sql: `alter table two_step_tickets add column if not exists email_code_hash text;
+alter table two_step_tickets add column if not exists email_code_at timestamptz;
+alter table two_step_tickets add column if not exists email_sends integer not null default 0;`,
+  },
 ];
