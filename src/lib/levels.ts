@@ -30,10 +30,3 @@ export function propertyLevel(state: AppState, p: Property): Level {
 
 export const atLeast = (have: Level, need: Level) => levelInfo(have).rank >= levelInfo(need).rank;
 
-/** The single next thing to suggest for a property, in plain words. Null when it is Gold. */
-export function nextStep(state: AppState, p: Property): { to: Level; title: string; why: string; action: string } | null {
-  const l = propertyLevel(state, p);
-  if (l === 'bronze') return { to: 'silver', title: `Add what you paid for ${p.nickname}`, why: "See your gain since buying, rent vs the area and room to borrow.", action: 'Add what I paid' };
-  if (l === 'silver') return { to: 'gold', title: `Add the mortgage for ${p.nickname}`, why: 'Track the mortgage and get full tax numbers with depreciation.', action: 'Add mortgage details' };
-  return null;
-}

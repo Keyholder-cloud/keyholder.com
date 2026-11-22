@@ -75,19 +75,6 @@ export function Person({ x = 0, y = 0, s = 1, look, pose = 'stand', flip = false
   );
 }
 
-/** A round avatar of an illustrated person (head and shoulders). */
-export function Bust({ look, size = 56, bg = '#EEF0FF' }: { look: Look; size?: number; bg?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden className="bust">
-      <defs><clipPath id={`bust-${look.shirt.slice(1)}-${look.hair.slice(1)}`}><circle cx={32} cy={32} r={32} /></clipPath></defs>
-      <g clipPath={`url(#bust-${look.shirt.slice(1)}-${look.hair.slice(1)})`}>
-        <rect width={64} height={64} fill={bg} />
-        <path d="M10 66 C12 47 52 47 54 66 Z" fill={look.shirt} />
-        <g transform="translate(32 107) scale(0.82)"><Head look={look} /></g>
-      </g>
-    </svg>
-  );
-}
 
 // ---------------------------------------------------------------- Homes and things (local origin: bottom-left)
 type HouseVariant = 'basement' | 'detached' | 'duplex';
@@ -127,9 +114,6 @@ export function House({ x = 0, y = 0, w = 120, variant = 'detached', wall = '#FF
     </g>
   );
 }
-export function Tree({ x, y, s = 1, tone = '#4ADE80' }: { x: number; y: number; s?: number; tone?: string }) {
-  return <g transform={`translate(${x} ${y}) scale(${s})`}><rect x={-3} y={-26} width={6} height={26} rx={2} fill="#A16207" /><circle cx={0} cy={-38} r={17} fill={tone} /><circle cx={-9} cy={-30} r={10} fill={tone} /><circle cx={9} cy={-31} r={11} fill={tone} /><circle cx={-4} cy={-44} r={6} fill="#fff" opacity={0.2} /></g>;
-}
 export function Bush({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
   return <g transform={`translate(${x} ${y}) scale(${s})`} fill="#22C55E"><circle cx={-8} cy={-6} r={8} /><circle cx={2} cy={-9} r={10} /><circle cx={11} cy={-5} r={7} /></g>;
 }
@@ -152,44 +136,6 @@ const Scene = ({ children, vb = '0 0 320 200', className }: { children: React.Re
   <svg viewBox={vb} className={`art ${className ?? ''}`} aria-hidden focusable="false">{children}</svg>
 );
 
-// ---------------------------------------------------------------- Scenes
-/** Step 1: add your property. */
-export function SceneAddHome() {
-  return (
-    <Scene>
-      <Blob cx={160} cy={104} r={86} fill="#EBE9FE" />
-      <Cloud x={60} y={52} s={0.8} /><Cloud x={226} y={40} s={0.7} />
-      <Ground />
-      <Tree x={52} y={178} s={0.9} />
-      <House x={88} y={178} w={118} variant="basement" />
-      <g transform="translate(192 74)"><circle r={15} fill="#4F46E5" /><path d="M-6 0h12M0 -6v12" stroke="#fff" strokeWidth={3} strokeLinecap="round" /></g>
-      <Person x={250} y={178} s={0.95} look={LOOKS.priya} pose="phone" />
-    </Scene>
-  );
-}
-/** Step 2: connect a bank (view only), or skip it. */
-export function SceneBank() {
-  return (
-    <Scene>
-      <Blob cx={160} cy={104} r={86} fill="#D3F8DF" />
-      <Ground />
-      <g transform="translate(66 178)">
-        <path d="M0 -70 L50 -96 L100 -70 Z" fill="#475569" />
-        <rect x={4} y={-70} width={92} height={8} fill="#64748B" />
-        {[12, 34, 56, 78].map((cx) => <rect key={cx} x={cx} y={-60} width={10} height={50} rx={2} fill="#E2E8F0" />)}
-        <rect x={0} y={-10} width={100} height={10} rx={2} fill="#64748B" />
-      </g>
-      <path d="M170 120 C190 100 205 100 222 112" stroke="#10B981" strokeWidth={3} strokeDasharray="5 6" fill="none" strokeLinecap="round" />
-      <Phone x={222} y={66} s={0.88}>
-        <rect x={10} y={22} width={44} height={8} rx={4} fill="#E0E7FF" />
-        <rect x={10} y={38} width={36} height={6} rx={3} fill="#E5E7EB" />
-        <rect x={10} y={50} width={40} height={6} rx={3} fill="#E5E7EB" />
-        <Check x={32} y={80} r={13} />
-      </Phone>
-      <g transform="translate(150 70)"><path d="M0 -16 L14 -10 V2 C14 12 7 17 0 20 C-7 17 -14 12 -14 2 V-10 Z" fill="#4F46E5" /><rect x={-5} y={-2} width={10} height={9} rx={2} fill="#fff" /><path d="M-3 -2 v-3 a3 3 0 0 1 6 0 v3" stroke="#fff" strokeWidth={2} fill="none" /></g>
-    </Scene>
-  );
-}
 /** Step 3: tap the next step (Send receipt). */
 export function SceneTap() {
   return (

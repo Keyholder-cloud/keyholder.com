@@ -297,4 +297,20 @@ update trusted_devices set id = gen_random_uuid() where id is null;
 alter table trusted_devices add column name text not null default '';
 alter table trusted_devices add column last_used_at timestamptz;`,
   },
+  {
+    // Go-live tidy-up (2026-11-22). No trials: Starter is free for good, so the trial date goes. Turning banks
+    // off was removed, so its setting goes. Indexes for what the server looks up often: a customer's tickets
+    // and emails, open tickets by date, and the daily clean-up of expired sign-in rows.
+    id: '010_go_live_tidy',
+    sql: `alter table accounts drop column if exists trial_ends;
+delete from settings where key in ('banks', 'repair.start-fresh-v1');
+create index if not exists support_tickets_account on support_tickets (account_id);
+create index if not exists support_tickets_open on support_tickets (status, updated_at desc);
+create index if not exists outbox_account on outbox (account_id);
+create index if not exists sessions_expires on sessions (expires_at);
+create index if not exists auth_tokens_expires on auth_tokens (expires_at);
+create index if not exists two_step_tickets_expires on two_step_tickets (expires_at);
+create index if not exists trusted_devices_expires on trusted_devices (expires_at);
+create index if not exists data_requests_status on data_requests (status, received);`,
+  },
 ];

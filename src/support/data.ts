@@ -13,7 +13,7 @@ export interface Customer {
   id: string; name: string; email: string; phone: string; province: Province; city: string;
   plan: Plan; units: number; properties: number; tenants: number;
   signedUp: ISODate; lastActive: ISODate; banks: BankLink[]; emailBounces: number;
-  paymentStatus: 'ok' | 'failed' | 'none'; trialEnds?: ISODate; credit: number;
+  paymentStatus: 'ok' | 'failed' | 'none'; credit: number;
   /** What this subscriber pays per unit a month (the price when they subscribed). */
   unitPrice?: number;
   /** Cities of their rentals (city level only, for the map). Missing: the city from signup is used. */
@@ -30,8 +30,8 @@ export type TeamRole = 'Super user' | 'Admin' | 'Support';
 export interface Member { id: string; name: string; email: string; role: TeamRole }
 /** A promo code for the Landlord plan (applied at checkout once card payments are on). */
 export interface Promotion { id: string; code: string; kind: 'percent' | 'amount'; value: number; months: number; endsOn?: ISODate; maxUses?: number; uses: number; status: 'active' | 'paused' | 'ended'; created: string }
-/** The super user's settings: the Landlord plan price, promotions, and which banks can be connected. */
-export interface Platform { unitCents: number; promotions: Promotion[]; banks: { enabled: boolean; off: string[] }; benchmarks: Benchmarks }
+/** The super user's settings: the Landlord plan price, promotions and comparison rates. */
+export interface Platform { unitCents: number; promotions: Promotion[]; benchmarks: Benchmarks }
 export const DEFAULT_UNIT_CENTS = 800;
 export interface Reply { id: string; title: string; text: string }
 export interface AuditEntry { id: string; at: string; who: string; action: string; detail: string }
@@ -95,7 +95,6 @@ export function generateSupport(today: ISODate = todayISO()): SupportBase {
       plan, units, properties: Math.max(1, Math.ceil(units / (2 + Math.floor(r() * 3)))), tenants: Math.max(0, units - (r() < 0.2 ? 1 : 0)),
       signedUp, lastActive, banks, emailBounces: r() < 0.05 ? 1 + Math.floor(r() * 3) : 0,
       paymentStatus: plan === 'landlord' ? (r() < 0.05 ? 'failed' : 'ok') : 'none', credit: 0,
-      trialEnds: plan === 'landlord' && ago < 30 ? addDays(signedUp, 30) : undefined,
       source: pick(SOURCES), receiptsSent: Math.floor((ago / 30) * units * (0.6 + r() * 0.4)), notes: [],
     });
   }
@@ -121,7 +120,6 @@ export function generateSupport(today: ISODate = todayISO()): SupportBase {
       { id: 'pr1', code: 'WELCOME3', kind: 'percent', value: 50, months: 3, maxUses: 200, uses: 37, status: 'active', created: `${addDays(today, -40)}T14:00:00.000Z` },
       { id: 'pr2', code: 'SPRING10', kind: 'amount', value: 1000, months: 1, endsOn: addDays(today, -20), uses: 12, status: 'ended', created: `${addDays(today, -120)}T14:00:00.000Z` },
     ],
-    banks: { enabled: true, off: [] },
     benchmarks: structuredClone(DEFAULT_BENCHMARKS),
   };
   const now = Date.parse(`${today}T15:00:00`);

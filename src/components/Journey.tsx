@@ -8,7 +8,7 @@ import { addDays, addMonths, fmtDay, fmtPeriod, periodOf } from '../lib/dates';
 import { activeLease, byRoom, leasePlace, openRooms, paidOn, roomsLine, roomsPaid, roomsPill } from '../lib/finance';
 import { allJourneyCards, isHidden, journeyLeases, leaseStep, openStep, prefKey, propertySteps, unitStep, type JourneyCard } from '../lib/journey';
 import { keyholderScore, scoreKey } from '../lib/score';
-import { banksOn } from '../data/api';
+import { banksOn, twoStepFlag } from '../data/api';
 import { hasSilver, type Level } from '../lib/levels';
 import { fmt } from '../lib/money';
 import { bankToSort } from '../lib/bankrules';
@@ -222,15 +222,23 @@ export function RentRows() {
 export function ScoreList() {
   const { state, today } = useStore();
   const nav = useNavigate();
-  const { score, todo } = useMemo(() => keyholderScore(state, today, banksOn()), [state, today]);
+  const { score, todo, stage, stages } = useMemo(() => keyholderScore(state, today, banksOn(), twoStepFlag()), [state, today]);
   const [all, setAll] = useState(false);
+  const now = stages.find((s) => s.n === stage);
   const [form, setForm] = useState<{ to: Level; pid: string } | null>(null);
   const p = form ? state.properties.find((x) => x.id === form.pid) : undefined;
   return (
     <section className="section" id="score">
       <h2 className="section-title">Finish setting up · {score}% done</h2>
       <div className="sheet">
-        <div className="score-hero"><ScoreRing score={score} big /><p style={{ margin: 0 }}>{score >= 100 ? 'All set up.' : 'Optional. Each one makes your numbers more accurate.'}</p></div>
+        <div className="score-hero"><ScoreRing score={score} big /><div>
+          <p style={{ margin: 0 }}>{score >= 100 ? <strong>All set. Keyholder is working for you in full.</strong> : now ? <><strong>Stage {now.n} of 4: {now.title}</strong><span className="small soft" style={{ display: 'block' }}>{now.sub}</span></> : null}</p>
+          <ol className="stage-bar" aria-label="Stages">{stages.map((s) => (
+            <li key={s.n} className={`${s.pct >= 100 ? 'done' : s.n === stage ? 'now' : 'later'}`} title={`${s.title}: ${s.pct}%`}>
+              <i style={{ ['--w' as string]: `${s.pct}%` }} /><span>{s.title}</span>
+            </li>
+          ))}</ol>
+        </div></div>
         {todo.length > 0 && <ul className="rows">{(all ? todo : todo.slice(0, 3)).map((i) => {
           const pr = i.propertyId ? state.properties.find((x) => x.id === i.propertyId) : undefined;
           return (

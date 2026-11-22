@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AppState } from '../src/data/types';
 import { DEFAULT_UNIT_CENTS, generateSupport, SLA_HOURS, type Announcement, type Customer, type DataRequest, type Member, type Platform, type Priority, type Promotion, type Reply, type RuleStatus, type SupportBase, type TeamRole, type Ticket, type TicketMsg } from '../src/support/data';
-import { addDays, todayISO } from '../src/lib/dates';
+import { todayISO } from '../src/lib/dates';
 import { DEFAULT_BENCHMARKS, GIC_SOURCE, type Benchmark, type Benchmarks } from '../src/lib/jurisdiction';
 import type { Config } from './config';
 import type { Db, Q } from './db';
@@ -45,7 +45,6 @@ export async function benchmarksNow(q: Q): Promise<Benchmarks> {
 /** Saves the Bank of Canada's latest 5-year GIC rate. */
 export const saveGic = (q: Q, pct: number, asOf: string) => putSetting(q, 'benchmarks.gic', { pct, asOf, fetchedAt: new Date().toISOString() });
 /** Bank connection: on for everyone or off, and banks turned off one by one. */
-export const bankSettings = (q: Q) => setting<Platform['banks']>(q, 'banks', () => ({ enabled: true, off: [] }));
 const TEAM_LABEL: Record<string, TeamRole> = { super: 'Super user', admin: 'Admin', support: 'Support' };
 const ROLE_OF: Record<string, Role> = { 'Super user': 'super', Admin: 'admin', Support: 'support', Owner: 'admin' };
 type PromoRow = { id: string; code: string; kind: Promotion['kind']; value: number; months: number; ends_on: string | null; max_uses: number | null; uses: number; status: Promotion['status']; created_at: Date };
@@ -71,8 +70,8 @@ const realName = (name: string, me: User) => (name === 'You' ? me.name : name);
 
 export async function snapshot(db: Q, me: User): Promise<SupportSnapshot> {
   const today = todayISO();
-  const accts = await db.query<{ id: string; email: string; name: string; plan: 'starter' | 'landlord'; trial_ends: string | null; credit_cents: number; unit_price_cents: number | null; notes: string[]; created_at: Date; last_seen_at: Date | null; summary: Summary | null; bounces: number }>(
-    `select a.id, u.email, u.name, a.plan, a.trial_ends::text as trial_ends, a.credit_cents, a.unit_price_cents, a.notes, a.created_at, u.last_seen_at, s.summary,
+  const accts = await db.query<{ id: string; email: string; name: string; plan: 'starter' | 'landlord'; credit_cents: number; unit_price_cents: number | null; notes: string[]; created_at: Date; last_seen_at: Date | null; summary: Summary | null; bounces: number }>(
+    `select a.id, u.email, u.name, a.plan, a.credit_cents, a.unit_price_cents, a.notes, a.created_at, u.last_seen_at, s.summary,
        (select count(*)::int from outbox o where o.account_id = a.id and o.status = 'failed') as bounces
      from accounts a join users u on u.id = a.owner_id left join account_state s on s.account_id = a.id
      order by a.created_at desc limit 5000`);
@@ -83,7 +82,7 @@ export async function snapshot(db: Q, me: User): Promise<SupportSnapshot> {
       plan: a.plan, units: s.units ?? 0, properties: s.properties ?? 0, tenants: s.tenants ?? 0,
       signedUp: day(a.created_at), lastActive: day(a.last_seen_at ?? a.created_at),
       banks: (s.banks ?? []).map((b) => ({ bank: b.bank, status: b.status as 'ok' | 'failing' })), emailBounces: a.bounces,
-      paymentStatus: 'none', trialEnds: a.trial_ends ?? undefined, credit: a.credit_cents, unitPrice: a.unit_price_cents ?? undefined, places: Array.isArray(s.places) ? s.places : undefined, source: 'Not asked yet',
+      paymentStatus: 'none', credit: a.credit_cents, unitPrice: a.unit_price_cents ?? undefined, places: Array.isArray(s.places) ? s.places : undefined, source: 'Not asked yet',
       receiptsSent: s.receiptsSent ?? 0, notes: Array.isArray(a.notes) ? a.notes : [],
     };
   });
@@ -108,7 +107,7 @@ export async function snapshot(db: Q, me: User): Promise<SupportSnapshot> {
   const d = defaults();
   // Price, promotions and banks: everyone on the team sees them; only the super user changes them.
   const promotions = (await db.query<PromoRow>(`select id, code, kind, value, months, ends_on::text as ends_on, max_uses, uses, status, created_at from promotions order by created_at desc`)).map(promoOut);
-  const platform: Platform = { unitCents: await unitPrice(db), promotions, banks: await bankSettings(db), benchmarks: await benchmarksNow(db) };
+  const platform: Platform = { unitCents: await unitPrice(db), promotions, benchmarks: await benchmarksNow(db) };
   return {
     live: true, me: me.name, myRole: me.role === 'super' ? 'super' : me.role === 'admin' ? 'admin' : 'support', platform, today, customers, tickets, invoices: [], requests, team,
     replies: await setting<Reply[]>(db, 'support.replies', () => d.replies),
@@ -136,14 +135,13 @@ export async function applyChange(db: Db, cfg: Config, me: User, next: SupportBa
   }
   if (me.role !== 'super') next = { ...next, team: cur.team, platform: cur.platform };
   await db.tx(async (q) => {
-    // Customers: plan, trial, credit, notes; deleted = delete the account for real.
+    // Customers: plan, credit, notes; deleted = delete the account for real.
     for (const c of next.customers ?? []) {
       const was = cur.customers.find((x) => x.id === c.id);
       if (!was) continue;
       if (c.deleted && !was.deleted) { await deleteAccount(q, c.id, `admin ${me.email}`); done.push(`deleted ${c.id}`); continue; }
       // Moving to the Landlord plan locks in today's price for this subscriber.
       if (c.plan !== was.plan && (c.plan === 'starter' || c.plan === 'landlord')) { await q.query('update accounts set plan = $2, unit_price_cents = $3 where id = $1', [c.id, c.plan, c.plan === 'landlord' ? await unitPrice(q) : null]); done.push(`plan ${c.id}`); }
-      if ((c.trialEnds ?? null) !== (was.trialEnds ?? null) && (!c.trialEnds || /^\d{4}-\d{2}-\d{2}$/.test(c.trialEnds))) { await q.query('update accounts set trial_ends = $2 where id = $1', [c.id, c.trialEnds ?? null]); done.push(`trial ${c.id}`); }
       if (c.credit !== was.credit && Number.isInteger(c.credit) && c.credit >= 0 && c.credit < 10_000_000) { await q.query('update accounts set credit_cents = $2 where id = $1', [c.id, c.credit]); done.push(`credit ${c.id}`); }
       if (!same(c.notes, was.notes) && Array.isArray(c.notes)) { await q.query('update accounts set notes = $2::jsonb where id = $1', [c.id, JSON.stringify(c.notes.map(String).slice(0, 200))]); done.push(`notes ${c.id}`); }
     }
@@ -221,9 +219,6 @@ export async function applyChange(db: Db, cfg: Config, me: User, next: SupportBa
       }
       if (out.savings.pct !== cur.platform.benchmarks.savings.pct || out.index.pct !== cur.platform.benchmarks.index.pct) { await putSetting(q, 'benchmarks', out); done.push('benchmarks'); }
     }
-    if (pl?.banks && !same(pl.banks, cur.platform.banks) && typeof pl.banks.enabled === 'boolean' && Array.isArray(pl.banks.off)) {
-      await putSetting(q, 'banks', { enabled: pl.banks.enabled, off: [...new Set(pl.banks.off.map((x) => String(x).slice(0, 80)))].slice(0, 200) }); done.push('banks');
-    }
     if (next.sla && !same(next.sla, cur.sla) && Object.values(next.sla).every((h) => Number.isFinite(h) && h > 0 && h < 1000)) { await putSetting(q, 'support.sla', next.sla); done.push('sla'); }
     if (!same(next.replies, cur.replies) && Array.isArray(next.replies)) { await putSetting(q, 'support.replies', next.replies.slice(0, 100).map((r) => ({ id: String(r.id), title: String(r.title).slice(0, 120), text: String(r.text).slice(0, 4000) }))); done.push('replies'); }
     if (!same(next.rules, cur.rules) && Array.isArray(next.rules)) { await putSetting(q, 'support.rules', next.rules); done.push('rules'); }
@@ -267,7 +262,6 @@ export async function customerState(q: Q, accountId: string): Promise<AppState |
   return (await q.one<{ data: AppState }>('select data from account_state where account_id = $1', [accountId]))?.data ?? null;
 }
 
-export const trialEnd = (from = todayISO()) => addDays(from, 30);
 
 /**
  * Start fresh with real bank data (super user, owner 2026-11-21): for every landlord, every expense, every bank
@@ -286,7 +280,7 @@ export async function startFresh(db: Db, by: string): Promise<{ accounts: number
     const receipts = new Set(d.receipts.filter((r) => gone.has(r.paymentId)).map((r) => r.id));
     const n = { expenses: d.expenses.length, transactions: d.txns.length, payments: gone.size, banks: (d.banks ?? []).length };
     if (!n.expenses && !n.transactions && !n.payments && !n.banks && !d.profile.vendorRules && !d.profile.notRentPayers?.length && !d.profile.personalVendors?.length) continue;
-    d.expenses = []; d.txns = []; d.banks = [];
+    d.expenses = []; d.txns = []; d.banks = []; d.statements = [];
     d.payments = d.payments.filter((p) => !gone.has(p.id));
     d.receipts = d.receipts.filter((r) => !receipts.has(r.id));
     d.messages = d.messages.filter((m) => !(m.receiptId && receipts.has(m.receiptId)));
@@ -301,44 +295,3 @@ export async function startFresh(db: Db, by: string): Promise<{ accounts: number
   return total;
 }
 
-/**
- * One-time repair (2026-11-22): after "Start fresh", a device still holding its old copy saved it back and the
- * old bank data returned. For each account reset that way: expenses and bank-matched rent created before the
- * reset, transactions from banks no longer connected, and those banks go again; anything added since stays.
- * The data gets a new epoch, so old copies can no longer be saved back.
- */
-export async function repairAfterStartFresh(db: Db): Promise<number> {
-  const done = await db.one<{ ok: boolean }>(`select true as ok from settings where key = 'repair.start-fresh-v1'`);
-  if (done) return 0;
-  let fixed = 0;
-  for (const { account_id } of await db.query<{ account_id: string }>('select account_id from account_state')) {
-    const s = await readState(db, account_id); if (!s.data) continue;
-    const d = structuredClone(s.data) as AppState;
-    const reset = d.audit.filter((a) => a.action === 'Started fresh for real bank data').map((a) => a.at).sort()[0];
-    if (!reset) continue;
-    const items = new Set((await db.query<{ id: string }>('select id from bank_items where account_id = $1', [account_id])).map((r) => r.id));
-    const before = { e: d.expenses.length, t: d.txns.length, p: d.payments.length, b: (d.banks ?? []).length };
-    const goneTx = new Set(d.txns.filter((t) => t.source === 'bank' && !(t.bankId && items.has(t.bankId))).map((t) => t.id));
-    const goneExp = new Set([
-      ...d.expenses.filter((e) => e.createdAt < reset).map((e) => e.id),
-      ...d.txns.filter((t) => goneTx.has(t.id) && t.expenseId).map((t) => t.expenseId!),
-    ]);
-    const goneTxPay = new Set(d.txns.filter((t) => goneTx.has(t.id) && t.paymentId).map((t) => t.paymentId!));
-    const goneP = new Set(d.payments.filter((p) => p.source === 'bank' && (p.createdAt < reset || goneTxPay.has(p.id))).map((p) => p.id));
-    const goneR = new Set(d.receipts.filter((r) => goneP.has(r.paymentId)).map((r) => r.id));
-    d.txns = d.txns.filter((t) => !goneTx.has(t.id));
-    d.expenses = d.expenses.filter((e) => !goneExp.has(e.id));
-    d.payments = d.payments.filter((p) => !goneP.has(p.id));
-    d.receipts = d.receipts.filter((r) => !goneR.has(r.id));
-    d.messages = d.messages.filter((m) => !(m.receiptId && goneR.has(m.receiptId)));
-    d.banks = (d.banks ?? []).filter((b) => items.has(b.id));
-    if (!d.banks.length && d.profile.rentArrival === 'bank') d.profile.rentArrival = 'manual';
-    const removed = before.e - d.expenses.length + before.t - d.txns.length + before.p - d.payments.length + before.b - d.banks.length;
-    d.epoch = randomUUID();
-    if (removed) d.audit.unshift({ id: randomUUID(), at: new Date().toISOString(), action: 'Old bank data removed again', detail: `${before.e - d.expenses.length} expenses, ${before.t - d.txns.length} bank transactions, ${before.p - d.payments.length} bank-matched rent payments that came back after Start fresh` });
-    await writeState(db, account_id, s.revision, d, 'Keyholder repair', { reset: true });
-    if (removed) fixed++;
-  }
-  await db.query(`insert into settings (key, value) values ('repair.start-fresh-v1', to_jsonb(now()::text)) on conflict (key) do nothing`);
-  return fixed;
-}

@@ -8,8 +8,7 @@ import { migrate, openDb, type Db } from './db';
 import { buildApp } from './app';
 import { dailyRun, refreshGic } from './jobs';
 import { sendDue } from './email';
-import { ensureAdmin, resetAdminTwoStep, writeState } from './services';
-import { repairAfterStartFresh } from './support';
+import { ensureAdmin, resetAdminTwoStep } from './services';
 import { codeAt, fromBase32, stepNow } from './totp';
 import { Keys } from './keys';
 import { createHash, generateKeyPairSync, sign as signData } from 'node:crypto';
@@ -441,15 +440,9 @@ describe('the super user', () => {
     expect(list.find((x: { code: string }) => x.code === 'SPRING25').status).toBe('paused');
   });
 
-  it('banks: the super user turns single banks off (the app is told) or all of them', async () => {
-    const s = await snap(sup);
-    expect(s.platform.banks).toEqual({ enabled: true, off: [] });
-    s.platform.banks = { enabled: true, off: ['TD'] };
-    await put(sup, s, { action: 'Bank turned off', detail: 'TD' });
-    expect((await call('GET', '/api/session')).body.config).toMatchObject({ banks: false, banksOff: ['TD'] });
-    const a = await snap(ava);
-    expect((await put(ava, { ...a, platform: { ...a.platform, banks: { enabled: false, off: [] } } }, { action: 'Bank connection turned off', detail: 'all' })).status).toBe(403);
-    expect((await snap(sup)).platform.banks).toEqual({ enabled: true, off: ['TD'] });
+  it('there is no turning banks off: bank checks are on when Plaid is set up', async () => {
+    expect((await snap(sup)).platform).not.toHaveProperty('banks');
+    expect((await call('GET', '/api/session')).body.config).not.toHaveProperty('banksOff');
   });
 
   it('API keys: super user only, password needed, stored encrypted and never sent back in full; they take over from Render', async () => {
@@ -610,18 +603,6 @@ describe('bank data (Plaid)', () => {
     expect((put.body.data as AppState).expenses.some((e) => e.id === 'exp-old')).toBe(false);
     const after = (await call('GET', '/api/state', { cookie: alex })).body.data as AppState;
     expect(after.expenses.some((e) => e.id === 'exp-old')).toBe(false);
-    // Old data that came back before this fix: the one-time repair removes it and keeps what was added since.
-    const cur = (await call('GET', '/api/state', { cookie: alex })).body;
-    const d = structuredClone(cur.data) as AppState;
-    d.expenses.push({ id: 'exp-back', propertyId: d.properties[0].id, date: '2026-10-02', amount: 9900, vendor: 'Back Again', category: 'repairs', kind: 'current', scope: 'direct', createdAt: '2026-10-02T00:00:00.000Z' });
-    d.expenses.push({ id: 'exp-new', propertyId: d.properties[0].id, date: '2026-12-02', amount: 500, vendor: 'New One', category: 'repairs', kind: 'current', scope: 'direct', createdAt: new Date(Date.now() + 60_000).toISOString() });
-    d.txns.push({ id: 'pl-old', source: 'bank', bankId: '00000000-0000-0000-0000-000000000000', date: '2026-10-01', amount: -100, payer: 'OLD', memo: '', status: 'new' });
-    await writeState(db, (await db.query<{ account_id: string }>(`select account_id from account_state where data->'profile'->>'email' = 'alex@morgan.ca' limit 1`))[0].account_id, cur.revision, d, 'test', { reset: true });
-    expect(await repairAfterStartFresh(db)).toBe(1);
-    const fixed = (await call('GET', '/api/state', { cookie: alex })).body.data as AppState;
-    expect(fixed.expenses.map((e) => e.id)).toEqual(['exp-new']);
-    expect(fixed.txns.some((t) => t.id === 'pl-old')).toBe(false);
-    expect(await repairAfterStartFresh(db)).toBe(0); // once only
   });
 
   it('remembered devices (two-step): right after the second step a browser can be remembered; it is listed and can be forgotten', async () => {
@@ -811,4 +792,5 @@ describe('two-step sign-in (authenticator app)', () => {
     // …and the dashboard asks for it again.
     expect((await call('GET', '/api/admin/support', { cookie: r.cookie })).status).toBe(403);
   });
+
 });

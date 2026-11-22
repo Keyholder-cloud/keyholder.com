@@ -186,7 +186,7 @@ export function Landing() {
           <nav aria-label="Trust">
             <p>Trust</p><Link to="/welcome/security">Security &amp; privacy</Link><Link to="/welcome/security#bank">Bank connections (Plaid)</Link><Link to="/welcome/security#rights">Privacy policy</Link><Link to="/welcome/security#terms">Terms of use</Link>
           </nav>
-          <p className="lp-legal">Keyholder prepares documents and information. It does not give legal or tax advice, file returns, or hold or move money. Notice periods, forms and rates in this preview are being verified with each province. Screens show sample properties. Photos from Unsplash. © 2026 Keyholder.</p>
+          <p className="lp-legal">Keyholder prepares documents and information. It does not give legal or tax advice, file returns, or hold or move money. Check notice periods and forms with your province's tenancy board before you serve one. Screens show sample properties. Photos from Unsplash. © 2026 Keyholder.</p>
         </div>
       </footer>
 
@@ -502,28 +502,28 @@ function Pricing({ start }: { start: () => void }) {
   const cents = useUnitPrice();
   return (
     <>
-      <PageHead kicker="Pricing · early access" icon="cash" title={<>Simple pricing. <em>Free to start.</em></>} aside={<Photo src={keysPhoto} alt="House keys next to a small model house on a table" className="aside" />}>Early-access prices are not final and will be confirmed before you are ever charged.</PageHead>
+      <PageHead kicker="Pricing" icon="cash" title={<>Simple pricing. <em>Free to start.</em></>} aside={<Photo src={keysPhoto} alt="House keys next to a small model house on a table" className="aside" />}>Every feature in both plans. You pay only for units past your first, and never without agreeing first.</PageHead>
       <section className="lp-sec lp-sec-top0">
         <div className="lp-wrap">
           <div className="lp-prices">
             <div className="lp-price reveal">
               <span className="lp-tile-ic big mint"><Icon name="home" size={22} /></span>
               <h3>Starter</h3>
-              <p className="lp-amt">Free</p><p className="lp-per">Automation for one rental unit</p>
-              <ul><li>Rent tracking and receipts</li><li>Reminders</li><li>Expenses and receipt photos</li><li>Tax summary</li></ul>
+              <p className="lp-amt">Free</p><p className="lp-per">One rental unit, free for good</p>
+              <ul>{INCLUDED.map((t) => <li key={t}>{t}</li>)}</ul>
               <button className="btn lp-big" onClick={start} data-cta>Get started</button>
             </div>
             <div className="lp-price best reveal">
               <span className="lp-flag">Most landlords pick this</span>
               <span className="lp-tile-ic big lilac"><Icon name="users" size={22} /></span>
               <h3>Landlord</h3>
-              <p className="lp-amt">{cents % 100 ? fmtPrice(cents) : <CountUp to={cents / 100} prefix="$" />}<span>per unit, a month</span></p><p className="lp-per">Automation for 2 to 10 units</p>
-              <ul><li>Everything in Starter</li><li>Several banks: rent, bills and mortgage read for you</li><li>Notices and forms for your province</li><li>Applications and tenant screening tools</li><li>Silver and Gold insights, full tax pack</li></ul>
+              <p className="lp-amt">{cents % 100 ? fmtPrice(cents) : <CountUp to={cents / 100} prefix="$" />}<span>per unit, a month</span></p><p className="lp-per">2 units or more, for every unit</p>
+              <ul><li>Everything in Starter, on every unit</li><li>Several properties, rooms and shared leases</li><li>Several banks and statement uploads</li><li>A tax pack per property for your accountant</li><li>No card until card payments open: we ask first</li></ul>
               <button className="btn primary lp-big" onClick={start} data-cta>Get started</button>
             </div>
           </div>
           <div className="lp-trust-row lp-trust-under">
-            {[['lock', 'View-only bank access'], ['check', 'You approve everything'], ['shield', 'Data kept in Canada'], ['heart', 'Plain words, large text']].map(([ic, t], i) => (
+            {[['lock', 'View-only bank access'], ['check', 'You approve everything'], ['shield', 'Canadian privacy law (PIPEDA)'], ['heart', 'Plain words, large text']].map(([ic, t], i) => (
               <div key={t} className="lp-trust-item reveal" style={{ transitionDelay: `${i * 60}ms` }}><span className={`lp-tile-ic ${TONES[i]}`}><Icon name={ic} size={18} /></span>{t}</div>
             ))}
           </div>
@@ -533,14 +533,17 @@ function Pricing({ start }: { start: () => void }) {
   );
 }
 
+/** What every plan includes: the plans differ only in how many units they cover. */
+const INCLUDED = ['Rent tracking, receipts and reminders', 'Bank connection and statement uploads', 'Expenses with receipt photos', "Your province's notices and forms", 'Tenant applications', 'Tax numbers for your T776'];
+
 // ================================================================ Questions
 const FAQ: [string, string, string][] = [
   ['sparkle', 'What does Keyholder do automatically?', 'It checks your banks for rent and bills, writes receipts and reminders, files your costs and keeps your tax numbers up to date. Receipts and reminders go out with one tap, or automatically once you switch that on. Legal notices and choosing a tenant always need your approval.'],
   ['heart', "I'm new to being a landlord. Is this for me?", 'Yes. Keyholder is made for people with one or a few rentals, including a basement suite in your own home, where shared costs like heat are split for you. It explains each step in plain words.'],
-  ['cash', 'What does it cost?', 'Free for one rental unit. For 2 to 10 units, it is planned at {price} per unit a month. Early-access prices are not final, and you will never be charged without agreeing first.'],
+  ['cash', 'What does it cost?', 'Free for one rental unit, for good. With 2 units or more, it is {price} per unit a month, with every feature in both plans. No card is needed to start, and you are never charged without agreeing first.'],
   ['lock', 'Is my bank information safe?', 'Yes. Keyholder can only look at deposits and bills. It can never move money, and it never sees your bank password. You can also skip the bank and tap "Mark paid" yourself.'],
-  ['bank', 'Which banks work?', 'RBC, TD, BMO, Scotiabank, CIBC, National Bank, Desjardins, Tangerine and most credit unions. Connect as many as you like, view only.'],
-  ['star', 'What do Bronze, Silver and Gold mean?', 'Your property card gets more useful as you add details. Bronze needs only the rent. Silver adds what you paid, so you see your gain and how you compare with a GIC. Gold adds your mortgage and buying costs for full tax numbers. It is always free.'],
+  ['bank', 'Which banks work?', 'RBC, TD, BMO, Scotiabank, CIBC, National Bank, Desjardins, Tangerine and most credit unions, view only, as many as you like. If yours cannot connect, upload its statements instead (PDF, CSV and more).'],
+  ['star', 'What do Bronze, Silver and Gold mean?', 'Your property card gets more useful as you add details. Bronze needs only the rent. Silver adds what you paid, so you see your gain and how you compare with a GIC. Gold adds your mortgage and buying costs for full tax numbers. Every level is in both plans.'],
   ['info', 'Is this legal or tax advice?', 'No. Keyholder fills in forms and numbers for you, and you make the decisions. The first time you send a legal notice, it is a good idea to check with a paralegal. At tax time, an accountant can review your numbers.'],
   ['users', 'Can I try it first?', 'Yes. Keyholder is free for one rental unit, and no card is needed. Add your place and see it work before you pay anything.'],
 ];

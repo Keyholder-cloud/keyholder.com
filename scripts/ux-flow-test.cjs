@@ -127,14 +127,18 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     await step(tag, 'A9 Income shows the payment and receipt', async () => { await go(pg, 'income'); await pg.waitForSelector('td:has-text("Rita Gomez")'); });
     await step(tag, 'A10 Expenses → Add an expense (typed, no photo)', async () => {
       await go(pg, 'expenses'); await pg.locator('.page-head >> text=Add an expense').click();
-      await pg.locator('text=No photo, just type it').click(); await pg.fill('#ex-amt', '120'); await pg.fill('#ex-vendor', 'Home Depot');
+      await pg.waitForSelector('#ex-photo'); if (await pg.locator('.capture-frame').count()) throw new Error('opened the camera first'); await pg.fill('#ex-amt', '120'); await pg.fill('#ex-vendor', 'Home Depot');
       await pg.locator('.drawer-foot >> text=Save').click(); await pg.waitForTimeout(250);
       await go(pg, 'expenses'); await pg.waitForSelector('text=Home Depot');
     });
     await step(tag, 'A11 Score "Do it" opens the right form (what you paid → Silver)', async () => {
       await go(pg, 'today'); await pg.locator(tag === 'phone' ? '.mobile-top .setup-circle' : '.top-tools.desk .setup-circle').click(); await pg.waitForSelector('.setup-card #score');
       const next = await pg.locator('#score .row .title').first().textContent();
-      await pg.locator('#score .row', { hasText: 'what you paid' }).locator('text=Do it').click(); await pg.waitForTimeout(250);
+      // Stages come in order, so "what you paid" (Know your numbers) may be past the first three.
+      // The list shows the current stage only; "what you paid" (stage 3) is then on the property's level steps.
+      if (await pg.locator('#score .row', { hasText: 'what you paid' }).count()) await pg.locator('#score .row', { hasText: 'what you paid' }).locator('text=Do it').click();
+      else { await pg.keyboard.press('Escape'); const id = (await state(pg)).properties[0].id; await go(pg, `rent/property/${id}/value`); await pg.click('#add-paid'); }
+      await pg.waitForTimeout(250);
       if (await pg.locator('#sv-price').count()) { await pg.fill('#sv-price', '650000'); await pg.fill('#sv-date', '2020-05-01'); await pg.fill('#sv-owed', '400000'); await pg.locator('.drawer-foot >> text=Save').click(); await pg.waitForTimeout(300); await pg.keyboard.press('Escape'); return 'Silver form · ' + next.trim(); }
       return 'Opened: ' + (await pg.evaluate(() => location.hash)) + ' · ' + next.trim();
     });
@@ -237,9 +241,9 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     const circle = () => pg.locator(tag === 'phone' ? '.mobile-top .setup-circle' : '.top-tools.desk .setup-circle');
     await step(tag, 'B10 Setup circle opens the setup list; ⋯ Ignore raises the score', async () => {
       await circle().click(); await pg.waitForSelector('.setup-card #score');
-      const n = await pg.locator('#score .row').count(); await pg.locator('#score >> text=Show all').click(); const n2 = await pg.locator('#score .row').count();
+      const n = await pg.locator('#score .row').count(); if (await pg.locator('#score >> text=/^Show all/').count()) await pg.locator('#score >> text=/^Show all/').click(); const n2 = await pg.locator('#score .row').count();
       const before = Number((await pg.locator('#score .score-ring > span').textContent()).trim());
-      await pg.locator('#score .row').nth(1).locator('.dots').click(); await pg.locator('.row-menu-pop [role=menuitem]', { hasText: /^Ignore$/ }).click(); await pg.waitForTimeout(250);
+      await pg.locator('#score .row').first().locator('.dots').click(); await pg.locator('.row-menu-pop [role=menuitem]', { hasText: /^Ignore$/ }).click(); await pg.waitForTimeout(250);
       const after = Number((await pg.locator('#score .score-ring > span').textContent()).trim()); if (!(after > before)) throw new Error(before + ' → ' + after);
       await pg.keyboard.press('Escape'); await pg.waitForTimeout(150);
       return n + ' shown, ' + n2 + ' after Show all · score ' + before + ' → ' + after;
@@ -557,7 +561,8 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.locator('.rc-item', { hasText: 'Snow removal' }).click(); await pg.waitForSelector('.cash-note');
       if (!(await pg.locator('#ex-cash').isChecked())) throw new Error('cash box not ticked');
       await pg.fill('#ex-amt', '60'); await pg.locator('.drawer-foot >> text=Save').click(); await pg.waitForTimeout(300);
-      await pg.waitForSelector('.rc-item:has-text("Snow removal") .rc-n.done');
+      // Added costs move out of the suggestions, into "Show … added or ignored".
+      await pg.locator('#regular-costs >> text=/^Show \\d+ added or ignored/').click(); await pg.waitForSelector('.rc-item:has-text("Snow removal") .rc-n.done');
       if (await pg.locator('.tax-start').count()) throw new Error('part-year note shown for records starting in January');
       const y = new Date().getFullYear(); await pg.fill('#tax-from', `${y}-06-01`); await pg.waitForSelector('.tax-start >> text=Started part way through the year');
       await pg.waitForSelector('text=paid in cash with no receipt');
@@ -565,8 +570,8 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     await step(tag, 'F4c Expenses → Add an expense → photo of a receipt: amount, date, store and type filled in', async () => {
       const img = await receiptImage(b, out);
       await go(pg, 'expenses'); await pg.locator('.page-head >> text=Add an expense').click();
-      await pg.locator('.capture-frame input[type=file]').setInputFiles(img);
-      await pg.waitForSelector('#ex-amt', { timeout: 90000 });
+      await pg.locator('#ex-photo').setInputFiles(img);
+      await pg.waitForSelector('.read-note', { timeout: 90000 });
       const got = { amount: await pg.inputValue('#ex-amt'), date: await pg.inputValue('#ex-date'), vendor: await pg.inputValue('#ex-vendor'), type: await pg.inputValue('#ex-cat') };
       if (got.amount !== '86.45' || got.date !== RECEIPT_DATE || got.vendor !== 'Home Depot' || got.type !== 'repairs') throw new Error(JSON.stringify(got));
       await pg.waitForSelector('.read-note >> text=Please check before you save');
@@ -835,6 +840,38 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.click('#rt-manual'); await pg.click('#rt-manual-confirm'); await pg.waitForTimeout(250);
       if ((await state(pg)).banks.length !== 0) throw new Error('banks still connected');
     });
+    await step(tag, 'H22 Expenses: tax years (current active) and Upload statement; a CSV is read, checked line by line, added once (a second upload of it adds nothing)', async () => {
+      await go(pg, 'expenses'); await pg.waitForSelector('#tax-years .tax-year.on >> text=Current');
+      for (const id of ['#upload-statement', '.add-expense']) if (!(await pg.locator(id).count())) throw new Error('missing ' + id);
+      const csv = require('path').join(require('os').tmpdir(), `kh-${tag}-stmt.csv`);
+      require('fs').writeFileSync(csv, 'Date,Description,Amount\n2026-10-01,E-TRANSFER MAYA CHEN,1650.00\n2026-10-03,ENBRIDGE GAS,-212.40\n2026-10-20,UNIQUE VENDOR 77,-86.45\n');
+      const before = (await state(pg)).txns.length;
+      for (const round of [1, 2]) {
+        await pg.click('#upload-statement'); await pg.locator('#statement-file').setInputFiles(csv); await pg.waitForSelector('.statement-lines tbody tr');
+        if ((await pg.locator('.statement-lines tbody tr').count()) !== 3) throw new Error('lines read');
+        await pg.fill('#st-bank-0', 'RBC Royal Bank'); await pg.click('#statement-import'); await pg.waitForSelector('#statement-done');
+        const st = await state(pg); const added = st.txns.length - before;
+        if (round === 1 && (added !== 3 || !st.statements?.length)) throw new Error('added ' + added);
+        if (round === 2 && added !== 3) throw new Error('second upload added again: ' + added);
+        await pg.locator('.drawer-foot >> text=Done').click();
+      }
+    });
+    await step(tag, 'H23 Paperwork → Taxes: From is January 1; close the year step by step; Regular costs include legal, management and Other, and × stops a suggestion', async () => {
+      await go(pg, 'paperwork/taxes'); const y = await pg.inputValue('#tax-from'); if (!/-01-01$/.test(y)) throw new Error('From ' + y);
+      await pg.waitForSelector('#close-year .close-steps'); for (const t of ['Bank statements', 'Rent', 'Mortgage payments', 'Property tax and insurance']) await pg.waitForSelector(`#close-year >> text=${t}`);
+      for (const t of ['Legal fees', 'Management or admin fees', 'Other']) await pg.waitForSelector(`#regular-costs >> text=${t}`);
+      await pg.locator('#regular-costs li:has-text("Snow removal") .rc-x').click(); await pg.waitForTimeout(200);
+      if (await pg.locator('#regular-costs > .rc-list:first-of-type li:has-text("Snow removal")').count()) throw new Error('still suggested after ×');
+    });
+    await step(tag, 'H24 Setup progress: four stages in order, the current one named; the ring has a colour for its score', async () => {
+      await go(pg, 'today'); await pg.locator('.setup-circle:visible').first().click(); await pg.waitForSelector('.stage-bar li');
+      if ((await pg.locator('.stage-bar li').count()) !== 4) throw new Error('stages'); await pg.waitForSelector('#score >> text=/Stage \\d of 4/');
+      if (!(await pg.locator('.score-ring[class*="tone-"]').count())) throw new Error('no colour'); await pg.keyboard.press('Escape');
+    });
+    await step(tag, 'H25 Add an expense opens the form first; the camera is a button in it', async () => {
+      await go(pg, 'expenses'); await pg.click('.add-expense'); await pg.waitForSelector('#ex-amt'); await pg.waitForSelector('#ex-photo');
+      await pg.keyboard.press('Escape');
+    });
     ok(tag, 'H errors', errsH.length === 0, errsH.slice(0, 3).join(' | '));
 
     // ---------------- I. Logo, and never the same buttons twice ----------------
@@ -902,10 +939,10 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.waitForSelector('.sp-head >> text=Waiting on them');
       await go(pg, 'support/privacy'); await pg.waitForSelector('.ledger >> text=Reply sent'); return subject;
     });
-    await step(tag, 'J4 Search finds a customer; extend the trial and add a note', async () => {
+    await step(tag, 'J4 Search finds a customer and adds a note (no trial: Starter is free for good)', async () => {
       await go(pg, 'support'); const name = (await pg.locator('.sp-list strong').first().textContent()).trim();
       await pg.fill('#sp-q', name); await pg.locator(`.sp-search-res >> text=${name}`).first().click(); await pg.waitForSelector(`.sp-head h1:has-text("${name}")`);
-      await pg.locator('text=Extend trial 30 days').click(); await pg.waitForSelector('text=Trial until');
+      if (await pg.locator('text=Extend trial').count()) throw new Error('trial button still there');
       await pg.fill('#cn', 'Called about rooms'); await pg.locator('.sp-addrow button').first().click(); await pg.waitForSelector('text=Called about rooms');
       return name;
     });
@@ -932,22 +969,21 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'support/rules'); await pg.locator('tr', { hasText: 'Alberta' }).locator('text=Checked today').click(); await pg.waitForTimeout(200);
       if (!(await pg.locator('tr', { hasText: 'Alberta' }).locator('text=Verified').count())) throw new Error('Alberta not verified');
     });
-    await step(tag, 'J7b Super user (admin / admin): a new price shows on the website; a promo code; a bank turned off cannot be picked in the sample app', async () => {
+    await step(tag, 'J7b Super user (admin / admin): a new price shows on the website; a promo code; no Banks page, every bank can be picked', async () => {
       const groups = await pg.locator('.sp-nav-group > p').allTextContents(); if (!groups.includes('Super user')) throw new Error('no Super user group');
       await go(pg, 'support/pricing'); await pg.fill('#sp-price', '12'); await pg.locator('#price >> text=Save price').click(); await pg.waitForSelector('#price >> text=$12.00');
       await pg.fill('#promo-code', 'PREVIEW10'); await pg.fill('#promo-value', '10'); await pg.locator('#promotions >> text=Add code').click(); await pg.waitForSelector('#promotions >> text=PREVIEW10');
       // Comparison rates: savings and the stock index fund are set here; the GIC is the Bank of Canada's.
       await pg.waitForSelector('#benchmarks >> text=/5-year GIC: [0-9.]+%/'); await pg.fill('#bm-savings', '3.3'); await pg.fill('#bm-index', '6.8');
       await pg.locator('#benchmarks >> text=Save rates').click(); await pg.waitForSelector('#benchmarks >> text=High-interest savings: 3.3%');
-      await go(pg, 'support/banks'); await pg.locator('.sp-bank-list li:has-text("RBC") >> text=Turn off').click(); await pg.waitForSelector('.sp-bank-list li:has-text("RBC") >> text=Turn on');
+      if (await pg.locator('.sp-nav a:has-text("Banks"), a[href*="support/banks"]').count()) throw new Error('the Banks page is still in the menu');
       if (await pg.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)) throw new Error('sideways scroll');
       await go(pg, 'welcome/pricing'); await pg.locator('.lp-price.best').scrollIntoViewIfNeeded(); await pg.waitForSelector('.lp-price.best >> text=$12');
-      // The bank turned off, in the sample landlord app (test / test).
+      // Every bank can be picked in the sample landlord app (test / test): there is no turning banks off.
       await go(pg, 'support'); await pg.locator('.sp-rail-foot >> text=Sign out').click(); await pg.waitForSelector('.lp-hero-h');
       await login(pg, 'test', 'test'); await pg.waitForSelector('.rent-row'); await pg.locator('.tour-card >> text=Skip tour').click(); await pg.waitForTimeout(200);
       await go(pg, 'settings#rent-tracking'); await pg.locator('#rt-add').click(); await pg.waitForSelector('.drawer');
-      if (!(await pg.locator('.drawer .choice:has-text("RBC")').isDisabled())) throw new Error('RBC can still be picked');
-      await pg.waitForSelector('.drawer .choice:has-text("RBC") >> text=Not available right now');
+      if (await pg.locator('.drawer .choice:has-text("RBC")').isDisabled()) throw new Error('RBC cannot be picked');
       await pg.keyboard.press('Escape'); await pg.waitForTimeout(200);
       // The rates set on the dashboard reach the app: a Silver property's "Your money is earning".
       await pg.reload(); await go(pg, 'today'); await pg.waitForSelector('.rent-row');

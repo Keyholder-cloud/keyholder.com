@@ -1,14 +1,11 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { AppState, Message, Receipt, Unit } from '../data/types';
-import { currentLine, unitTenant, useStore } from '../data/store';
-import { addPeriods, daysBetween, fmtDate, fmtMonthShort, fmtPeriod, periodOf } from '../lib/dates';
+import type { AppState, Receipt } from '../data/types';
+import { useStore } from '../data/store';
+import { addPeriods, fmtDate, fmtMonthShort, fmtPeriod, periodOf } from '../lib/dates';
 import { byRoom, leaseLedger, type ChargeState } from '../lib/finance';
-import { fmt, fmt0 } from '../lib/money';
-import { messageBody } from '../lib/templates';
-import { tenantEmails, toLine } from '../lib/people';
+import { fmt } from '../lib/money';
 import { Icon } from './Icon';
-import { Stamp, embedded } from './ui';
+import { Stamp } from './ui';
 import { Link } from 'react-router-dom';
 import { BANK_CHECK_HOURS } from '../lib/jurisdiction';
 import { banksOn, serverMode } from '../data/api';
@@ -46,46 +43,6 @@ export function BankStatus({ compact }: { compact?: boolean }) {
 
 const STATE_LABEL: Record<ChargeState, string> = { paid: 'Paid', late: 'Late', partial: 'Partial', due: 'Due', upcoming: 'Upcoming' };
 
-// ---------- Door plate ----------
-export function DoorPlate({ unit }: { unit: Unit }) {
-  const { state, today } = useStore();
-  const nav = useNavigate();
-  const prop = state.properties.find((p) => p.id === unit.propertyId);
-  const { lease, tenant } = unitTenant(state, unit.id, today);
-  const line = currentLine(state, lease, today);
-  if (!tenant || !lease) {
-    // Vacancy cost counter (RA-8): lost rent since the unit emptied.
-    const last = state.leases.filter((l) => l.unitId === unit.id && l.end).sort((a, b) => (b.end ?? '').localeCompare(a.end ?? ''))[0];
-    const days = last?.end ? Math.max(0, daysBetween(last.end, today)) : 0;
-    return (
-      <button className="plate vacant" onClick={() => nav(`/rent/property/${unit.propertyId}`)} aria-label={`Unit ${unit.label}, vacant`}>
-        <div className="plate-inner"><div className="plate-face">
-          <svg className="keyghost" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M8 15a4 4 0 1 1 0-8 4 4 0 0 1 0 8zM12 11h9M18 11v3M21 11v2" /></svg>
-          <div className="num">{unit.label}</div>
-          <div className="prop">{prop?.nickname}</div>
-          <div className="who">
-            <span className="tiny soft">{days ? `Empty ${days} days · ${fmt0(Math.round((unit.rent * 12 * days) / 365))} lost` : 'Ready for a tenant'}</span>
-            <Stamp kind="vacant">Vacant</Stamp>
-          </div>
-        </div></div>
-      </button>
-    );
-  }
-  return (
-    <button className="plate" onClick={() => nav(`/rent/tenant/${tenant.id}`)} aria-label={`Unit ${unit.label}, ${tenant.names.join(' and ')}, ${line ? STATE_LABEL[line.state] : ''}`}>
-      <div className="plate-inner">
-        <div className="plate-face">
-          <div className="spread" style={{ alignItems: 'flex-start' }}><div className="num">{unit.label}</div>{line && <Stamp kind={line.state}>{STATE_LABEL[line.state]}</Stamp>}</div>
-          <div className="prop">{prop?.nickname}</div>
-          <div className="who" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 0 }}>
-            <strong>{tenant.names.join(' & ')}</strong>
-            <span className="mono small soft">{fmt(lease.rent)} a month</span>
-          </div>
-        </div>
-      </div>
-    </button>
-  );
-}
 
 export const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`;
 
@@ -184,46 +141,3 @@ export function ReceiptLetter({ receipt }: { receipt: Receipt }) {
 
 export const methodLabel = (m: string) => ({ etransfer: 'Interac e-Transfer', cheque: 'Cheque', cash: 'Cash', 'direct-deposit': 'Direct deposit', other: 'Other' } as Record<string, string>)[m] ?? m;
 
-export function MessageEditor({ message, onDone }: { message: Message; onDone: () => void }) {
-  const { state, act, today } = useStore();
-  const base = messageBody(state, message, today);
-  const [editing, setEditing] = useState(false);
-  const [subject, setSubject] = useState(base.subject);
-  const [body, setBody] = useState(base.body);
-  const tenant = state.tenants.find((t) => t.id === message.tenantId);
-  const receipt = message.receiptId ? state.receipts.find((r) => r.id === message.receiptId) : undefined;
-  const changed = subject !== base.subject || body !== base.body;
-  const canEmail = !!tenant && tenantEmails(tenant).length > 0;
-  return (
-    <div className="stack">
-      <div className="small soft to-line">To: {toLine(tenant)}</div>
-      <div className="letter">
-        <Letterhead state={state} />
-        {editing ? (
-          <>
-            <input aria-label="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} style={{ fontWeight: 600, marginBottom: 8 }} />
-            <textarea aria-label="Message" value={body} onChange={(e) => setBody(e.target.value)} />
-          </>
-        ) : (
-          <>
-            <p><strong>{subject}</strong></p>
-            <div className="body">{body}</div>
-          </>
-        )}
-      </div>
-      {receipt && <ReceiptLetter receipt={receipt} />}
-      <div className="letter-foot">
-        {message.kind === 'reminder' ? 'Sends now. Further reminders stop automatically when payment arrives.' : 'Sends now, with the receipt attached as a PDF. A copy is kept in Paperwork.'}
-      </div>
-      {!canEmail && <div className="callout warn">No email for this tenant. Print the receipt, or add an email.</div>}
-      <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-        <button className="btn ghost" onClick={() => { act.discardMessage(message.id); onDone(); }}>Don't send</button>
-        <button className="btn" onClick={() => setEditing((e) => !e)}><Icon name="edit" size={16} />{editing ? 'Preview' : 'Edit wording'}</button>
-        {receipt && !embedded && <button className="btn" onClick={() => window.print()}><Icon name="print" size={16} />Print</button>}
-        <button className="btn primary" disabled={!canEmail} onClick={() => { act.approveMessage(message.id, changed ? { subject, body } : undefined); onDone(); }}>
-          <Icon name="check" size={16} />Approve and send
-        </button>
-      </div>
-    </div>
-  );
-}

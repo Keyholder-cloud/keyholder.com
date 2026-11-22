@@ -81,11 +81,6 @@ let liveBenchmarks: Benchmarks | null = null;
 /** The rates in effect: the live site's (from the server) or, in the preview, the sample dashboard's. */
 export function setBenchmarks(b: Benchmarks | null | undefined) { liveBenchmarks = b ?? null; }
 export const benchmarks = (): Benchmarks => liveBenchmarks ?? DEFAULT_BENCHMARKS;
-/** The three rates as a band for the ruler: savings, GIC, stock index fund. */
-export function returnPresets(): Band & { labels: [string, string, string] } {
-  const b = benchmarks();
-  return { low: b.savings.pct, typical: b.gic.pct, high: b.index.pct, labels: [BENCHMARK_LABELS.savings, BENCHMARK_LABELS.gic, BENCHMARK_LABELS.index], source: b.gic.source, asOf: b.gic.asOf };
-}
 
 export interface RegionData {
   vacancy: Band;

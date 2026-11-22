@@ -205,8 +205,8 @@ function watch(pg, errors, label) {
       await step(tag, 'E4b Expenses → photo of a receipt is read on the device (server security rules allow it) and saved to the account', async () => {
         const img = await receiptImage(b);
         await go(pg, 'expenses'); await pg.locator('.page-head >> text=Add an expense').click();
-        await pg.locator('.capture-frame input[type=file]').setInputFiles(img);
-        await pg.waitForSelector('#ex-amt', { timeout: 90000 });
+        await pg.locator('#ex-photo').setInputFiles(img);
+        await pg.waitForSelector('.read-note', { timeout: 90000 });
         if ((await pg.inputValue('#ex-amt')) !== '86.45' || (await pg.inputValue('#ex-vendor')) !== 'Home Depot') throw new Error(`read: ${await pg.inputValue('#ex-amt')} ${await pg.inputValue('#ex-vendor')}`);
         await pg.locator('.drawer-foot >> text=Save').click();
         await until(async () => (await api(pg, '/api/state')).body?.data?.expenses?.some((e) => e.vendor === 'Home Depot' && e.amount === 8645 && e.receiptImage), 6000, 'expense saved with its photo');
@@ -414,12 +414,6 @@ function watch(pg, errors, label) {
         await ad.fill('#bm-savings', savings); await ad.fill('#bm-index', '7'); await ad.locator('#benchmarks >> text=Save rates').click();
         await until(async () => { const r = await rates(); return r.savings.pct === Number(savings) && r.index.pct === 7 && r.gic.pct === 2.85; }, 5000, 'rates saved');
         await ad.waitForSelector(`#benchmarks >> text=High-interest savings: ${savings}%`);
-      });
-      await step(tag, 'E22 Super user → Banks: turning one bank off reaches the app; turning it back on', async () => {
-        await go(ad, 'support/banks'); await ad.locator('.sp-bank-list li:has-text("TD") >> text=Turn off').click();
-        await until(async () => (await (await fetch(`${BASE}api/session`)).json()).config.banksOff.includes('TD'), 5000, 'TD off');
-        await ad.locator('.sp-bank-list li:has-text("TD") >> text=Turn on').click();
-        await until(async () => !(await (await fetch(`${BASE}api/session`)).json()).config.banksOff.includes('TD'), 5000, 'TD on');
       });
       await step(tag, 'E23 Super user → Connections: a key is saved with the password, shown only as its last 4, and email is tested', async () => {
         await go(ad, 'support/connections'); await ad.waitForSelector('#conn-stripe');

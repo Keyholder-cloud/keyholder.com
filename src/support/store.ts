@@ -36,9 +36,8 @@ function load(): SupportState {
   } catch { /* fall through */ }
   return { ...generateSupport(), sla: { ...SLA_HOURS } };
 }
-/** Super user: the Landlord plan price, promotions and banks. Only the super user changes these. */
+/** Super user: the Landlord plan price, promotions and Start fresh. Only the super user changes these. */
 export const isSuper = (s: SupportState) => (s.myRole ?? 'super') === 'super';
-export const canAdmin = (s: SupportState) => (s.myRole ?? 'super') !== 'support';
 /** Browser-only preview: the sample dashboard's platform settings, for the website and the app on this device. */
 export function localPlatform(): Platform | null {
   try { const raw = localStorage.getItem(KEY); return raw ? ((JSON.parse(raw) as SupportState).platform ?? null) : null; } catch { return null; }

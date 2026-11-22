@@ -1,5 +1,7 @@
 import { createPortal } from 'react-dom';
 import { PLAID_PRIVACY_URL } from './Security';
+import { UploadStatementButton } from '../components/StatementUpload';
+import { currentTaxYear, gapCount, recordsFromIn, yearCheck, type Gap } from '../lib/taxyear';
 import { PageSub } from '../components/Guide';
 import { useMemo, useState } from 'react';
 import { Link, NavLink, useParams } from 'react-router-dom';
@@ -8,9 +10,9 @@ import { bankToSort, readWithdrawal } from '../lib/bankrules';
 import { useStore } from '../data/store';
 import { propertyLevel } from '../lib/levels';
 import { addDays, addPeriods, fmtDate, fmtMonthShort, periodOf } from '../lib/dates';
-import { picture, recordsStart, rentalPortion, taxPack } from '../lib/finance';
-import { CATEGORIES, OTHER_BANKS, POPULAR_BANKS, returnPresets, category, type Band } from '../lib/jurisdiction';
-import { banksOff, banksOn, serverMode } from '../data/api';
+import { picture, rentalPortion, taxPack } from '../lib/finance';
+import { CATEGORIES, OTHER_BANKS, POPULAR_BANKS, category } from '../lib/jurisdiction';
+import { banksOn, serverMode } from '../data/api';
 import { connectWithPlaid } from '../data/plaid';
 import * as sync from '../data/sync';
 import { fmt, fmt0 } from '../lib/money';
@@ -60,7 +62,7 @@ export function ExpensesPage() {
   return (
     <div className="page">
       <div className="page-head"><div><h1 className="title-ic"><span className="tile-ic peach" aria-hidden><Icon name="receipt" size={22} /></span>Expenses</h1><PageSub>Bills and receipts, sorted for tax time</PageSub></div>
-        <div className="btn-row"><LinkBankButton /><button className="btn primary add-expense" data-tour="add-expense" onClick={() => setAdding(true)}><Icon name="camera" size={18} />Add an expense</button></div></div>
+        <div className="btn-row"><LinkBankButton /><UploadStatementButton /><button className="btn primary add-expense" data-tour="add-expense" onClick={() => setAdding(true)}><Icon name="plus" size={18} />Add an expense</button></div></div>
       <Expenses />
       {adding && <ExpenseForm onClose={() => setAdding(false)} />}
     </div>
@@ -114,17 +116,34 @@ function BankRow({ t, r, bank, props, onFile, onMortgage, onSetup, onIgnore }: {
 }
 
 export function Expenses() {
-  const { state } = useStore();
+  const { state, today } = useStore();
   const [form, setForm] = useState<Expense | 'new' | null>(null);
   const [prop, setProp] = useState('all');
   const [kind, setKind] = useState<'all' | 'current' | 'capital'>('all');
-  const list = state.expenses.filter((e) => (prop === 'all' || e.propertyId === prop) && (kind === 'all' || e.kind === kind));
+  // Tax years: the current one first (active); the list shows that year only.
+  const cur = currentTaxYear(today);
+  const [year, setYear] = useState(cur);
+  const years = taxYears(state, today);
+  const list = state.expenses.filter((e) => e.date.startsWith(String(year)) && (prop === 'all' || e.propertyId === prop) && (kind === 'all' || e.kind === kind));
+  const active = state.properties.filter((p) => !p.archived);
+  const rcProp = active.find((p) => p.id === prop) ?? active[0];
   const total = list.reduce((a, e) => a + rentalPortion(e, state.properties.find((p) => p.id === e.propertyId)?.rentalSharePct ?? 100), 0);
   const months = new Map<string, Expense[]>();
   for (const e of list) { const k = periodOf(e.date); months.set(k, [...(months.get(k) ?? []), e]); }
 
   return (
     <>
+      <nav className="tax-years" aria-label="Tax years" id="tax-years">{years.map((y) => {
+        const tot = state.expenses.filter((e) => e.date.startsWith(String(y))).reduce((a, e) => a + e.amount, 0);
+        const gaps = gapCount(state, y, today);
+        return (
+          <button key={y} className={`tax-year${y === year ? ' on' : ''}`} aria-pressed={y === year} onClick={() => setYear(y)}>
+            <span className="ty-y">{y}{y === cur && <span className="ty-cur">Current</span>}</span>
+            <span className="ty-t mono">{fmt(tot)}</span>
+            <span className={`ty-g${gaps ? ' gap' : ''}`}>{gaps ? <><Icon name="alert" size={12} />{gaps} missing</> : <><Icon name="check" size={12} />Complete</>}</span>
+          </button>
+        );
+      })}</nav>
       <BankReview />
       <div className="spread" style={{ marginBottom: 16 }}>
         <div className="btn-row">
@@ -136,7 +155,7 @@ export function Expenses() {
         </div>
       </div>
       {list.length === 0 ? (
-        <div className="sheet"><Empty title="No receipts yet this month." art={<SceneReceipts />} action={<button className="btn primary" onClick={() => setForm('new')}><Icon name="camera" size={16} />Add an expense</button>}>Take a photo of a receipt: Keyholder reads it and fills in the details.</Empty></div>
+        <div className="sheet"><Empty title={`No expenses for ${year} yet.`} art={<SceneReceipts />} action={<button className="btn primary" onClick={() => setForm('new')}><Icon name="plus" size={16} />Add an expense</button>}>Add them one by one, or upload your bank statements for the year: Keyholder sorts every line.</Empty></div>
       ) : (
         <>
           <p className="small soft">{list.length} entries · <strong className="mono">{fmt(total)}</strong> counted toward the rental{state.properties.some((p) => p.rentalSharePct < 100) ? ' (after rental-share split)' : ''}</p>
@@ -150,7 +169,7 @@ export function Expenses() {
                   return (
                     <tr key={e.id} className="click" onClick={() => setForm(e)} tabIndex={0} onKeyDown={(k) => k.key === 'Enter' && setForm(e)}>
                       <td className="date">{fmtDate(e.date)}</td>
-                      <td style={{ width: 48 }}>{e.receiptImage ? <img src={e.receiptImage} alt="" className="thumb" /> : e.cashNoReceipt ? <span className="tiny soft" title="Paid in cash, no receipt: this entry is the record">cash</span> : <span className="tiny faint" title="No receipt photo">no photo</span>}</td>
+                      <td style={{ width: 48 }}>{e.receiptImage ? <img src={e.receiptImage} alt="" className="thumb" /> : e.cashNoReceipt ? <span className="tiny soft" title="Paid in cash, no receipt: this entry is the record">cash</span> : <span className="no-photo" title="No receipt photo yet" aria-label="No receipt photo"><Icon name="camera" size={14} /></span>}</td>
                       <td><span className="exp-cell"><CategoryIcon id={e.category} /><span><strong>{e.vendor || 'Unknown vendor'}</strong><span className="tiny soft" style={{ display: 'block' }}>{category(e.category).label} · {p?.nickname}{e.unitId ? ` · Unit ${state.units.find((u) => u.id === e.unitId)?.label}` : ''}{e.note ? ` · ${e.note}` : ''}</span></span></span></td>
                       <td>{e.kind === 'capital' && <span className="pill" style={{ borderColor: 'var(--brass)', color: 'var(--brass)' }}>Improvement</span>}{e.scope === 'personal' && <span className="pill">Personal</span>}</td>
                       <td className="num">{fmt(e.amount)}{portion !== e.amount && <div className="tiny soft">{fmt(portion)} rental</div>}</td>
@@ -162,9 +181,19 @@ export function Expenses() {
           ))}
         </>
       )}
+      {rcProp && <RegularCosts prop={rcProp} year={year} />}
       {form && <ExpenseForm expense={form === 'new' ? undefined : form} onClose={() => setForm(null)} />}
     </>
   );
+}
+
+/** Tax years to show on Expenses: the current one and back to the earliest records (at least last year), newest first. */
+export function taxYears(state: ReturnType<typeof useStore>['state'], today: string): number[] {
+  const cur = currentTaxYear(today);
+  const first = Math.min(cur - 1, ...state.expenses.map((e) => Number(e.date.slice(0, 4))), ...state.payments.map((p) => Number(p.date.slice(0, 4))));
+  const ys: number[] = [];
+  for (let y = Math.max(cur + (today.slice(5) > '04-30' ? 0 : 1), cur); y >= Math.max(first, cur - 6); y--) ys.push(y);
+  return ys;
 }
 
 // =====================================================================================
@@ -176,9 +205,6 @@ export function RentTracking() {
   const { state, act } = useStore();
   const [connect, setConnect] = useState(false);
   const [confirmManual, setConfirmManual] = useState(false);
-  // Banks the Keyholder team turned off (Support → Banks): shown greyed.
-  const offList = banksOff().map((x) => x.toLowerCase());
-  const offBanks = { has: (n: string) => offList.some((o) => n.includes(o) || o.includes(n)) };
   const banks = state.banks ?? [];
   const manual = banks.length === 0;
   const soon = !banksOn();
@@ -192,14 +218,13 @@ export function RentTracking() {
           <Icon name="bank" size={15} />My bank{soon && <span className="soon-tag">{serverMode() ? 'Coming soon' : 'Not available right now'}</span>}
         </button>
       </span>
-      {banks.map((b) => { const turnedOff = offBanks.has(b.bank.toLowerCase()); return (
-        <span key={b.id} className={`chip bank-chip${b.status === 'needs-reauth' ? ' warn' : ''}${turnedOff ? ' off' : ''}`} aria-disabled={turnedOff || undefined} title={turnedOff ? 'Turned off by Keyholder for now: not checked until it is turned back on' : b.status === 'connected' ? `Last checked ${new Date(b.lastSync).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Needs you to sign in again'}>
+      {banks.map((b) => (
+        <span key={b.id} className={`chip bank-chip${b.status === 'needs-reauth' ? ' warn' : ''}`} title={b.status === 'connected' ? `Last checked ${new Date(b.lastSync).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Needs you to sign in again'}>
           <Icon name="bank" size={14} />{b.bank}{b.accountMask ? ` ${b.accountMask}` : ''}
           {b.status === 'needs-reauth' && <button className="chip-btn" onClick={() => (serverMode() ? reconnect(b.id) : act.reauthBank(b.id))}>Sign in again</button>}
-          {turnedOff && <span className="tiny">Turned off by Keyholder</span>}
           <button className="chip-x" aria-label={`Disconnect ${b.bank}`} title="Disconnect" onClick={() => act.disconnectBank(b.id)}><Icon name="close" size={12} /></button>
         </span>
-      ); })}
+      ))}
       {!manual && <button className="chip" id="rt-check" title="Check every bank now" onClick={() => act.syncBank()}><Icon name="sync" size={14} />Check now</button>}
       {!manual && <button className="chip" id="rt-add" title="Add another bank (view only: Keyholder can never move money)" onClick={() => setConnect(true)}><Icon name="plus" size={14} />Add bank</button>}
       {connect && (serverMode() ? <PlaidConnect onClose={() => setConnect(false)} /> : <ConnectBank onClose={() => setConnect(false)} />)}
@@ -254,11 +279,9 @@ function ConnectBank({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState('');
   const [working, setWorking] = useState(false);
   const matches = q.trim() ? [...POPULAR_BANKS, ...OTHER_BANKS].filter((b) => b.toLowerCase().includes(q.trim().toLowerCase())) : [];
-  // Banks turned off by Keyholder (Support → Banks) cannot be picked for now.
-  const off = new Set(banksOff());
   const choice = (b: string) => (
-    <button key={b} className="choice" aria-pressed={bank === b} disabled={off.has(b)} onClick={() => setBank(b)}>
-      <span className="t">{b}</span>{off.has(b) && <span className="s">Not available right now</span>}
+    <button key={b} className="choice" aria-pressed={bank === b} onClick={() => setBank(b)}>
+      <span className="t">{b}</span>
     </button>
   );
   if (working) return <Drawer title="Connecting" onClose={onClose}><Empty title={`Connecting to ${bank}…`}>This takes a few seconds.</Empty></Drawer>;
@@ -354,32 +377,6 @@ export function ThePicture() {
   );
 }
 
-// =====================================================================================
-// Phase 2 — Worth-It reading and the Benchmark Guide
-// =====================================================================================
-export function BenchmarkRuler({ value, band, unit = '%', compact, labels, higherIsBetter = true, title }: {
-  value: number; band?: Band; unit?: string; compact?: boolean; labels?: [string, string, string]; higherIsBetter?: boolean; title?: string;
-}) {
-  const b = band ?? returnPresets();
-  const lbl = labels ?? (band ? ['Low', 'Typical', 'High'] : returnPresets().labels);
-  const lo = Math.min(b.low, value) - Math.abs(b.high - b.low) * 0.4;
-  const hi = Math.max(b.high, value) + Math.abs(b.high - b.low) * 0.4;
-  const x = (v: number) => `${((v - lo) / (hi - lo || 1)) * 100}%`;
-  const good = higherIsBetter ? value >= b.typical : value <= b.typical;
-  const gapL = Math.min(value, b.typical), gapR = Math.max(value, b.typical);
-  return (
-    <div className="ruler" aria-label={`${title ?? 'Measure'}: ${value.toFixed(1)}${unit}; low ${b.low}, typical ${b.typical}, high ${b.high}`}>
-      {title && <div className="ruler-head"><strong>{title}</strong><span className="mono">{value.toFixed(1)}{unit}</span></div>}
-      <div className="ruler-track">
-        <div className="line" />
-        <div className="band" style={{ left: x(b.low), width: `calc(${x(b.high)} - ${x(b.low)})` }} />
-        <div className={`gap ${good ? '' : 'below'}`} style={{ left: x(gapL), width: `calc(${x(gapR)} - ${x(gapL)})` }} />
-        {[b.low, b.typical, b.high].map((v, i) => <div key={i} className="tick" style={{ left: x(v) }}>{!compact && <span>{lbl[i]} {v}{unit}</span>}{compact && i === 1 && <span>{lbl[1]} {v}{unit}</span>}</div>)}
-        <div className={`dot ${good ? '' : 'below'}`} style={{ left: x(value) }} />
-      </div>
-    </div>
-  );
-}
 
 // =====================================================================================
 // Regular costs landlords often forget, many of them paid in cash. One tap adds one, marked
@@ -395,30 +392,103 @@ const REGULAR: { label: string; cat: ExpenseCategory; how: string; cash: boolean
   { label: 'Smoke alarm batteries and filters', cat: 'supplies', how: 'Batteries, furnace filters, bulbs', cash: true },
   { label: 'Stamps and printing', cat: 'office', how: 'Notices and letters', cash: true },
   { label: 'Driving to the property', cat: 'vehicle', how: 'Keep a trip log: date, km, why', cash: false },
+  { label: 'Legal fees', cat: 'professional', how: 'Lawyer, paralegal, Landlord and Tenant Board filing', cash: false },
+  { label: 'Management or admin fees', cat: 'management', how: 'Property manager, bookkeeping, admin help', cash: false },
+  { label: 'Other', cat: 'other', how: 'Anything not in a category above', cash: false },
 ];
 
-function RegularCosts({ prop, year }: { prop: Property; year: number }) {
-  const { state, today } = useStore();
+/**
+ * Regular costs a landlord may be missing, for one property and year. Each one stays suggested until an expense
+ * is added for it or it is ignored ("Other" is always there, for anything not in a category).
+ */
+export function RegularCosts({ prop, year }: { prop: Property; year: number }) {
+  const { state, act, today } = useStore();
   const [add, setAdd] = useState<(typeof REGULAR)[number] | null>(null);
-  const [all, setAll] = useState(false);
+  const [showDone, setShowDone] = useState(false);
   const mine = state.expenses.filter((e) => e.propertyId === prop.id && e.date.startsWith(String(year)));
+  const key = (r: (typeof REGULAR)[number]) => `rc:${prop.id}:${year}:${r.label}`;
+  const count = (r: (typeof REGULAR)[number]) => mine.filter((e) => e.category === r.cat && e.vendor.toLowerCase().startsWith(r.label.toLowerCase())).length;
+  const ignored = (r: (typeof REGULAR)[number]) => !!state.todoPrefs?.[key(r)]?.ignored;
+  const other = REGULAR.find((r) => r.cat === 'other')!;
+  const list = REGULAR.filter((r) => r !== other);
+  const pending = list.filter((r) => !count(r) && !ignored(r));
+  const settled = list.filter((r) => count(r) || ignored(r));
+  const row = (r: (typeof REGULAR)[number]) => {
+    const n = count(r), off = ignored(r);
+    return (
+      <li key={r.label} className={off ? 'rc-ignored' : undefined}>
+        <button className="rc-item" onClick={() => setAdd(r)}>
+          <CategoryIcon id={r.cat} />
+          <span><strong>{r.label}</strong><span className="tiny soft">{r.how}</span></span>
+          <span className={`rc-n${n ? ' done' : ''}`}>{n ? <><Icon name="check" size={14} />{n}</> : off ? <span className="tiny">Ignored</span> : <Icon name="plus" size={16} />}</span>
+        </button>
+        {r !== other && !n && (
+          <button className="rc-x" title={off ? 'Suggest it again' : 'Not for this property: stop suggesting it'} aria-label={off ? `Suggest ${r.label} again` : `Ignore ${r.label}`}
+            onClick={() => act.setTodoPref(key(r), off ? {} : { ignored: true })}><Icon name={off ? 'sync' : 'close'} size={14} /></button>
+        )}
+      </li>
+    );
+  };
   return (
-    <section className="sheet regular-costs" aria-labelledby="rc-title">
+    <section className="sheet regular-costs" aria-labelledby="rc-title" id="regular-costs">
       <h2 id="rc-title" style={{ marginBottom: 4 }}>Regular costs you may be missing</h2>
-      <p className="small soft" style={{ marginTop: 0 }}>Paid someone in cash? It still counts if you keep a record. Tap one to add it.</p>
-      <ul className="rc-list">{REGULAR.slice(0, all ? REGULAR.length : 6).map((r) => {
-        const n = mine.filter((e) => e.category === r.cat && e.vendor.toLowerCase().startsWith(r.label.toLowerCase())).length;
-        return (
-          <li key={r.label}><button className="rc-item" onClick={() => setAdd(r)}>
-            <CategoryIcon id={r.cat} />
-            <span><strong>{r.label}</strong><span className="tiny soft">{r.how}</span></span>
-            <span className={`rc-n${n ? ' done' : ''}`}>{n ? <><Icon name="check" size={14} />{n}</> : <Icon name="plus" size={16} />}</span>
-          </button></li>
-        );
-      })}</ul>
-      {!all && <button className="btn ghost small" onClick={() => setAll(true)}>Show {REGULAR.length - 6} more</button>}
-      <p className="tiny soft" style={{ marginBottom: 0 }}>For each one, keep the date, who you paid, what for and how much: Keyholder saves that as your record. A short signed note from the person you paid is best. Not sure if something counts? Ask your accountant.</p>
-      {add && <ExpenseForm onClose={() => setAdd(null)} prefill={{ propertyId: prop.id, vendor: add.label, category: add.cat, scope: category(add.cat).sharedByDefault ? 'shared' : 'direct', ...(add.cash ? { cashNoReceipt: true } : {}), ...(String(year) < today.slice(0, 4) ? { date: `${year}-12-31` } : {}) }} />}
+      <p className="small soft" style={{ marginTop: 0 }}>{pending.length ? `${pending.length} to check for ${prop.nickname} in ${year}. Tap one to add it, or × if it does not apply.` : `All checked for ${prop.nickname} in ${year}.`} Paid in cash? It still counts if you keep a record.</p>
+      <ul className="rc-list">{pending.map(row)}{row(other)}</ul>
+      {settled.length > 0 && <button className="btn ghost small" onClick={() => setShowDone((x) => !x)}>{showDone ? 'Hide' : 'Show'} {settled.length} added or ignored</button>}
+      {showDone && <ul className="rc-list">{settled.map(row)}</ul>}
+      <p className="tiny soft" style={{ marginBottom: 0 }}>For each one, keep the date, who you paid, what for and how much: Keyholder saves that as your record. Not sure if something counts? Ask your accountant.</p>
+      {add && <ExpenseForm onClose={() => setAdd(null)} prefill={{ propertyId: prop.id, vendor: add === other ? '' : add.label, category: add.cat, scope: category(add.cat).sharedByDefault ? 'shared' : 'direct', ...(add.cash ? { cashNoReceipt: true } : {}), ...(String(year) < today.slice(0, 4) ? { date: `${year}-12-31` } : {}) }} />}
+    </section>
+  );
+}
+
+/**
+ * Close a tax year for a property (Paperwork → Taxes only): statements for every month from the records date,
+ * rent, mortgage payments, property tax and insurance. Done: offer the year before.
+ */
+function CloseTheYear({ p, year, onYear }: { p: Property; year: number; onYear: (y: number) => void }) {
+  const { state, act, today } = useStore();
+  const c = yearCheck(state, p, year, today);
+  const cur = currentTaxYear(today);
+  const by = (k: Gap['kind']) => c.gaps.filter((g) => g.kind === k);
+  const missing = c.months.filter((m) => !c.covered.includes(m) && by('statement').some((g) => g.month === m));
+  const monthShort = (m: string) => new Date(`${m}-15T12:00:00`).toLocaleDateString('en-CA', { month: 'short' });
+  const steps: { id: string; title: string; done: boolean; body: React.ReactNode }[] = [
+    { id: 'from', title: `Records kept from ${fmtDate(c.from)}`, done: true, body: <p className="tiny soft" style={{ margin: 0 }}>January 1 unless you started later: change it with "From" above.</p> },
+    { id: 'statements', title: `Bank statements: ${c.covered.length} of ${c.months.length} month${c.months.length === 1 ? '' : 's'}`, done: !by('statement').length, body: <>
+      {missing.length > 0 && <p className="close-months">{missing.map((m) => <span key={m} className="chip off">{monthShort(m)}</span>)}</p>}
+      <p className="tiny soft" style={{ margin: '4px 0 8px' }}>Upload every month from {fmtDate(c.from)} to {year === cur ? 'today' : `December 31, ${year}`}, for each account rent goes into or bills come out of. Keyholder sorts every line: rent, mortgage, property tax, insurance and other costs.</p>
+      <div className="btn-row"><UploadStatementButton className="btn small primary" label="Upload statements" /><LinkBankButton /></div>
+    </> },
+    { id: 'rent', title: `Rent: ${by('rent').length ? `${by('rent').length} not marked paid` : 'all marked paid'}`, done: !by('rent').length, body: null },
+    { id: 'mortgage', title: `Mortgage payments: ${p.mortgageFree ? 'no mortgage' : !state.mortgages.some((m) => m.propertyId === p.id) ? 'add the mortgage first' : by('mortgage').length ? `${by('mortgage').length} month${by('mortgage').length === 1 ? '' : 's'} missing` : 'every month'}`, done: !by('mortgage').length, body: null },
+    { id: 'tax', title: 'Property tax and insurance', done: !by('property-tax').length && !by('insurance').length, body: null },
+  ];
+  const gapsOf = (id: string): Gap[] => (id === 'rent' ? by('rent') : id === 'mortgage' ? by('mortgage') : id === 'tax' ? [...by('property-tax'), ...by('insurance')] : []);
+  return (
+    <section className="sheet close-year" id="close-year" aria-labelledby="cy-title">
+      <div className="spread"><h2 id="cy-title" style={{ margin: 0 }}>Close {year} for {p.nickname}</h2>
+        <span className={`chip ${c.done ? 'on' : ''}`}>{c.done ? <><Icon name="check" size={14} />Documented</> : `${c.gaps.length} missing`}</span></div>
+      {!c.done && <p className="small soft" style={{ margin: '4px 0 12px' }}>{year === cur ? `Start with ${year}: your taxes are most accurate when every month has its statement, rent and payments.` : `Going back to ${year}: the same steps.`} Missing information may make your taxes inaccurate.</p>}
+      <ol className="close-steps">{steps.map((st, i) => (
+        <li key={st.id} className={st.done ? 'done' : ''}>
+          <span className="cs-n" aria-hidden>{st.done ? <Icon name="check" size={14} /> : i + 1}</span>
+          <div>
+            <strong>{st.title}</strong>
+            {st.body}
+            {gapsOf(st.id).length > 0 && <ul className="close-gaps">{gapsOf(st.id).slice(0, 8).map((g) => (
+              <li key={g.key}><Link to={g.to}>{g.text}</Link><button className="btn ghost small" title="Not needed: stop flagging it" onClick={() => act.setTodoPref(g.key, { ignored: true })}>Ignore</button></li>
+            ))}{gapsOf(st.id).length > 8 && <li className="tiny soft">and {gapsOf(st.id).length - 8} more</li>}</ul>}
+          </div>
+        </li>
+      ))}</ol>
+      {c.ignored.length > 0 && <p className="tiny soft">{c.ignored.length} ignored · <button className="linkish" onClick={() => c.ignored.forEach((g) => act.setTodoPref(g.key, {}))}>Flag them again</button></p>}
+      {c.done && (
+        <div className="callout pine close-next" id="close-next"><Icon name="check" size={18} />
+          <span><strong>{year} is documented for {p.nickname}.</strong> {year > cur - 6 ? `Would you like to go back to ${year - 1}? The same steps, with that year's statements.` : ''}</span>
+          {year > cur - 6 && <button className="btn small" onClick={() => onYear(year - 1)}>Do {year - 1}</button>}
+        </div>
+      )}
     </section>
   );
 }
@@ -427,17 +497,18 @@ function RegularCosts({ prop, year }: { prop: Property; year: number }) {
 // Phase 3 — Tax Pack (T776)
 // =====================================================================================
 export function TaxPackPage() {
-  const { state, today } = useStore();
+  const { state, act, today } = useStore();
   const props = state.properties.filter((p) => !p.archived);
   const [pid, setPid] = useState(props[0]?.id ?? '');
   const thisYear = Number(today.slice(0, 4));
-  const [year, setYear] = useState(Number(today.slice(5, 7)) <= 4 ? thisYear - 1 : thisYear);
+  const [year, setYear] = useState(currentTaxYear(today));
   const p = props.find((x) => x.id === pid);
   // Started part way through the year? The spreadsheet covers from the first day with records (changeable).
   const [fromPick, setFromPick] = useState('');
   const yearStart = `${year}-01-01`, yearEnd = `${year}-12-31`;
-  const started = p ? recordsStart(state, p, year) : yearStart;
-  const from = fromPick && fromPick.startsWith(String(year)) ? fromPick : started;
+  // The day records start for this property (saved with it): January 1 of the tax year unless set later.
+  const from = (p && recordsFromIn(p, year)) ?? yearStart;
+  void fromPick;
   // Only worth a note when records start more than a month into the year.
   const partYear = from >= `${year}-02-01`;
   const until = year === thisYear ? today : yearEnd;
@@ -479,10 +550,10 @@ export function TaxPackPage() {
       <div className="spread" style={{ marginBottom: 16 }}>
         <div className="btn-row">
           {props.length > 1 && <select className="input" style={{ width: 'auto' }} value={pid} onChange={(e) => setPid(e.target.value)} aria-label="Property">{props.map((x) => <option key={x.id} value={x.id}>{x.nickname}</option>)}</select>}
-          <Seg label="Tax year" value={year} onChange={setYear} options={[{ id: thisYear - 1, label: String(thisYear - 1) }, { id: thisYear, label: `${thisYear} so far` }]} />
+          <Seg label="Tax year" value={year} onChange={setYear} options={taxYears(state, today).slice(0, 4).reverse().map((y) => ({ id: y, label: y === thisYear ? `${y} so far` : String(y) }))} />
         </div>
         <div className="btn-row tax-tools">
-          <label className="tax-from" htmlFor="tax-from">From<input id="tax-from" type="date" className="input" value={from} min={yearStart} max={yearEnd} onChange={(e) => setFromPick(e.target.value)} /></label>
+          <label className="tax-from" htmlFor="tax-from" title="The day you start keeping this property's money in Keyholder. January 1 unless you started later.">From<input id="tax-from" type="date" className="input" value={from} min={yearStart} max={yearEnd} onChange={(e) => { setFromPick(e.target.value); act.setRecordsFrom(p.id, !e.target.value || e.target.value <= yearStart ? undefined : e.target.value); }} /></label>
           <button className="btn" onClick={exportCsv} disabled={embedded} title={embedded ? 'Downloads work on the Keyholder website' : undefined}><Icon name="download" size={16} />Spreadsheet</button>
           {!embedded && <button className="btn primary" onClick={() => window.print()}><Icon name="print" size={16} />Print for accountant</button>}
         </div>
@@ -493,6 +564,8 @@ export function TaxPackPage() {
           <p><strong>Started part way through the year? That's fine.</strong> Your spreadsheet starts on {fmtDate(from)}{year === thisYear ? '' : ` and ends ${fmtDate(until)}`}, the day your records start. Costs from before then count too: add them any time with their real date{fromPick ? '' : ', and the start moves back'}.</p>
         </div>
       )}
+
+      <CloseTheYear p={p} year={year} onYear={setYear} />
 
       <div className="sheet">
         <h2 style={{ marginBottom: 8 }}>{fixes ? `${fixes} thing${fixes > 1 ? 's' : ''} to fix` : fixList.length ? 'Almost ready' : 'Ready for your accountant'}</h2>

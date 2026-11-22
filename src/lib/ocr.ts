@@ -70,3 +70,16 @@ export async function readReceiptPhoto(file: Blob, today: string, onProgress: Pr
   const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('The receipt took too long to read.')), timeoutMs));
   return Promise.race([run, timeout]);
 }
+
+/** Reads the text of a statement page (a photo, a scan, or a PDF page drawn on a canvas), line by line. */
+export async function readPageText(source: Blob | HTMLCanvasElement, onProgress: Progress = () => {}, timeoutMs = 120_000): Promise<string[]> {
+  listener = onProgress;
+  const run = (async () => {
+    const [canvas, w] = await Promise.all([source instanceof HTMLCanvasElement ? source : prepare(source), getWorker()]);
+    onProgress('Reading the page', 0);
+    const { data } = await w.recognize(canvas);
+    return data.text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  })();
+  const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('The page took too long to read.')), timeoutMs));
+  return Promise.race([run, timeout]);
+}

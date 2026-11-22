@@ -12,6 +12,7 @@ import { BANK_CHECK_HOURS } from '../lib/jurisdiction';
 import { levelInfo, propertyLevel, type Level } from '../lib/levels';
 import { formById } from '../lib/forms';
 import { vendorKey } from '../lib/bankrules';
+import { lineKey, type Statement } from '../lib/statements';
 import { CATEGORIES } from '../lib/jurisdiction';
 import { api, banksOn, getConn, serverMode, setUser } from './api';
 import * as sync from './sync';
@@ -98,6 +99,29 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
     if (!owing) for (const n of d.notices) if (n.leaseId === lease.id && n.status === 'served' && formById(n.formId)?.situation === 'late-rent') { n.status = 'voided-by-payment'; audit(d, 'Notice cancelled by payment', n.kind); }
     audit(d, 'Payment logged', `${fmt(p.amount)} from ${tenantName(d, lease.id)} for ${p.period} (${p.source})`);
     return pay;
+  }
+
+  /** Bank and statement lines not looked at yet: money in matched to rent; money out filed by the vendor's remembered choice. */
+  function processNew(d: AppState) {
+    let matched = 0, filed = 0;
+    for (const x of d.txns) {
+      if ((x.source !== 'bank' && x.source !== 'statement') || x.status !== 'new' || x.checked) continue;
+      x.checked = true;
+      const key = vendorKey(x.payer);
+      if (x.amount > 0) {
+        if (autoMatch(d, x)) { matched++; continue; }
+        // A sender the owner said is not rent (and not a tenant's name): set aside without asking.
+        if (d.profile.notRentPayers?.includes(key) && !isTenantName(d, x.payer)) x.status = 'ignored';
+        continue;
+      }
+      if (d.profile.personalVendors?.includes(key)) { x.status = 'ignored'; continue; }
+      const rule = d.profile.vendorRules?.[key];
+      if (!rule || !d.properties.some((p) => p.id === rule.propertyId)) continue;
+      const e: Expense = { id: uid('exp'), propertyId: rule.propertyId, date: x.date, amount: -x.amount, vendor: x.payer, category: rule.category, kind: 'current', scope: CATEGORIES.find((c) => c.id === rule.category)?.sharedByDefault ? 'shared' : 'direct', createdAt: new Date().toISOString(), note: x.source === 'statement' ? 'From your statement (filed automatically)' : 'From your bank (filed automatically)' };
+      d.expenses.unshift(e); x.status = 'expense'; x.expenseId = e.id; filed++;
+    }
+    if (matched || filed) d.expenses.sort((a, b) => b.date.localeCompare(a.date));
+    return { matched, filed };
   }
 
   function autoMatch(d: AppState, t: BankTxn) {
@@ -470,27 +494,53 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
      * are filed again the same way.
      */
     processBankTxns() {
-      let matched = 0, filed = 0;
+      let r = { matched: 0, filed: 0 };
+      mut((d) => { r = processNew(d); });
+      if (r.matched || r.filed) toast([r.matched && `${r.matched} rent payment${r.matched === 1 ? '' : 's'} marked paid`, r.filed && `${r.filed} bill${r.filed === 1 ? '' : 's'} filed`].filter(Boolean).join(', ') + ' from your bank.');
+    },
+    /**
+     * An uploaded statement: its lines become transactions (sorted like the bank's: money in is rent or not, money
+     * out is an expense). Lines already in Keyholder (an overlapping statement, or the same line from a connected
+     * bank within 3 days) are skipped. Rent already marked paid is matched to its deposit, never paid twice.
+     */
+    importStatement(st: Statement, meta: { name: string; bank: string; account?: string; kind: 'bank' | 'card' }, include: boolean[]): { added: number; duplicates: number } {
+      let added = 0, duplicates = 0, r = { matched: 0, filed: 0 };
       mut((d) => {
-        for (const x of d.txns) {
-          if (x.source !== 'bank' || x.status !== 'new' || x.checked) continue;
-          x.checked = true;
-          const key = vendorKey(x.payer);
-          if (x.amount > 0) {
-            if (autoMatch(d, x)) { matched++; continue; }
-            // A sender the owner said is not rent (and not a tenant's name): set aside without asking.
-            if (d.profile.notRentPayers?.includes(key) && !isTenantName(d, x.payer)) x.status = 'ignored';
-            continue;
-          }
-          if (d.profile.personalVendors?.includes(key)) { x.status = 'ignored'; continue; }
-          const rule = d.profile.vendorRules?.[key];
-          if (!rule || !d.properties.some((p) => p.id === rule.propertyId)) continue;
-          const e: Expense = { id: uid('exp'), propertyId: rule.propertyId, date: x.date, amount: -x.amount, vendor: x.payer, category: rule.category, kind: 'current', scope: CATEGORIES.find((c) => c.id === rule.category)?.sharedByDefault ? 'shared' : 'direct', createdAt: new Date().toISOString(), note: 'From your bank (filed automatically)' };
-          d.expenses.unshift(e); x.status = 'expense'; x.expenseId = e.id; filed++;
+        const id = uid('stmt');
+        const seen = new Map<string, number>();
+        for (const t of d.txns) { const k = lineKey({ date: t.date, amount: t.amount, description: t.payer }); seen.set(k, (seen.get(k) ?? 0) + 1); }
+        const inFile = new Map<string, number>();
+        const lines = st.lines.filter((_, i) => include[i] !== false);
+        for (const l of lines) {
+          const k = lineKey(l);
+          const n = (inFile.get(k) ?? 0) + 1; inFile.set(k, n);
+          // The same line already here (as many times as it appears in this file), or from a connected bank nearby.
+          const near = d.txns.some((t) => t.source === 'bank' && t.amount === l.amount && Math.abs(Date.parse(t.date) - Date.parse(l.date)) <= 3 * 86400_000);
+          if ((seen.get(k) ?? 0) >= n || near) { duplicates++; continue; }
+          d.txns.push({ id: `st-${id.slice(5)}-${added}`, source: 'statement', statementId: id, date: l.date, amount: l.amount, payer: l.description.slice(0, 80), memo: l.ref ?? '', status: 'new' });
+          added++;
         }
-        if (matched || filed) d.expenses.sort((a, b) => b.date.localeCompare(a.date));
+        d.txns.sort((x, y) => y.date.localeCompare(x.date));
+        const dates = lines.map((l) => l.date).sort();
+        d.statements = [...(d.statements ?? []), { id, name: meta.name.slice(0, 120), bank: meta.bank, account: meta.account, kind: meta.kind, format: st.format, from: st.from ?? dates[0], to: st.to ?? dates[dates.length - 1], lines: added, check: st.check, importedAt: new Date().toISOString() }];
+        audit(d, 'Statement uploaded', `${meta.bank}${meta.account ? ` ${meta.account}` : ''}: ${added} lines${duplicates ? `, ${duplicates} already here` : ''}`);
+        r = processNew(d);
       });
-      if (matched || filed) toast([matched && `${matched} rent payment${matched === 1 ? '' : 's'} marked paid`, filed && `${filed} bill${filed === 1 ? '' : 's'} filed`].filter(Boolean).join(', ') + ' from your bank.');
+      toast(`${added} line${added === 1 ? '' : 's'} added${duplicates ? ` (${duplicates} already here)` : ''}.${r.matched ? ` ${r.matched} rent matched.` : ''}${r.filed ? ` ${r.filed} bill${r.filed === 1 ? '' : 's'} filed.` : ''}`);
+      return { added, duplicates };
+    },
+    /** Removes an uploaded statement and its lines that were not used yet (filed or matched ones stay). */
+    removeStatement(id: string) {
+      mut((d) => {
+        d.txns = d.txns.filter((t) => !(t.statementId === id && t.status === 'new'));
+        const s = (d.statements ?? []).find((x) => x.id === id);
+        d.statements = (d.statements ?? []).filter((x) => x.id !== id);
+        if (s) audit(d, 'Statement removed', s.name);
+      });
+    },
+    /** The day this property's money is kept for taxes (empty: January 1 of the tax year). */
+    setRecordsFrom(propertyId: string, date?: string) {
+      mut((d) => { const p = d.properties.find((x) => x.id === propertyId); if (!p) return; if (date) p.recordsFrom = date; else delete p.recordsFrom; audit(d, 'Records kept from', `${p.nickname}: ${date ?? 'January 1'}`); });
     },
     /** A short message at the bottom of the screen (for screens that talk to the server themselves). */
     say(text: string) { toast(text); },
@@ -741,7 +791,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const pretend = serverMode() && ((state.banks ?? []).some((b) => !realBank(b)) || state.txns.some(fakeTxn));
   useEffect(() => { if (pretend && sync.owned(state)) act.removePretendBank(); }, [pretend, state, act]);
   // Bank transactions that arrived from Plaid (the server wrote them): look at each new one once.
-  const unchecked = state.txns.some((t) => t.source === 'bank' && t.status === 'new' && !t.checked);
+  const unchecked = state.txns.some((t) => (t.source === 'bank' || t.source === 'statement') && t.status === 'new' && !t.checked);
   useEffect(() => { if (unchecked && sync.owned(state)) act.processBankTxns(); }, [unchecked, state, act]);
   // The preview's simulated bank check (every few hours while the app is open). With Plaid, the server gets
   // new transactions in real time instead.

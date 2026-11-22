@@ -4,16 +4,9 @@ import { useEffect, useId, useState } from 'react';
 //   A Keyhole · B House key · C KH monogram · D Keyhole "o" (word only)
 
 export type WordmarkId = 'a' | 'b' | 'c' | 'd';
-export const WORDMARKS: { id: WordmarkId; name: string; note: string }[] = [
-  { id: 'a', name: 'Keyhole', note: 'A keyhole cut out of the gradient tile. Simple and instantly “key”.' },
-  { id: 'b', name: 'House key', note: 'A key whose head is a little house: rental and key in one mark.' },
-  { id: 'c', name: 'Monogram', note: 'The H and K of Keyholder share one upright, in a soft circle. A premium initial badge.' },
-  { id: 'd', name: 'Keyhole “o”', note: 'Word only. The first “o” carries a keyhole, and doubles as the app icon.' },
-];
 const listeners = new Set<(v: WordmarkId) => void>();
 // Chosen: B (house key). The other versions stay here for reference only.
 function readChoice(): WordmarkId { return 'b'; }
-export function setWordmark(v: WordmarkId) { listeners.forEach((f) => f(v)); }
 export function useWordmark() {
   const [v, setV] = useState<WordmarkId>(readChoice);
   useEffect(() => { listeners.add(setV); return () => { listeners.delete(setV); }; }, []);

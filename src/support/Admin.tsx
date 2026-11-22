@@ -48,8 +48,8 @@ export function Privacy() {
 }
 
 const ROLE_NOTE: Record<Member['role'], string> = {
-  'Super user': 'Everything, plus the team, price, promotions, banks and API keys',
-  Admin: 'Everything except the team, price, promotions, banks and API keys',
+  'Super user': 'Everything, plus the team, price, promotions and API keys',
+  Admin: 'Everything except the team, price, promotions and API keys',
   Support: 'Inbox, customers, banners',
 };
 export function Team() {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seedState } from '../data/seed';
-import { byValue, keyholderScore, propertyCompletion } from './score';
+import { byValue, keyholderScore, propertyCompletion, scoreTone } from './score';
+import { defaultProfile, emptyState } from '../data/seed';
 
 const today = '2026-11-08';
 
@@ -12,6 +13,22 @@ describe('Keyholder score', () => {
     expect(score).toBeLessThan(100);
     const gains = todo.map((i) => i.points - i.earned);
     expect(gains).toEqual([...gains].sort((a, b) => b - a));
+  });
+
+  it('goes stage by stage (25 each): only the current stage is suggested; the colour follows the score', () => {
+    const s = emptyState({ ...defaultProfile(), name: '', email: '' });
+    const a = keyholderScore(s, today);
+    expect(a.stage).toBe(1);
+    expect(a.todo.every((i) => i.stage === 1)).toBe(true);
+    expect(a.score).toBeLessThan(25);
+    expect(scoreTone(a.score)).toBe('rose');
+    // Stage 1 done (name, a property with a unit and its tenant with an email): at least 25, stage 2 next.
+    const r = seedState(undefined, today);
+    const b = keyholderScore(r, today);
+    expect(b.stages[0].pct).toBeGreaterThan(0);
+    expect(b.todo.every((i) => i.stage === b.stage)).toBe(true);
+    expect(scoreTone(100)).toBe('done');
+    expect(scoreTone(80)).toBe('teal');
   });
 
   it('goes up when a property gets its purchase price', () => {

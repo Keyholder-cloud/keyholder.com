@@ -1,4 +1,4 @@
-import type { AppState, BankTxn, ExpenseCategory, ISODate, Mortgage } from '../data/types';
+import type { AppState, BankTxn, ExpenseCategory, Mortgage } from '../data/types';
 import { amortization } from './finance';
 
 // Reading bank withdrawals: is it a rental expense (which type, which property?) or a mortgage payment?
@@ -62,4 +62,3 @@ export function bankToSort(state: AppState): BankTxn[] {
   return state.txns.filter((t) => t.amount < 0 && t.status === 'new');
 }
 
-export const isRecent = (d: ISODate, today: ISODate) => d >= today.slice(0, 7);

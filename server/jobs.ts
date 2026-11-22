@@ -72,9 +72,12 @@ export async function dailyRun(cfg: Config, db: Db, today = todayISO()) {
   return { accounts: rows.length, reminders, digests };
 }
 
+/** Daily: expired sign-ins, links, two-step steps and remembered devices are deleted. */
 export async function cleanup(db: Db) {
   await db.query(`delete from sessions where expires_at < now()`);
   await db.query(`delete from auth_tokens where expires_at < now() - interval '7 days'`);
+  await db.query(`delete from two_step_tickets where expires_at < now() - interval '1 day'`);
+  await db.query(`delete from trusted_devices where expires_at < now()`);
 }
 
 // The Bank of Canada's weekly figure for the big banks' posted 5-year GIC rate (Valet API, free, no key).
