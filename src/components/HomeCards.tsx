@@ -107,7 +107,6 @@ export function YearToDate() {
         <div><span>Properties</span><strong>{y.props}</strong></div>
         <div><span>Units rented</span><strong>{y.rented} of {y.units}</strong></div>
       </div>
-      {y.value > 0 && <p className="ytd-under small soft" id="ytd-worth">Worth {fmt0(y.value)} · Owed {fmt0(y.owed)}</p>}
       <p className="side-sub">Cash flow</p>
       <div className="review-grid">
         <div><span>Rent in</span><strong>{fmt0(y.p.rentCollected)}</strong></div>

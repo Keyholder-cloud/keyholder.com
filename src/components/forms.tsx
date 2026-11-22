@@ -5,12 +5,13 @@ import type {
 } from '../data/types';
 import { uid, useStore } from '../data/store';
 import { propertyLevel } from '../lib/levels';
-import { addMonths, fmtPeriod, periodOf, periodRange } from '../lib/dates';
+import { addMonths, fmtDate, fmtPeriod, periodOf, periodRange } from '../lib/dates';
 import { activeLeases, byRoom, defaultPeriod, hasSpace, leaseLedger, mortgagePayment, openRooms, rentalPortion } from '../lib/finance';
 import { withPeople } from '../lib/people';
 import { CATEGORIES, CCA_CLASSES, PROVINCES, category, province } from '../lib/jurisdiction';
 import { fmt } from '../lib/money';
 import { Icon } from './Icon';
+import { ResendReceipt } from './More';
 import { canReadReceipts, readReceiptPhoto } from '../lib/ocr';
 import { Drawer, Field, MoneyInput, Seg, Term } from './ui';
 
@@ -78,6 +79,87 @@ export function PaymentForm({ leaseId, onClose, correct }: { leaseId?: string; o
           ) : <button className="btn ghost small" onClick={() => setMore(true)}>More details</button>}
           <p className="small soft" style={{ marginTop: 16 }}>{state.profile.autoSend ? 'A receipt is sent to the tenant.' : 'A receipt will be ready for you to send.'}</p>
         </>
+      )}
+    </Drawer>
+  );
+}
+
+/**
+ * Income → Mark rent paid, one step at a time: who paid, which month (each month shows what is owed), the
+ * amount and date, then done, with the receipt right there to send (or already sent, with Resend).
+ */
+export function MarkRentPaid({ onClose }: { onClose: () => void }) {
+  const { state, act, today } = useStore();
+  const leases = state.leases.filter((l) => !l.end || l.end >= addMonths(today, -3));
+  const [lid, setLid] = useState(leases.length === 1 ? leases[0].id : '');
+  const lease = state.leases.find((l) => l.id === lid);
+  const months = useMemo(() => (lease ? leaseLedger(lease, state.payments, today, periodOf(addMonths(today, 1))).slice().reverse().slice(0, 12) : []), [lease, state.payments, today]);
+  const [period, setPeriod] = useState('');
+  const line = months.find((l) => l.period === period);
+  const [amount, setAmount] = useState<number | undefined>();
+  const [date, setDate] = useState(today);
+  const [method, setMethod] = useState<PayMethod>('etransfer');
+  const [step, setStep] = useState<'who' | 'month' | 'confirm' | 'done'>(leases.length === 1 ? 'month' : 'who');
+  const [before, setBefore] = useState<Set<string> | null>(null);
+  const tenant = lease ? state.tenants.find((t) => t.id === lease.tenantId) : undefined;
+  const unit = lease ? state.units.find((u) => u.id === lease.unitId) : undefined;
+  const who = tenant ? `${tenant.names.join(' & ')} · ${lease?.room ?? `Unit ${unit?.label ?? ''}`}` : '';
+  const pickMonth = (p: string) => { const l = months.find((x) => x.period === p); setPeriod(p); setAmount(l ? Math.max(0, l.charge - l.paid) || l.charge : lease?.rent); setMethod(lease?.paymentMethod ?? 'etransfer'); setStep('confirm'); };
+  const submit = () => {
+    if (!lease || !amount || !period) return;
+    setBefore(new Set(state.payments.map((p) => p.id)));
+    act.logPayment({ leaseId: lease.id, amount, date, period, method, source: 'manual' });
+    setStep('done');
+  };
+  // The receipt made just now for this payment.
+  const receipt = step === 'done' && lease ? state.payments.filter((p) => p.leaseId === lease.id && p.period === period && !p.voided && !before?.has(p.id))
+    .map((p) => state.receipts.find((r) => r.paymentId === p.id && r.status !== 'superseded')).find(Boolean) : undefined;
+  const back = step === 'month' && leases.length > 1 ? () => setStep('who') : step === 'confirm' ? () => setStep('month') : undefined;
+  const title = step === 'who' ? 'Who paid?' : step === 'month' ? 'Which month is it for?' : step === 'confirm' ? `Mark ${fmtPeriod(period)} paid` : 'Rent marked paid';
+  return (
+    <Drawer title={title} onClose={onClose} footer={step === 'done' ? <button className="btn primary" onClick={onClose}>Done</button>
+      : step === 'confirm' ? <><button className="btn ghost" onClick={back}>Back</button><button className="btn primary" id="mrp-go" disabled={!amount} onClick={submit}>Mark {fmtPeriod(period)} paid</button></>
+      : back ? <button className="btn ghost" onClick={back}>Back</button> : <button className="btn ghost" onClick={onClose}>Cancel</button>}>
+      <ol className="mrp-steps" aria-label="Steps">{['Tenant', 'Month', 'Amount', 'Receipt'].map((t, i) => <li key={t} className={i <= ['who', 'month', 'confirm', 'done'].indexOf(step) ? 'on' : ''}>{t}</li>)}</ol>
+      {step !== 'who' && who && <p className="small soft" style={{ marginTop: 0 }}><Icon name="user" size={14} /> {who}</p>}
+      {step === 'who' && (
+        <div className="choices" role="radiogroup" aria-label="Who paid?">
+          {leases.map((l) => {
+            const t = state.tenants.find((x) => x.id === l.tenantId); const u = state.units.find((x) => x.id === l.unitId);
+            return <button key={l.id} role="radio" aria-checked={lid === l.id} className="choice" onClick={() => { setLid(l.id); setStep('month'); }}><span className="t">{t?.names.join(' & ')}</span><span className="s">{l.room ?? `Unit ${u?.label}`} · {fmt(l.rent)} a month</span></button>;
+          })}
+        </div>
+      )}
+      {step === 'month' && lease && (
+        <div className="mrp-months" role="radiogroup" aria-label="Month">
+          {months.map((l) => {
+            const paid = l.paid >= l.charge; const due = defaultPeriod(state, lease, today) === l.period;
+            return (
+              <button key={l.period} role="radio" aria-checked={false} disabled={paid} className={`mrp-month${paid ? ' paid' : ''}${due ? ' due' : ''}`} onClick={() => pickMonth(l.period)}>
+                <strong>{fmtPeriod(l.period)}</strong>
+                <span>{paid ? <><Icon name="check" size={13} /> Paid</> : l.paid > 0 ? `${fmt(l.charge - l.paid)} still owed` : `${fmt(l.charge)} due ${fmtDate(l.due)}`}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {step === 'confirm' && lease && (
+        <>
+          <div className="grid2">
+            <Field label="Amount received" htmlFor="pf-amt" hint={line && amount && amount < line.charge - line.paid ? `${fmt(line.charge - line.paid - amount)} will still be owed` : undefined}><MoneyInput id="pf-amt" value={amount} onChange={setAmount} autoFocus /></Field>
+            <Field label="Date received" htmlFor="pf-date"><input id="pf-date" type="date" className="input" value={date} max={today} onChange={(e) => setDate(e.target.value)} /></Field>
+          </div>
+          <Field label="Paid by"><Seg label="Method" value={method} onChange={setMethod} options={[{ id: 'etransfer', label: 'e-Transfer' }, { id: 'cheque', label: 'Cheque' }, { id: 'cash', label: 'Cash' }, { id: 'direct-deposit', label: 'Deposit' }]} /></Field>
+        </>
+      )}
+      {step === 'done' && (
+        <div className="mrp-done" id="mrp-done">
+          <p className="callout pine" role="status" style={{ marginTop: 0 }}><Icon name="check" size={16} /> {fmt(amount ?? 0)} for {fmtPeriod(period)} is recorded.</p>
+          {receipt ? (
+            <div className="mrp-receipt"><span><Icon name="receipt" size={16} /> Receipt #{receipt.number}{receipt.status === 'sent' ? ' · sent to the tenant' : ' · ready to send'}</span>
+              <ResendReceipt receiptId={receipt.id} label={receipt.status === 'sent' ? 'Resend' : 'Send receipt'} /></div>
+          ) : null}
+        </div>
       )}
     </Drawer>
   );

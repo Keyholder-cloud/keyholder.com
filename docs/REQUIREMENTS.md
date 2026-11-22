@@ -515,3 +515,7 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Owner: the progress ring's bar stays the brand indigo; only the inner circle goes from red to green.
 - Phones: the Income table and a tenant's rent history become stacked cards, so the receipt number and
   Send/Resend are on screen (they were off the right edge of a wide table).
+- Owner (Nov 22): headline "Manage your rental property with ease."; the subhead says Keyholder takes away the manual
+  effort. Home's year summary drops the "Worth · Owed" line. Income → Mark rent paid goes step by step: who paid,
+  which month (each month shows what is due or paid), amount and date, then a done step with the receipt and a
+  Send receipt (or Resend) button right there.
