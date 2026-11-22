@@ -45,7 +45,7 @@ const SHOTS = [
   const conv = await (await browser.newContext()).newPage();
   const hotspots = {};
   for (const s of SHOTS) {
-    await pg.goto(`${BASE}#/${s.route}`);
+    await pg.goto(`${BASE}#/${s.route}`); for (const t of await pg.locator(".rooms-toggle[aria-expanded=\"false\"]").all()) await t.click().catch(() => {});
     await pg.addStyleTag({ content: HIDE });
     await pg.evaluate(() => window.scrollTo(0, 0));
     await pg.waitForTimeout(500);

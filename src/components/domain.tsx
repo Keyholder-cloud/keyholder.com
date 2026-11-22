@@ -8,7 +8,7 @@ import { Icon } from './Icon';
 import { Stamp } from './ui';
 import { Link } from 'react-router-dom';
 import { BANK_CHECK_HOURS } from '../lib/jurisdiction';
-import { banksOn, serverMode } from '../data/api';
+import { banksOn, paidPlan, serverMode } from '../data/api';
 
 function ago(iso: string): string {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -36,7 +36,7 @@ export function BankStatus({ compact }: { compact?: boolean }) {
     <div className={`track-line${compact ? ' compact' : ''}`}>
       <Icon name="bank" size={18} />
       <span><strong>{banks.map((x) => x.bank).join(' and ')}</strong> {serverMode() ? 'updates as your bank reports' : `checked every ${BANK_CHECK_HOURS} h`} · last {ago(b.lastSync)}</span>
-      <button className="btn small" onClick={() => act.syncBank()}>Check now</button>
+      {paidPlan() && <button className="btn small" id="bank-check-now" onClick={() => act.syncBank()}>Check now</button>}
     </div>
   );
 }

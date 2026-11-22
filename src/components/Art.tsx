@@ -156,20 +156,6 @@ export function SceneTap() {
     </Scene>
   );
 }
-/** All rent is in: a small celebration. */
-export function SceneCelebrate() {
-  const bits = [[70, 46, '#F472B6'], [96, 30, '#FBBF24'], [130, 50, '#38BDF8'], [210, 34, '#34D399'], [240, 56, '#A78BFA'], [262, 30, '#FB923C'], [186, 24, '#F472B6']] as const;
-  return (
-    <Scene>
-      <Blob cx={160} cy={110} r={82} fill="#FEF7C3" />
-      {bits.map(([x, y, c], i) => <rect key={i} x={x} y={y} width={8} height={4} rx={2} fill={c} transform={`rotate(${i * 37} ${x} ${y})`} />)}
-      <Ground />
-      <House x={92} y={178} w={108} variant="detached" roof="#10B981" />
-      <Check x={204} y={86} r={16} />
-      <Person x={244} y={178} s={0.95} look={LOOKS.alex} pose="wave" />
-    </Scene>
-  );
-}
 /** No receipts yet. */
 export function SceneReceipts() {
   return (

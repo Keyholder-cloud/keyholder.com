@@ -45,7 +45,9 @@ async function answerQuestions(pg) {
   await pg.waitForSelector('text=Go to dashboard');
 }
 const state = (pg) => pg.evaluate(() => JSON.parse(localStorage.getItem('keyholder:v1')));
-const go = async (pg, r) => { await pg.goto(BASE + '#/' + r); await pg.waitForTimeout(250); };
+// Home folds rooms under their unit (closed at first): open them so each room's row can be checked.
+const openRooms = async (pg) => { for (const t of await pg.locator('.rooms-toggle[aria-expanded="false"]').all()) await t.click().catch(() => {}); };
+const go = async (pg, r) => { await pg.goto(BASE + '#/' + r); await pg.waitForTimeout(250); if (r === 'today') await openRooms(pg); };
 const approve = async (pg) => { await pg.locator('.slide-confirm .knob').focus(); await pg.keyboard.press('Enter'); await pg.waitForTimeout(350); };
 // A receipt photo for the reader test: a till slip on a counter, dated 2 days ago.
 const RECEIPT_DATE = (() => { const d = new Date(); d.setDate(d.getDate() - 2); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
@@ -172,7 +174,9 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     pg.on('console', (m) => { if (m.type() === 'error' && !/fonts/.test(m.text())) errsB.push(`B console: ${m.text()}`); });
     await adminIn(pg);
     const btn = async (who) => (await row(who).locator('.row-act .btn').first().textContent())?.trim();
-    await step(tag, 'B1 Each row shows status + one button', async () => {
+    await step(tag, 'B1 Each row shows status + one button (rooms folded under their unit at first)', async () => {
+      if (!(await pg.locator('.rooms-toggle[aria-expanded="false"]').count()) || (await pg.locator('.rent-row.room-row').count())) throw new Error('rooms not folded at first');
+      await openRooms(pg);
       const got = { Maya: await btn('Maya'), Jordan: await btn('Jordan'), 'Unit C': await btn('Unit C'), Sam: await btn('Sam'), 'rooms rented': await btn('Basement · 1 free') };
       const want = { Maya: 'Send receipt', Jordan: 'Send reminder', 'Unit C': 'Review', Sam: 'Confirm', 'rooms rented': 'Review' };
       for (const k in want) if (got[k] !== want[k]) throw new Error(JSON.stringify(got));

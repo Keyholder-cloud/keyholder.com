@@ -8,7 +8,7 @@ import { Brand } from '../components/Brand';
 import { SceneWelcome } from '../components/Art';
 import { api, ApiError, getConn, isStaff, serverMode, setUser, type ServerUser } from '../data/api';
 import * as sync from '../data/sync';
-import { bioName, canUseBiometrics, passkeyEmails, rememberPasskeyHere, reportBio, TwoStepCode } from '../components/TwoStep';
+import { bioName, canUseBiometrics, deviceKind, passkeyEmails, rememberPasskeyHere, reportBio, TwoStepCode } from '../components/TwoStep';
 import { startAuthentication } from '@simplewebauthn/browser';
 
 // Sign up / sign in. With the Keyholder server (Stage 2), accounts are real: email and password (or Google,
@@ -238,9 +238,18 @@ function CentralLogin({ onAccount, onTwoStep }: { onAccount: (email: string) => 
   const [bioOpts, setBioOpts] = useState<Parameters<typeof startAuthentication>[0]['optionsJSON'] | null>(null);
   const [usePassword, setUsePassword] = useState(false);
   useEffect(() => { if (server && !user) { const last = passkeyEmails().slice(-1)[0]; if (last) setUserName(last); } }, []);
-  const bioKnown = server && canUseBiometrics() && passkeyEmails().includes(user.trim().toLowerCase());
-  const loadBio = () => api<{ options: Parameters<typeof startAuthentication>[0]['optionsJSON'] }>('POST', '/api/auth/passkey/login-options', { email: user.trim() }).then((r) => setBioOpts(r.options)).catch(() => setBioOpts(null));
-  useEffect(() => { setBioOpts(null); if (bioKnown) void loadBio(); }, [bioKnown, user]);
+  // Also when the account has Face ID / Touch ID on this kind of device (added before this browser kept track).
+  const [kindHere, setKindHere] = useState(false);
+  const loadBio = () => api<{ options: Parameters<typeof startAuthentication>[0]['optionsJSON']; kinds?: string[] }>('POST', '/api/auth/passkey/login-options', { email: user.trim() })
+    .then((r) => { setBioOpts(r.options); setKindHere(!!deviceKind() && !!r.kinds?.includes(deviceKind())); }).catch(() => setBioOpts(null));
+  const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(user.trim());
+  useEffect(() => {
+    setBioOpts(null); setKindHere(false);
+    if (!server || !canUseBiometrics() || !looksLikeEmail) return;
+    const t = setTimeout(() => void loadBio(), 400); // once typing stops
+    return () => clearTimeout(t);
+  }, [user]);
+  const bioKnown = server && canUseBiometrics() && (passkeyEmails().includes(user.trim().toLowerCase()) || kindHere);
   const bioSignIn = () => {
     if (!bioOpts) return;
     setBusy(true); setErr('');

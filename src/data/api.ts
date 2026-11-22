@@ -7,7 +7,7 @@ import { embedded } from '../components/ui';
 //  • "local": no server answers (the Claude preview, a static host). Everything stays in this browser, as in Stage 1.
 // The mode is decided once at start-up, before the first screen is drawn.
 
-export type ServerUser = { id: string; email: string; name: string; role: 'owner' | 'super' | 'admin' | 'support'; emailVerified: boolean; hasPassword: boolean; google: boolean; twoStep?: boolean; twoStepSince?: string | null; backupCodesLeft?: number; twoStepApp?: boolean; passkeys?: number };
+export type ServerUser = { id: string; email: string; name: string; role: 'owner' | 'super' | 'admin' | 'support'; emailVerified: boolean; hasPassword: boolean; google: boolean; twoStep?: boolean; twoStepSince?: string | null; backupCodesLeft?: number; twoStepApp?: boolean; passkeys?: number; plan?: 'starter' | 'landlord' };
 export type ServerConfig = { google: boolean; emailDelivery: boolean; banks?: boolean; addressLookup?: boolean; benchmarks?: Benchmarks; version: string; build?: string; twoStep?: boolean };
 export type Conn = { mode: 'local' | 'server'; user: ServerUser | null; config: ServerConfig | null };
 
@@ -21,6 +21,8 @@ export const serverMode = () => conn.mode === 'server';
 export const banksOn = () => (conn.mode !== 'server' ? true : !!conn.config?.banks);
 /** For the progress score: on the live site, whether the landlord's two-step sign-in is on (else not counted). */
 export const twoStepFlag = () => (conn.mode === 'server' && conn.user?.role === 'owner' && conn.config?.twoStep ? !!conn.user.twoStep : undefined);
+/** Paid plan (Landlord): extras such as "Check now" for banks. The browser-only preview counts as paid. */
+export const paidPlan = () => conn.mode !== 'server' || conn.user?.plan === 'landlord';
 export const isStaff = (u: ServerUser | null = conn.user) => !!u && (u.role === 'super' || u.role === 'admin' || u.role === 'support');
 export function setUser(user: ServerUser | null) { conn = { ...conn, user }; emit(); }
 export function useConn(): Conn {

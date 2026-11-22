@@ -624,7 +624,7 @@ function watch(pg, errors, label) {
         const other = await (await b.newContext({ viewport: vp })).newPage(); watch(other, errors, 'other-device');
         const ocdp = await other.context().newCDPSession(other); await ocdp.send('WebAuthn.enable');
         await ocdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
-        await signIn(other, email, password); await other.waitForSelector('#ts-elsewhere >> text=Enter a code once');
+        await signIn(other, email, password); await other.waitForSelector('#ts-elsewhere >> text=One code here');
         if (await other.locator('button.btn#ts-biometric').count()) throw new Error('Face ID offered first on a device without it');
         // No app at hand: a code by email signs in; then one tap adds Face ID on this device.
         await other.click('#ts-email'); await other.waitForSelector('#ts-mailed');

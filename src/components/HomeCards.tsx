@@ -3,8 +3,7 @@ import { Link } from 'react-router-dom';
 import type { AppState } from '../data/types';
 import { useStore } from '../data/store';
 import { Icon } from './Icon';
-import { SceneCelebrate } from './Art';
-import { currentLeases, leaseLedger, picture } from '../lib/finance';
+import { currentLeases, leaseLedger, picture, portfolio } from '../lib/finance';
 import { addDays, addMonths, daysBetween, fmtPeriod, periodOf } from '../lib/dates';
 import { fmt0 } from '../lib/money';
 import { allJourneyCards, isHidden, prefKey } from '../lib/journey';
@@ -59,7 +58,6 @@ export function RentCard({ headline }: { headline: React.ReactNode }) {
           <div className="rent-bar"><i style={{ width: `${pctIn}%` }} /></div>
         </div>
       </div>
-      {allIn && <div className="rent-card-art" aria-hidden><SceneCelebrate /></div>}
     </section>
   );
 }
@@ -84,6 +82,37 @@ export function NextStep() {
 }
 
 
+
+/** This year so far: what you own (properties, units rented, value) and the cash flow since January 1. */
+export function YearToDate() {
+  const { state, today } = useStore();
+  const y = useMemo(() => {
+    const from = `${today.slice(0, 4)}-01-01`;
+    const props = state.properties.filter((p) => !p.archived);
+    const units = state.units.filter((u) => props.some((p) => p.id === u.propertyId));
+    const rented = units.filter((u) => u.status !== 'vacant').length;
+    return { p: picture(state, from, today), props: props.length, units: units.length, rented, value: portfolio(state, today).value };
+  }, [state, today]);
+  if (!y.props) return null;
+  return (
+    <section className="side-card" aria-label="Year to date" id="ytd">
+      <h2 className="side-title">{today.slice(0, 4)} so far</h2>
+      <p className="side-sub">Overview</p>
+      <div className="ytd-over">
+        <div><span>Properties</span><strong>{y.props}</strong></div>
+        <div><span>Units rented</span><strong>{y.rented} of {y.units}</strong></div>
+        <div><span>Worth</span><strong>{y.value ? fmt0(y.value) : '—'}</strong></div>
+      </div>
+      <p className="side-sub">Cash flow</p>
+      <div className="review-grid">
+        <div><span>Rent in</span><strong>{fmt0(y.p.rentCollected)}</strong></div>
+        <div><span>Costs</span><strong>{fmt0(y.p.opex)}</strong></div>
+        <div className="kept"><span>You kept</span><strong>{fmt0(y.p.kept)}</strong></div>
+      </div>
+      <Link className="side-link" to="/portfolio">See the full picture<Icon name="next" size={16} /></Link>
+    </section>
+  );
+}
 
 /** Last month at a glance, compared with the month before: a reason to come back each month. */
 export function MonthReview() {

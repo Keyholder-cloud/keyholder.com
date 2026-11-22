@@ -458,3 +458,15 @@ Status: ☐ to do · ◐ in progress · ☑ done
   ID" (no password, no code; "Use my password instead" is a link). The second step there shows only "Use Face
   ID" ("Use a code instead" is a link). Words follow the device: Face ID, Touch ID, fingerprint, Windows Hello.
 - Owner: "Remove try it anyway" — removed; elsewhere: "Enter a code once on this device; then you can use Face ID here."
+
+### R52. Faster checks; Home: compact all-in, year to date, rooms folded; Touch ID on older devices ☑
+- Owner: "Why are fixes now taking so long … make testing modular". `node scripts/affected.mjs` prints only
+  the checks the changed files need; GitHub runs everything in parallel parts (unit/build, real-server
+  end-to-end, and the page checks in 4 parts) instead of one long job.
+- Home: "All rent is in" has a small house icon on the same line (no big picture); the bank line hides when
+  all rent is in; Check now is for the Landlord (paid) plan only (Home and Settings). A "2026 so far" card
+  (properties, units rented, worth; rent in, costs, kept; See the full picture) sits above last month's review.
+  Units rented by the room fold their rooms under one line, closed at first, with an arrow to open.
+- Touch ID on a laptop set up before devices were tracked: the server tells which kinds of device have it
+  (Mac, iPhone…), so that kind of device leads with Touch ID / Face ID. The second step's links are tidy
+  ("Email me a code", a quiet Back); the note is one line: "One code here, then Touch ID next time."

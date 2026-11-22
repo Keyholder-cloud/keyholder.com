@@ -12,7 +12,7 @@ import { propertyLevel } from '../lib/levels';
 import { addDays, addPeriods, fmtDate, fmtMonthShort, periodOf } from '../lib/dates';
 import { picture, rentalPortion, taxPack } from '../lib/finance';
 import { CATEGORIES, OTHER_BANKS, POPULAR_BANKS, category } from '../lib/jurisdiction';
-import { banksOn, serverMode } from '../data/api';
+import { banksOn, paidPlan, serverMode } from '../data/api';
 import { connectWithPlaid } from '../data/plaid';
 import * as sync from '../data/sync';
 import { fmt, fmt0 } from '../lib/money';
@@ -225,7 +225,7 @@ export function RentTracking() {
           <button className="chip-x" aria-label={`Disconnect ${b.bank}`} title="Disconnect" onClick={() => act.disconnectBank(b.id)}><Icon name="close" size={12} /></button>
         </span>
       ))}
-      {!manual && <button className="chip" id="rt-check" title="Check every bank now" onClick={() => act.syncBank()}><Icon name="sync" size={14} />Check now</button>}
+      {!manual && paidPlan() && <button className="chip" id="rt-check" title="Check every bank now" onClick={() => act.syncBank()}><Icon name="sync" size={14} />Check now</button>}
       {!manual && <button className="chip" id="rt-add" title="Add another bank (view only: Keyholder can never move money)" onClick={() => setConnect(true)}><Icon name="plus" size={14} />Add bank</button>}
       {connect && (serverMode() ? <PlaidConnect onClose={() => setConnect(false)} /> : <ConnectBank onClose={() => setConnect(false)} />)}
       {confirmManual && createPortal(
