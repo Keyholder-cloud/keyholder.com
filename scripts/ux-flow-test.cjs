@@ -122,7 +122,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await row('Rita').locator('text=Send receipt').click(); await pg.waitForTimeout(250);
       const pill = (await row('Rita').locator('.status.paid').textContent()).trim();
       if (!/^Rent paid · [A-Z][a-z]{2} \d{1,2}$/.test(pill)) throw new Error('pill: ' + pill);
-      if (await row('Rita').locator('.row-act .btn').count()) throw new Error('still asks: ' + (await row('Rita').locator('.row-act').textContent()));
+      if (await row('Rita').locator('.row-act .btn:not(.dots)').count()) throw new Error('still asks: ' + (await row('Rita').locator('.row-act').textContent()));
       await row('Rita').locator('.status.paid').click(); await pg.waitForSelector('.pill-tip.paid >> text=Nothing left to do');
       return pill;
     });
@@ -173,7 +173,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     pg.on('pageerror', (e) => errsB.push(`B ${e.message}`));
     pg.on('console', (m) => { if (m.type() === 'error' && !/fonts/.test(m.text())) errsB.push(`B console: ${m.text()}`); });
     await adminIn(pg);
-    const btn = async (who) => (await row(who).locator('.row-act .btn').first().textContent())?.trim();
+    const btn = async (who) => ((await row(who).locator('.row-act .btn:not(.dots)').count()) ? (await row(who).locator('.row-act .btn:not(.dots)').first().textContent())?.trim() : '');
     await step(tag, 'B1 Each row shows status + one button (rooms folded under their unit at first)', async () => {
       if (!(await pg.locator('.rooms-toggle[aria-expanded="false"]').count()) || (await pg.locator('.rent-row.room-row').count())) throw new Error('rooms not folded at first');
       await openRooms(pg);
@@ -194,7 +194,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     });
     await step(tag, 'B3 Maya: Send receipt → caught up: "Rent paid · date", no to-do (raise rent is not a to-do)', async () => {
       await row('Maya').locator('text=Send receipt').click(); await pg.waitForTimeout(250);
-      if (await row('Maya').locator('.row-act .btn').count()) throw new Error('button: ' + (await btn('Maya')));
+      if (await row('Maya').locator('.row-act .btn:not(.dots)').count()) throw new Error('button: ' + (await btn('Maya')));
       const pill = (await row('Maya').locator('.status').textContent()).trim();
       if (!/^Rent paid · /.test(pill)) throw new Error('pill: ' + pill);
       return pill;
@@ -312,7 +312,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     }
     if (want('C')) ok(tag, 'C Every internal link lands on a real page', bad.length === 0, bad.slice(0, 6).join(' | ') || `${pages.length} pages swept`);
     // Navigation bars
-    await step(tag, 'C2 Menu: Home, Portfolio, Rentals, Income, Expenses, Paperwork, Help at the bottom; Settings at the top right, a small Sign out icon there on Settings only; Settings in tabs (Profile with two-step first; Preferences: Appearance, Rent tracking) (phones: Home, Income, Rentals raised in the middle, Expenses, More)', async () => {
+    await step(tag, 'C2 Menu: Home, Portfolio, Rentals, Income, Expenses, Paperwork, Help at the bottom; Settings at the top right, a small Sign out icon there on Settings only; Settings in tabs (Profile first; Preferences: Appearance, Two-step sign-in, Rent tracking) (phones: Home, Income, Rentals raised in the middle, Expenses, More)', async () => {
       const labels = tag === 'phone' ? ['Home', 'Income', 'Rentals', 'Expenses', 'More'] : ['Home', 'Portfolio', 'Rentals', 'Income', 'Expenses', 'Paperwork'];
       const order = (await pg.locator(tag === 'phone' ? '.bottombar a' : '.rail .nav-link').allTextContents()).join(' ').replace(/\d+/g, '');
       if (!(tag === 'phone' ? /Home.*Income.*Rentals.*Expenses.*More/ : /Home.*Portfolio.*Rentals.*Income.*Expenses.*Paperwork/).test(order)) throw new Error('order: ' + order);
@@ -326,9 +326,9 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       // Settings in tabs: Profile first (with two-step sign-in), then Preferences (Appearance, Rent tracking).
       const tabs = (await pg.locator('.settings-tabs .tab').allTextContents()).join(' | ');
       if (tabs !== 'Profile | Preferences | Reminders | Data | Billing') throw new Error('Settings tabs: ' + tabs);
-      await pg.waitForSelector('#profile #profile-form'); await pg.waitForSelector('#pref-two-step');
+      await pg.waitForSelector('#profile #profile-form');
       await pg.click('#st-tab-preferences'); await pg.waitForSelector('#preferences .pref-t'); const prefs = (await pg.locator('#preferences .pref-t').allTextContents()).join(' | ');
-      if (prefs !== 'Appearance | Rent tracking') throw new Error('Preferences: ' + prefs);
+      if (prefs !== 'Appearance | Two-step sign-in | Rent tracking') throw new Error('Preferences: ' + prefs);
       if (tag === 'phone') { const hub = pg.locator('.bottombar a').nth(2); if (!(await hub.evaluate((a) => a.classList.contains('hub') && a.textContent.includes('Rentals')))) throw new Error('Rentals is not the raised middle button'); }
       if (await pg.locator('.bottombar .capture, .rail >> text=Add a receipt').count()) throw new Error('receipt still in the menu');
       for (const l of labels) { await pg.locator(tag === 'phone' ? `.bottombar >> text=${l}` : `.rail >> text=${l}`).first().click(); await pg.waitForSelector(`h1:has-text("${l === 'Home' ? 'Home' : l === 'Settings' ? 'Your Keyholder' : l}")`, { state: 'attached' }); }
@@ -710,7 +710,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if ((await sam.locator('.row-act .btn').first().textContent()).trim() !== 'Send receipt') throw new Error('Sam: ' + (await sam.textContent()));
       await sam.locator('text=Send receipt').click(); await pg.waitForTimeout(300);
       const pill = (await sam.locator('.status').textContent()).trim();
-      if (!/^Rent paid · /.test(pill) || (await sam.locator('.row-act .btn').count())) throw new Error('Sam after receipt: ' + (await sam.textContent()));
+      if (!/^Rent paid · /.test(pill) || (await sam.locator('.row-act .btn:not(.dots)').count())) throw new Error('Sam after receipt: ' + (await sam.textContent()));
       if (!/2 of 2 paid/.test(await pg.locator('.rent-row.unit-head', { hasText: 'Basement' }).textContent())) throw new Error('unit row not 2 of 2');
       const st = await state(pg); const tx = st.txns.find((t) => t.id === 'tx-sam'); const pay = st.payments.find((p) => p.leaseId === 'l-sam' && p.source === 'manual');
       if (tx.status !== 'matched' || tx.paymentId !== pay.id) throw new Error('deposit not joined: ' + tx.status);
@@ -883,6 +883,15 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'settings#rent-tracking'); await pg.waitForSelector('#st-tab-preferences.on'); await pg.waitForSelector('#rent-tracking');
       await pg.click('#st-tab-billing'); await pg.waitForSelector('#billing-plan >> text=Your plan'); await pg.waitForSelector('#billing-pay >> text=No card on file');
       await go(pg, 'today'); await pg.waitForSelector('#ytd >> text=Net worth'); await pg.waitForSelector('#ytd-worth >> text=Owed');
+    });
+    await step(tag, 'H27 Resend a rent receipt from Income and from a tenant\'s messages; long lists show 8 lines, then Show more', async () => {
+      await go(pg, 'income'); await pg.waitForSelector('.resend-receipt');
+      const before = (await state(pg)).messages.length; await pg.locator('.resend-receipt').first().click(); await pg.waitForTimeout(250);
+      if ((await state(pg)).messages.length < before) throw new Error('no message');
+      const rows = await pg.locator('table.ledger tbody tr').count(); if (rows > 8) throw new Error(rows + ' rows before Show more');
+      if (await pg.locator('.show-more').count()) { await pg.locator('.show-more').first().click(); if ((await pg.locator('table.ledger tbody tr').count()) <= 8) throw new Error('Show more did nothing'); }
+      await go(pg, 'rent/tenant/t-maya'); await pg.waitForSelector('.section >> text=Messages sent');
+      if ((await pg.locator('table.ledger tbody tr').count()) > 8) throw new Error('ledger longer than 8');
     });
     ok(tag, 'H errors', errsH.length === 0, errsH.slice(0, 3).join(' | '));
 

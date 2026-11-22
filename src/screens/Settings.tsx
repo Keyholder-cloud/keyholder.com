@@ -30,7 +30,7 @@ const TABS = [
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
 /** Old in-page links (/settings#two-step) → the tab that has that line now. */
-const HASH_TAB: Record<string, TabId> = { profile: 'profile', account: 'profile', 'two-step': 'profile', preferences: 'preferences', appearance: 'preferences', 'rent-tracking': 'preferences', reminders: 'reminders', tone: 'reminders', grace: 'reminders', auto: 'reminders', data: 'data', billing: 'billing' };
+const HASH_TAB: Record<string, TabId> = { profile: 'profile', account: 'profile', 'two-step': 'preferences', preferences: 'preferences', appearance: 'preferences', 'rent-tracking': 'preferences', reminders: 'reminders', tone: 'reminders', grace: 'reminders', auto: 'reminders', data: 'data', billing: 'billing' };
 
 /** One preference on one line: an icon, its name, and its options right there (wraps to two lines on phones). */
 function Pref({ id, icon, title, children }: { id: string; icon: string; title: string; children: React.ReactNode }) {
@@ -74,7 +74,7 @@ export function Settings() {
     let pending = ''; try { pending = sessionStorage.getItem(PENDING_KEY) ?? ''; sessionStorage.removeItem(PENDING_KEY); } catch { /* none */ }
     if (v === 'google' && pending === 'clear') setClearing(true);
     if (v === 'google' && pending === 'passkey') requestAnimationFrame(() => document.getElementById('two-step')?.scrollIntoView({ block: 'center' }));
-    nav(v === 'google' && pending === 'clear' ? '/settings/data' : '/settings/profile', { replace: true });
+    nav(v === 'google' && pending === 'clear' ? '/settings/data' : '/settings/preferences', { replace: true });
   }, [loc.search]);
   // Changed elsewhere (another device, the questions): the form follows, unless you are in the middle of an edit.
   const lastSaved = useRef(JSON.stringify(saved));
@@ -108,6 +108,7 @@ export function Settings() {
             </span>
             <button className="chip" role="switch" aria-checked={p.paperGrain} id="pref-grain" title="Paper grain texture" onClick={() => act.setProfile({ paperGrain: !p.paperGrain })}><Icon name={p.paperGrain ? 'check' : 'sparkle'} size={14} />Grain</button>
           </Pref>
+          <Pref id="two-step" icon="lock" title="Two-step sign-in"><TwoStepSettings /></Pref>
           <Pref id="rent-tracking" icon="bank" title="Rent tracking"><RentTracking /></Pref>
         </div>
       </section>}
@@ -146,9 +147,6 @@ export function Settings() {
               </div>
             )}
           </div>
-        </div>
-        <div className="sheet prefs" style={{ marginTop: 16 }}>
-          <Pref id="two-step" icon="lock" title="Two-step sign-in"><TwoStepSettings /></Pref>
         </div>
       </section>}
 

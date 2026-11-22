@@ -15,6 +15,7 @@ import { messageBody } from '../lib/templates';
 import { Letterhead, ReceiptLetter, methodLabel } from '../components/domain';
 import { Drawer, Empty, Stamp, embedded } from '../components/ui';
 import { Icon } from '../components/Icon';
+import { ResendReceipt, useMore } from '../components/More';
 import { SceneTap, SceneWelcome } from '../components/Art';
 
 export function Paperwork() {
@@ -63,6 +64,7 @@ function Income() {
     const l = state.leases.find((x) => x.id === p.leaseId); return state.units.find((u) => u.id === l?.unitId)?.propertyId === prop;
   }).sort((a, b) => b.date.localeCompare(a.date));
   const total = rows.reduce((a, p) => a + p.amount, 0);
+  const [shownRows, more] = useMore(rows);
   if (!state.payments.length) return <div className="sheet"><Empty title="No rent received yet." art={<SceneTap />}>Every payment, marked by you or found by the bank.</Empty></div>;
   return (
     <>
@@ -73,17 +75,17 @@ function Income() {
       </div>
       <div className="sheet tight table-scroll"><table className="ledger">
         <thead><tr><th>Received</th><th>Tenant</th><th>Unit</th><th>For</th><th>How</th><th className="num">Amount</th><th>Receipt</th></tr></thead>
-        <tbody>{rows.map((p) => {
+        <tbody>{shownRows.map((p) => {
           const l = state.leases.find((x) => x.id === p.leaseId); const t = state.tenants.find((x) => x.id === l?.tenantId); const u = state.units.find((x) => x.id === l?.unitId); const pr = state.properties.find((x) => x.id === u?.propertyId);
           const r = state.receipts.find((x) => x.paymentId === p.id && x.status !== 'superseded');
           return (
             <tr key={p.id}>
               <td className="date">{fmtDate(p.date)}</td><td>{t?.names.join(' & ')}</td><td>{pr?.nickname.split(' ')[0]} · {u?.label}</td><td>{fmtPeriod(p.period)}</td><td className="small">{methodLabel(p.method)}{p.source !== 'manual' ? ' · bank' : ''}</td><td className="num in">{fmt(p.amount)}</td>
-              <td>{r ? <button className="btn small ghost" onClick={() => setOpen(r)}>#{r.number}{r.status === 'draft' ? ' (not sent)' : ''}</button> : '—'}</td>
+              <td>{r ? <span className="spread" style={{ gap: 4, justifyContent: 'flex-start' }}><button className="btn small ghost" onClick={() => setOpen(r)}>#{r.number}{r.status === 'draft' ? ' (not sent)' : ''}</button><ResendReceipt receiptId={r.id} label={r.status === 'draft' ? 'Send' : 'Resend'} /></span> : '—'}</td>
             </tr>
           );
         })}</tbody>
-      </table></div>
+      </table>{more}</div>
       {open && <Drawer title={`Receipt #${open.number}`} onClose={() => setOpen(null)} wide footer={embedded ? undefined : <button className="btn" onClick={() => window.print()}><Icon name="print" size={16} />Print or save PDF</button>}><ReceiptLetter receipt={open} /></Drawer>}
     </>
   );
@@ -93,15 +95,16 @@ function Income() {
 function NoticesLog() {
   const { state } = useStore();
   const ns = [...state.notices].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const [nsShown, nsMore] = useMore(ns);
   return (
     <section className="section">
       <h2 className="section-title">Notices</h2>
       <div className="sheet">
         {ns.length === 0 ? <p className="soft" style={{ margin: 0 }}>No notices yet. Prepare one from a tenant's page.</p> : (
-          <ul className="rows">{ns.map((n) => {
+          <><ul className="rows">{nsShown.map((n) => {
             const t = state.tenants.find((x) => x.id === n.tenantId);
             return <li key={n.id} className="row"><span className="margin">{n.servedOn ? fmtDate(n.servedOn) : '—'}</span><span><span className="title">{n.kind} · {t?.names.join(' & ')}</span><span className="sub" style={{ display: 'block' }}>{n.arrears ? `${fmt(n.arrears)} · ` : ''}delivered {n.serveMethod} by {n.servedBy}{n.emailedAt ? ' · emailed' : ''}{n.terminationDate ? ` · ${n.arrears ? 'pay by' : 'ends'} ${fmtDate(n.terminationDate)}` : ''}</span></span><span className="row-act"><OfficialPdfButton notice={n} /><Stamp kind={n.status === 'voided-by-payment' ? 'superseded' : 'served'}>{({ served: 'Served', 'voided-by-payment': 'Paid', filed: 'Ready', signed: 'Signed' } as Record<string, string>)[n.status]}</Stamp></span></li>;
-          })}</ul>
+          })}</ul>{nsMore}</>
         )}
       </div>
     </section>
@@ -112,19 +115,20 @@ function Letters() {
   const { state, today } = useStore();
   const [open, setOpen] = useState<Message | null>(null);
   const ms = state.messages.filter((m) => m.status === 'sent').sort((a, b) => (b.sentAt ?? '').localeCompare(a.sentAt ?? ''));
+  const [msShown, msMore] = useMore(ms);
   if (!ms.length) return <div className="sheet"><Empty title="Nothing sent yet." art={<SceneTap />}>Every receipt and reminder, exactly as sent.</Empty></div>;
   return (
     <>
-      <div className="sheet"><ul className="rows">{ms.slice(0, 100).map((m) => {
+      <div className="sheet"><ul className="rows">{msShown.map((m) => {
         const t = state.tenants.find((x) => x.id === m.tenantId);
         return (
           <li key={m.id} className="row link" onClick={() => setOpen(m)} tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setOpen(m)}>
             <span className="margin">{fmtDate(m.sentAt!.slice(0, 10))}</span>
             <span><span className="title">{messageBody(state, m, today).subject}</span><span className="sub" style={{ display: 'block' }}>To {t?.names.join(' & ')} · {fmtTime(m.sentAt!)}</span></span>
-            <Stamp kind="sent">{m.kind}</Stamp>
+            <span className="row-act">{m.kind === 'receipt' && m.receiptId && <ResendReceipt receiptId={m.receiptId} />}<Stamp kind="sent">{m.kind}</Stamp></span>
           </li>
         );
-      })}</ul></div>
+      })}</ul>{msMore}</div>
       {open && (
         <Drawer title="Letter" onClose={() => setOpen(null)} wide>
           <div className="letter"><Letterhead state={state} /><p><strong>{messageBody(state, open, today).subject}</strong></p><div className="body">{messageBody(state, open, today).body}</div></div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useLocation } from 'react-router-dom';
 import { useStore } from '../data/store';
 import { keyholderScore } from '../lib/score';
 import { banksOn, twoStepFlag } from '../data/api';
@@ -12,6 +13,9 @@ export function SetupCircle() {
   const { state, today } = useStore();
   const { score, todo } = useMemo(() => keyholderScore(state, today, banksOn(), twoStepFlag()), [state, today]);
   const [open, setOpen] = useState(false);
+  // "Do it" goes to the page: the popup closes as soon as the page changes.
+  const loc = useLocation();
+  useEffect(() => { setOpen(false); }, [loc.pathname, loc.search, loc.hash]);
   useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); }, [open]);
   const left = todo.length > 0 && score < 100;
   return (

@@ -14,6 +14,7 @@ import { LateRentDrawer, RaiseRent } from './Rentals';
 import { SituationPicker } from '../components/FormWizard';
 import { Drawer, Empty, Field, Stamp, embedded } from '../components/ui';
 import { Icon } from '../components/Icon';
+import { ResendReceipt, useMore } from '../components/More';
 import { Avatar } from '../components/Art';
 
 export function TenantDetail() {
@@ -32,13 +33,15 @@ export function TenantDetail() {
   const [forms, setForms] = useState(false);
   const [raise, setRaise] = useState(false);
   const t = state.tenants.find((x) => x.id === id);
-  if (!t) return <div className="page"><Empty title="That tenant isn't here." action={<Link to="/rentals" className="btn">Back to Rent</Link>} /></div>;
-  const lease = state.leases.filter((l) => l.tenantId === t.id).sort((a, b) => b.start.localeCompare(a.start))[0];
+  const lease = state.leases.filter((l) => l.tenantId === t?.id).sort((a, b) => b.start.localeCompare(a.start))[0];
   const unit = state.units.find((u) => u.id === lease?.unitId);
   const prop = state.properties.find((p) => p.id === unit?.propertyId);
   const lines = lease ? leaseLedger(lease, state.payments, today).reverse() : [];
+  const [linesShown, linesMore] = useMore(lines);
   const bal = lease ? leaseBalance(lease, state.payments, today) : 0;
-  const msgs = state.messages.filter((m) => m.tenantId === t.id && m.status === 'sent').sort((a, b) => (b.sentAt ?? '').localeCompare(a.sentAt ?? ''));
+  const msgs = state.messages.filter((m) => m.tenantId === t?.id && m.status === 'sent').sort((a, b) => (b.sentAt ?? '').localeCompare(a.sentAt ?? ''));
+  const [msgsShown, msgsMore] = useMore(msgs);
+  if (!t) return <div className="page"><Empty title="That tenant isn't here." action={<Link to="/rentals" className="btn">Back to Rent</Link>} /></div>;
   const voided = state.payments.filter((p) => p.leaseId === lease?.id && p.voided);
   const people = tenantPeople(t);
 
@@ -78,7 +81,7 @@ export function TenantDetail() {
                 <table className="ledger">
                   <thead><tr><th>Due</th><th>Period</th><th className="num">Charge</th><th>Received</th><th className="num">Paid</th><th className="num">Balance</th><th>State</th></tr></thead>
                   <tbody>
-                    {lines.map((l) => (
+                    {linesShown.map((l) => (
                       <tr key={l.period}>
                         <td className="date">{fmtDate(l.due)}</td>
                         <td>{fmtPeriod(l.period)}</td>
@@ -91,6 +94,7 @@ export function TenantDetail() {
                               <div key={p.id} className="spread" style={{ gap: 6, justifyContent: 'flex-start' }}>
                                 <span className="mono">{fmtDate(p.date)}</span><span className="soft">{methodLabel(p.method)}{p.source !== 'manual' ? ` · ${p.source === 'bank' ? 'bank' : 'email'}` : ''}</span>
                                 {r && <button className="btn small ghost" onClick={() => setReceipt(r)}>#{r.number}{r.status === 'draft' ? ' (draft)' : ''}</button>}
+                                {r && <ResendReceipt receiptId={r.id} label={r.status === 'draft' ? 'Send' : 'Resend'} />}
                                 <button className="btn small ghost" onClick={() => setCorrect(p)} aria-label="Correct payment"><Icon name="edit" size={14} /></button>
                               </div>
                             );
@@ -103,6 +107,7 @@ export function TenantDetail() {
                     ))}
                   </tbody>
                 </table>
+                {linesMore}
               </div>
             )}
             {voided.length > 0 && <p className="tiny soft" style={{ marginTop: 8 }}>{voided.length} voided entr{voided.length === 1 ? 'y' : 'ies'} kept in the audit trail.</p>}
@@ -112,11 +117,11 @@ export function TenantDetail() {
             <h2 className="section-title">Messages sent</h2>
             <div className="sheet">
               {msgs.length === 0 ? <p className="soft small">Nothing sent yet. Receipts and reminders appear here.</p> : (
-                <ul className="rows">{msgs.slice(0, 12).map((m) => (
+                <><ul className="rows">{msgsShown.map((m) => (
                   <li key={m.id} className="row"><span className="margin">{fmtDate(m.sentAt!.slice(0, 10))}</span>
                     <span><span className="title">{m.kind === 'receipt' ? 'Rent receipt' : `${m.tone ?? ''} reminder`}</span><span className="sub" style={{ display: 'block' }}>{m.period ? fmtPeriod(m.period) : ''} · sent {fmtTime(m.sentAt!)}</span></span>
-                    <Stamp kind="sent">Sent</Stamp></li>
-                ))}</ul>
+                    <span className="row-act">{m.kind === 'receipt' && m.receiptId && <ResendReceipt receiptId={m.receiptId} />}<Stamp kind="sent">Sent</Stamp></span></li>
+                ))}</ul>{msgsMore}</>
               )}
             </div>
           </section>
