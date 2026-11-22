@@ -605,8 +605,15 @@ function watch(pg, errors, label) {
         if (await p.locator('#ts-biometric').count()) throw new Error('fingerprint offered before any device was added');
         await p.fill('#ts-code', await nextCode(email.toLowerCase())); await p.click('.two-step-form >> text=Continue'); await notNow(p);
         await p.waitForSelector('.rent-row, .rent-card, .start-steps');
+        // Signed in with a code on a device that can use fingerprint or face: it is offered once.
+        await p.waitForSelector('#bio-offer >> text=Skip the code next time?'); await p.click('#bio-offer-no');
+        // An hour later, adding it asks to confirm it is you (password here) before the fingerprint prompt.
+        await p.evaluate(() => fetch('/api/dev/age-session', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
         await go(p, 'settings#two-step'); await p.click('#ts-chip-bio'); await p.waitForSelector('#ts-devices >> text=No device yet');
-        await p.click('#ts-add-device'); await p.waitForSelector('#ts-devices .two-step-devices li'); await p.keyboard.press('Escape');
+        await p.click('#ts-add-device'); await p.waitForSelector('#confirm-it');
+        await p.fill('#ci-pass', 'not-my-password'); await p.click('#ci-go'); await p.waitForSelector('#confirm-it .acct-error >> text=not right');
+        await p.fill('#ci-pass', password); await p.click('#ci-go');
+        await p.waitForSelector('#ts-devices .two-step-devices li'); await p.keyboard.press('Escape');
         await p.waitForSelector('#ts-chip-bio >> text=Face/finger · 1');
         await p.click('#ts-chip-app'); await p.waitForSelector('#ts-app >> text=Set up.'); await p.keyboard.press('Escape');
         // Signed out, then back in: fingerprint or face instead of the code.
@@ -625,6 +632,28 @@ function watch(pg, errors, label) {
         // Removing it leaves the app; two-step stays on.
         await go(p, 'settings#two-step'); await p.click('#ts-chip-bio'); await p.locator('#ts-devices li >> text=Remove').click(); await p.waitForSelector('#ts-devices >> text=No device yet');
         const me = (await api(p, '/api/session')).body.user; if (!me.twoStep || me.passkeys !== 0) throw new Error('session: ' + JSON.stringify(me));
+        await ctx.close();
+      });
+      await step(tag, 'E34b Authenticator app set up on a phone: no QR code to scan with the same phone; an Open in app link and the key to copy', async () => {
+        const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }); const p = await ctx.newPage(); watch(p, errors, 'phone-app');
+        const em = `pat.${tag}@landlord-e2e.ca`;
+        const r = await ctx.request.post(`${BASE}api/auth/signup`, { headers: { 'X-Keyholder': '1' }, data: { name: 'Pat Lee', email: em, password: 'birch-road-2026' } });
+        if (r.status() !== 201) throw new Error('signup ' + r.status());
+        await p.request.post(`${BASE}api/auth/logout`, { headers: { 'X-Keyholder': '1' } });
+        await signIn(p, em, 'birch-road-2026'); await p.waitForSelector('h1:has-text("Where is your rental property?")');
+        await answerQuestions(p); await p.click('text=Go to dashboard'); await p.waitForSelector(':is(h1, h2):has-text("Start here")');
+        await notNow(p).catch(() => {}); if (await p.locator('.tour-card >> text=Skip tour').count()) await p.locator('.tour-card >> text=Skip tour').click();
+        await go(p, 'settings#two-step'); await p.waitForSelector('#two-step #ts-turn-on'); await p.click('#ts-turn-on');
+        await p.waitForSelector('#ts-way-app, #ts-start'); if (await p.locator('#ts-way-app').count()) await p.click('#ts-way-app');
+        await p.click('#ts-start'); await p.waitForSelector('#ts-mobile');
+        if (await p.locator('.two-step-qr').count()) throw new Error('QR code shown on a phone');
+        const href = await p.locator('#ts-open-app').getAttribute('href'); if (!/^otpauth:\/\/totp\//.test(href)) throw new Error('link ' + href);
+        await p.waitForSelector('#ts-copy >> text=Copy key'); await p.waitForSelector('#ts-secret');
+        // Clear all data asks to confirm it is you once the sign-in is old, then clears it on the server.
+        await p.keyboard.press('Escape'); await p.evaluate(() => fetch('/api/dev/age-session', { method: 'POST', headers: { 'X-Keyholder': '1' } }));
+        await p.click('#st-clear'); await p.locator('.clear-box .knob').focus(); await p.keyboard.press('Enter');
+        await p.waitForSelector('#confirm-it'); await p.fill('#ci-pass', 'birch-road-2026'); await p.click('#ci-go');
+        await p.waitForSelector('text=All data cleared');
         await ctx.close();
       });
       await step(tag, 'E35 The application link works: anyone opens it on a phone (no account), applies, and the landlord gets it under that unit', async () => {

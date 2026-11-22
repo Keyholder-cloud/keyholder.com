@@ -11,7 +11,8 @@ import { TONES } from '../lib/templates';
 import { Field, SlideToConfirm } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { ServerAccount, ServerData } from '../components/ServerAccount';
-import { useConn } from '../data/api';
+import { api, useConn } from '../data/api';
+import { PENDING_KEY, useConfirmIt } from '../components/ConfirmIt';
 
 const THEMES = [
   { id: 'system', icon: 'monitor', label: 'Device', title: 'Match device' },
@@ -45,6 +46,20 @@ export function Settings() {
   const [draft, setDraft] = useState(saved);
   const [justSaved, setJustSaved] = useState(false);
   const [clearing, setClearing] = useState(false);
+  // Clear all data: on a live account, confirm it is you, then the server clears it (and records it).
+  const [confirmIt, confirmScreen] = useConfirmIt('Clearing all data deletes every property, tenant, payment and expense. Confirm it is you first.');
+  const clearAll = () => (live ? confirmIt(async () => { await api('POST', '/api/state/clear', {}); act.clearAll(); setClearing(false); }, 'clear') : act.clearAll());
+  // Back from confirming with Google (?verified=google): reopen what was waiting.
+  const [verified, setVerified] = useState<'' | 'google' | 'wrong-google'>('');
+  useEffect(() => {
+    const v = new URLSearchParams(loc.search).get('verified');
+    if (v !== 'google' && v !== 'wrong-google') return;
+    setVerified(v);
+    let pending = ''; try { pending = sessionStorage.getItem(PENDING_KEY) ?? ''; sessionStorage.removeItem(PENDING_KEY); } catch { /* none */ }
+    if (v === 'google' && pending === 'clear') setClearing(true);
+    if (v === 'google' && pending === 'passkey') requestAnimationFrame(() => document.getElementById('two-step')?.scrollIntoView({ block: 'center' }));
+    nav('/settings', { replace: true });
+  }, [loc.search]);
   // Changed elsewhere (another device, the questions): the form follows, unless you are in the middle of an edit.
   const lastSaved = useRef(JSON.stringify(saved));
   const savedKey = JSON.stringify(saved);
@@ -62,6 +77,8 @@ export function Settings() {
   return (
     <div className="page">
       <BackToMore /><div className="page-head"><div><div className="eyebrow">Settings</div><h1 className="title-ic"><span className="tile-ic mint" aria-hidden><Icon name="settings" size={22} /></span>Your Keyholder</h1><PageSub>Your profile, appearance, rent tracking, reminders</PageSub></div></div>
+      {verified === 'google' && <p className="callout pine" role="status" id="verified-note"><Icon name="check" size={16} /> Confirmed with Google. You have 10 minutes to finish what you started.</p>}
+      {verified === 'wrong-google' && <p className="callout warn" role="alert" id="verified-note">That Google account is not the one on this Keyholder account. Try again with the right one, or use your password.</p>}
 
       <section className="section" id="preferences">
         <h2 className="section-title">Preferences</h2>
@@ -146,7 +163,8 @@ export function Settings() {
             <Link className="chip" to="/welcome"><Icon name="info" size={14} />What is Keyholder?</Link>
             <button className="chip danger" id="st-clear" aria-expanded={clearing} onClick={() => setClearing((x) => !x)}><Icon name="trash" size={14} />Clear all data</button>
           </div>
-          {clearing && <div className="clear-box"><div className="callout warn">This deletes every property, tenant, payment and expense. It can't be undone.</div><SlideToConfirm label="Slide to clear all data" onConfirm={act.clearAll} /></div>}
+          {clearing && <div className="clear-box"><div className="callout warn">This deletes every property, tenant, payment and expense. It can't be undone.</div><SlideToConfirm label="Slide to clear all data" onConfirm={() => { void clearAll(); }} /></div>}
+          {confirmScreen}
         </div>
       </section>
     </div>

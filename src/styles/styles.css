@@ -850,3 +850,11 @@ a.chip { text-decoration: none; }
 }
 /* Expenses: a quiet camera mark where a receipt photo is still missing (it was the words "no photo" on two lines). */
 .no-photo { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; border: 1px dashed var(--rule); color: var(--ink-faint, #98A2B3); }
+/* Two-step setup on a phone: open the authenticator app, or copy the key. Confirm it's you. */
+.two-step-mobile { display: grid; gap: 10px; margin-bottom: 14px; }
+.two-step-mobile .btn { justify-content: center; }
+.two-step-key-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.two-step-key-row .two-step-key { margin: 0; font-size: var(--t-16); letter-spacing: 0.06em; word-break: break-all; }
+.confirm-it { display: grid; gap: 12px; }
+.confirm-it .btn { justify-content: center; }
+.bio-offer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
