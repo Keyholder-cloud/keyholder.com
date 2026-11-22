@@ -42,7 +42,7 @@ export class Plaid {
     const r = await this.call<{ link_token: string }>('/link/token/create', {
       client_name: 'Keyholder', user: { client_user_id: userId }, country_codes: ['CA'], language: 'en', webhook,
       ...(redirectUri ? { redirect_uri: redirectUri } : {}),
-      ...(accessToken ? { access_token: accessToken } : { products: ['transactions'], transactions: { days_requested: 90 } }),
+      ...(accessToken ? { access_token: accessToken } : { products: ['transactions'], transactions: { days_requested: 730 } }),
     });
     return r.link_token;
   }

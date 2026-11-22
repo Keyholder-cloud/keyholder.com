@@ -106,7 +106,8 @@ export function ExpenseForm({ onClose, expense, prefill, fromTxn }: { onClose: (
     scope: category('repairs').sharedByDefault ? 'shared' : 'direct', createdAt: new Date().toISOString(), ...prefill,
   });
   const [flash, setFlash] = useState(false);
-  const [step, setStep] = useState<'snap' | 'reading' | 'details'>(expense || prefill ? 'details' : 'snap');
+  // The form first; "Add receipt photo" in it opens the camera and reads the receipt (owner, 2026-11-22).
+  const [step, setStep] = useState<'snap' | 'reading' | 'details'>('details');
   // Reading the receipt photo on the device: progress, then which fields it filled in.
   const [progress, setProgress] = useState<{ step: string; pct: number }>({ step: 'Getting the reader ready', pct: 0 });
   const [filled, setFilled] = useState<string[]>([]);
@@ -200,7 +201,7 @@ export function ExpenseForm({ onClose, expense, prefill, fromTxn }: { onClose: (
         </div>
       ) : (
         <div className="cash-row">
-          <label className="btn"><Icon name="camera" size={16} />Add receipt photo<input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(ev) => onPhoto(ev.target.files?.[0])} /></label>
+          <label className="btn" title={canReadReceipts() ? 'Keyholder reads it and fills in the form' : undefined}><Icon name="camera" size={16} />Add receipt photo<input id="ex-photo" type="file" accept="image/*" capture="environment" className="sr-only" onChange={(ev) => onPhoto(ev.target.files?.[0])} /></label>
           <label className="check"><input id="ex-cash" type="checkbox" checked={!!e.cashNoReceipt} onChange={(x) => set({ cashNoReceipt: x.target.checked || undefined })} /> <span>Paid in cash, no receipt</span></label>
         </div>
       )}

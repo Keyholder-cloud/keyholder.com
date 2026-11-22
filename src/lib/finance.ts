@@ -481,18 +481,7 @@ export function worthIt(state: AppState, today: ISODate, opts: { propertyId?: st
   };
 }
 
-export function verdict(w: WorthIt): string {
-  if (w.returnPct === null) return 'Add what you paid to compare with a GIC.';
-  return `Your property earned ${w.returnPct.toFixed(1)}% this year. A 5-year GIC would have paid ${w.benchmarkPct.toFixed(1)}%.`;
-}
 
-/** Short label for the verdict: ahead of, about the same as, or behind a GIC. */
-export function verdictTag(w: WorthIt): { text: string; tone: 'good' | 'even' | 'bad' } | null {
-  if (w.diffPts === null) return null;
-  if (w.diffPts >= 0.25) return { text: 'Ahead of a GIC', tone: 'good' };
-  if (w.diffPts <= -0.25) return { text: 'Behind a GIC', tone: 'bad' };
-  return { text: 'About the same as a GIC', tone: 'even' };
-}
 
 // =====================================================================================
 // Tax Pack (basic at Bronze, full at Gold) — T776-structured summary, CCA schedule, pre-flight
@@ -563,20 +552,6 @@ export function ccaSchedule(state: AppState, prop: Property, year: number, netBe
   return relevant;
 }
 
-/**
- * The first day of the year with anything recorded for this property (rent or a cost). Someone who starts
- * using Keyholder part way through the year has records from that day; the spreadsheet says so.
- */
-export function recordsStart(state: AppState, prop: Property, year: number): ISODate {
-  const y0 = `${year}-01-01`, y1 = `${year}-12-31`;
-  const units = new Set(state.units.filter((u) => u.propertyId === prop.id).map((u) => u.id));
-  const leaseIds = new Set(state.leases.filter((l) => units.has(l.unitId)).map((l) => l.id));
-  const dates = [
-    ...state.payments.filter((p) => !p.voided && leaseIds.has(p.leaseId)).map((p) => p.date),
-    ...state.expenses.filter((e) => e.propertyId === prop.id).map((e) => e.date),
-  ].filter((d) => d >= y0 && d <= y1).sort();
-  return dates[0] ?? y0;
-}
 
 /** The T776 numbers for a property and year; `start` limits them to a later first day (records kept from then). */
 export function taxPack(state: AppState, prop: Property, year: number, start?: ISODate): TaxPack {

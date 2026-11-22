@@ -20,7 +20,7 @@ import {
   accountFor, audit, createLinkToken, createSession, createUser, endAllSessions, endSession, isTeam, publicUser, readState, sessionUser,
   SESSION_COOKIE, stateProblem, useLinkToken, userByEmail, userById, writeState, type User,
 } from './services';
-import { applyChange, bankSettings, benchmarksNow, customerState, deleteAccount, snapshot, startFresh, unitPrice } from './support';
+import { applyChange, benchmarksNow, customerState, deleteAccount, snapshot, startFresh, unitPrice } from './support';
 import { fieldOf, Keys, type ServiceId } from './keys';
 import { applyBankUpdate, dropBankFromState, itemByPlaidId, itemsFor, Plaid, PlaidError, syncItem } from './plaid';
 import { fillOfficial, formFilename, OfficialFormError } from './officialForms';
@@ -206,15 +206,13 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     reply.setCookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: cfg.cookieSecure, path: '/', maxAge: cfg.sessionDays * 86400 });
   };
   // What the app needs to know. Google and email follow the keys in effect (Connections page, then Render).
-  // banks: bank checks are on when Plaid is set up (Connections) and the super user has not turned them off.
+  // banks: bank checks are on when Plaid is set up (Connections).
   // addressLookup: address suggestions (Google Places) when its key is set.
-  // banksOff: banks the super user turned off one by one.
   // A fingerprint of the app being served (it changes with each deploy), so a tab left open can offer to reload.
   let build = 'dev';
   const publicConfig = async () => {
     await keys.refresh(db);
-    const b = await bankSettings(db);
-    return { google: !!keys.google(), emailDelivery: keys.email().provider !== 'log', banks: b.enabled && plaid.ready(), banksOff: b.enabled ? b.off : [], addressLookup: !!keys.places(), benchmarks: await benchmarksNow(db), version: VERSION, build, twoStep: keys.canSave };
+    return { google: !!keys.google(), emailDelivery: keys.email().provider !== 'log', banks: plaid.ready(), addressLookup: !!keys.places(), benchmarks: await benchmarksNow(db), version: VERSION, build, twoStep: keys.canSave };
   };
   // Counted per address and email, after the body is read, so one person's typos never lock out another.
   const authLimit = { rateLimit: { hook: 'preHandler' as const, max: 10, timeWindow: '1 minute', keyGenerator: (r: FastifyRequest) => `${r.ip}:${normEmail(String((r.body as { email?: string })?.email ?? ''))}` } };
@@ -585,8 +583,6 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   // ---------------- Bank data (Plaid) ----------------
   const needPlaid = async () => {
     await keys.refresh(db);
-    const b = await bankSettings(db);
-    if (!b.enabled) fail(400, 'Bank connections are turned off right now.');
     if (!plaid.ready()) fail(400, 'Bank connections are not set up yet.');
   };
   const plaidFail = (e: unknown): never => {
@@ -637,9 +633,6 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     let ex: { access_token: string; item_id: string };
     try { ex = await plaid.exchange(b.publicToken); } catch (e) { return plaidFail(e); }
     const name = (b.institution?.name || 'Bank').slice(0, 120);
-    // A bank the super user turned off: undo the connection right away.
-    const settings = await bankSettings(db);
-    if (settings.off.some((x) => x.toLowerCase() === name.toLowerCase())) { await plaid.remove(ex.access_token).catch(() => {}); fail(400, `${name} is not available right now.`); }
     let accounts: { id: string; name: string; mask: string | null }[] = [];
     try { accounts = (await plaid.accounts(ex.access_token)).accounts.map((a) => ({ id: a.account_id, name: a.name, mask: a.mask })); } catch { /* shown without account numbers */ }
     const id = randomUUID();

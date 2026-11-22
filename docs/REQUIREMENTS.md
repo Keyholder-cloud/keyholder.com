@@ -381,3 +381,53 @@ Status: ☐ to do · ◐ in progress · ☑ done
   Keyholder") and in Support → Banks.
 - Owner: "Needs you and where your landlords are is too long, half the height": 378px; the map sits beside its city
   list; the list scrolls.
+
+### R43. Upload bank statements, any format ☑
+- Owner, 2026-11-22: landlords upload statements for banks Keyholder cannot connect to or months before they
+  connected. PDF (text, or scans read on the device), photos, CSV/TSV, Excel (.xlsx), OFX/QFX/QBO and QIF.
+  Dates, signs and columns are worked out per file; the running balance and the opening/closing balances are
+  checked ("Adds up", "Does not add up", or nothing to check). Every line is shown to tick before it is added.
+  A second upload of the same lines, or a line already from a connected bank (same amount within 3 days), is skipped.
+- Money in is matched to rent; rent already marked paid is linked to the line, never paid twice. Rent can always
+  be marked paid by hand (tenants get their receipt). Money out waits under From your banks, filed by the
+  vendor's remembered choice. "Upload statement" sits beside Check bank and Add an expense.
+
+### R44. Records from, tax years and missing information ☑
+- Each property has a records-from date (default January 1). Expenses opens with a grid of tax years; the
+  current one (last year until April 30) is active and shows its total and what is missing.
+- Missing information per month: bank statement, rent not marked paid, mortgage payment; per year: property
+  tax and insurance. Each can be ignored.
+
+### R45. Close the year (Paperwork → Taxes only) ☑
+- Steps: records from, statements (missing months listed, upload), rent, mortgage, property tax and insurance.
+  When the year has no gaps left, it offers the year before. From defaults to January 1 on Taxes and Expenses.
+
+### R46. Staged progress score ☑
+- Four stages of 25: Set up, Rent running, Know your numbers, Tax-ready. A later stage counts only once the
+  earlier ones are done, so an empty account starts near zero. The ring colour moves rose → amber → blue → teal
+  → green at 100.
+
+### R47. Regular costs and expenses ☑
+- Regular costs add Legal fees, Management or admin fees and Other. A suggestion stays until it is added or
+  ignored (×), per property and year. Add an expense opens the form; the camera is a button in it.
+
+### R48. Banks page removed from Support ☑
+- Plaid cannot hide banks in its own list, so turning banks off is gone, with the Banks page. Start fresh moved
+  to Support → Connections.
+
+### R49. Go-live audit: one story, tidy code, clean database ☑
+- Owner, 2026-11-22: audit UX/CRO/usability everywhere, refactor, make the story and plans consistent, optimise
+  the database and clear it for launch.
+- One offer everywhere (website, signup, FAQ, support dashboard, server): Starter is free for good for one
+  unit; Landlord is the set price per unit a month from 2 units; every feature is in both plans; no trial; no
+  card until card payments open, and never a charge without agreeing first. Removed claims the app did not
+  back up: "Data kept in Canada" (Render stores data in the US, as Security & privacy says; now "Canadian
+  privacy law (PIPEDA)"), Silver/Gold and several banks as paid-only, and "early access … not final".
+  The support dashboard's revenue uses the price the super user set, not a fixed $8; trial buttons are gone.
+- Usability: on phones a row with two buttons puts them on their own line (they covered the status and cut
+  names to "U…"); names wrap to two lines. Expenses shows a quiet camera mark instead of "no photo" on two
+  lines. The website tour's app screens were retaken (they showed the old Home).
+- Code: unused components and helpers removed (about 25), and their imports.
+- Database (migration 010): trial date dropped, the turned-off-banks setting removed, indexes for tickets,
+  emails and expiry clean-up; the daily clean-up also removes expired two-step steps and remembered devices.
+- No automatic clear-out of accounts (owner chose to ship without it).

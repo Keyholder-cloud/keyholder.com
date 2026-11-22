@@ -8,7 +8,7 @@ import { embedded } from '../components/ui';
 // The mode is decided once at start-up, before the first screen is drawn.
 
 export type ServerUser = { id: string; email: string; name: string; role: 'owner' | 'super' | 'admin' | 'support'; emailVerified: boolean; hasPassword: boolean; google: boolean; twoStep?: boolean; twoStepSince?: string | null; backupCodesLeft?: number; twoStepApp?: boolean; passkeys?: number };
-export type ServerConfig = { google: boolean; emailDelivery: boolean; banks?: boolean; banksOff?: string[]; addressLookup?: boolean; benchmarks?: Benchmarks; version: string; build?: string; twoStep?: boolean };
+export type ServerConfig = { google: boolean; emailDelivery: boolean; banks?: boolean; addressLookup?: boolean; benchmarks?: Benchmarks; version: string; build?: string; twoStep?: boolean };
 export type Conn = { mode: 'local' | 'server'; user: ServerUser | null; config: ServerConfig | null };
 
 let conn: Conn = { mode: 'local', user: null, config: null };
@@ -17,25 +17,10 @@ const emit = () => subs.forEach((f) => f());
 
 export const getConn = () => conn;
 export const serverMode = () => conn.mode === 'server';
-/**
- * Bank checks. The browser-only preview simulates them; on the live site they need a real bank-data
- * provider (Phase 3), so until the server says so, "Connect a bank" is "Coming soon".
- */
-export const banksOn = () => (conn.mode !== 'server' ? previewBanks().enabled : !!conn.config?.banks);
-/** Banks the super user turned off one by one (Support → Banks): landlords see "Not available right now". */
-export const banksOff = (): string[] => (conn.mode !== 'server' ? previewBanks().off : conn.config?.banksOff ?? []);
-/** Browser-only preview: the sample dashboard's bank switches, read from this browser (parsed only when they change). */
-let pb: { raw: string | null; v: { enabled: boolean; off: string[] } } = { raw: null, v: { enabled: true, off: [] } };
-function previewBanks() {
-  let raw: string | null = null;
-  try { raw = localStorage.getItem('keyholder:support:v1'); } catch { /* blocked */ }
-  if (raw !== pb.raw) {
-    let v = { enabled: true, off: [] as string[] };
-    try { const b = raw ? JSON.parse(raw)?.platform?.banks : null; if (b && typeof b.enabled === 'boolean' && Array.isArray(b.off)) v = b; } catch { /* keep the default */ }
-    pb = { raw, v };
-  }
-  return pb.v;
-}
+/** Bank checks: on when the bank-data service (Plaid) is set up on the live site; the browser-only preview simulates them. */
+export const banksOn = () => (conn.mode !== 'server' ? true : !!conn.config?.banks);
+/** For the progress score: on the live site, whether the landlord's two-step sign-in is on (else not counted). */
+export const twoStepFlag = () => (conn.mode === 'server' && conn.user?.role === 'owner' && conn.config?.twoStep ? !!conn.user.twoStep : undefined);
 export const isStaff = (u: ServerUser | null = conn.user) => !!u && (u.role === 'super' || u.role === 'admin' || u.role === 'support');
 export function setUser(user: ServerUser | null) { conn = { ...conn, user }; emit(); }
 export function useConn(): Conn {

@@ -4,7 +4,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { useStore } from '../data/store';
-import { fmt0 } from '../lib/money';
 
 // Small helpers that make the app explain itself: page subtitles, the sample banner,
 // status pills you can tap for a meaning, and a five-step guided tour.
@@ -250,21 +249,3 @@ export function HelpButton({ compact, variant }: { compact?: boolean; variant?: 
   );
 }
 
-// ---------- "Since your last visit" ----------
-export function SinceLastVisit({ since, needs }: { since: string; needs: number }) {
-  const { state } = useStore();
-  const pays = state.payments.filter((p) => p.date >= since);
-  const total = pays.reduce((n, p) => n + p.amount, 0);
-  const bills = state.expenses.filter((e) => e.date >= since).length;
-  const names = [...new Set(pays.map((p) => { const l = state.leases.find((x) => x.id === p.leaseId); const t = l && state.tenants.find((x) => x.id === l.tenantId); return t?.names[0].split(' ')[0]; }).filter(Boolean))] as string[];
-  const parts: string[] = [];
-  if (pays.length) parts.push(names.slice(0, 2).join(' and ') + (names.length > 2 ? ' and ' + (names.length - 2) + ' more' : '') + ' paid ' + fmt0(total));
-  if (bills) parts.push(bills + (bills > 1 ? ' bills saved' : ' bill saved'));
-  parts.push(needs ? needs + (needs > 1 ? ' things need you' : ' thing needs you') : 'nothing needs you');
-  return (
-    <div className="since" role="status">
-      <span className="since-k">Since your last visit</span>
-      <span className="since-v">{parts.join(' · ')}</span>
-    </div>
-  );
-}

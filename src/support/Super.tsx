@@ -2,15 +2,14 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Icon } from '../components/Icon';
 import { PageHead } from '../screens/Support';
 import { fmtDate } from '../lib/dates';
-import { OTHER_BANKS, POPULAR_BANKS } from '../lib/jurisdiction';
 import { api } from '../data/api';
 import { Status } from './charts';
 import { fmtMoney, isLive, isSuper, live, sup, toast, useSupport } from './store';
 import { DEFAULT_UNIT_CENTS, type Promotion } from './data';
 import { KEY_FIELDS, OPTION_LABEL, SERVICES, STATE_LABEL, type ServiceId, type ServiceInfo, type ServiceState } from './connections';
 
-// The super user's pages: the Landlord plan price and promotions, which banks can be connected, and the
-// API keys for the services Keyholder connects to. Admins and support staff can look but not change
+// The super user's pages: the Landlord plan price and promotions, and the API keys for the services Keyholder
+// connects to (with Start fresh for real bank data, under them). Admins and support staff can look but not change
 // (the server checks this too).
 
 const CODE = /^[A-Z0-9][A-Z0-9-]{2,23}$/;
@@ -138,45 +137,6 @@ export function Pricing() {
 }
 
 // ---------------- Banks ----------------
-export function Banks() {
-  const s = useSupport();
-  const canEdit = isSuper(s);
-  const b = s.platform.banks;
-  const [q, setQ] = useState('');
-  const term = q.trim().toLowerCase();
-  const list = [...POPULAR_BANKS, ...OTHER_BANKS].filter((x) => !term || x.toLowerCase().includes(term));
-  const toggleAll = () => sup((d) => { d.platform.banks.enabled = !b.enabled; },
-    { action: b.enabled ? 'Bank connection turned off' : 'Bank connection turned on', detail: 'For everyone' }, b.enabled ? 'Bank connection is off for everyone' : 'Bank connection is on');
-  const toggle = (name: string, off: boolean) => sup((d) => { d.platform.banks.off = off ? d.platform.banks.off.filter((x) => x !== name) : [...d.platform.banks.off, name]; },
-    { action: off ? 'Bank turned on' : 'Bank turned off', detail: name }, `${name} ${off ? 'turned on' : 'turned off'}`);
-  return (
-    <>
-      <PageHead eyebrow="Super user" title="Banks" sub="Which banks landlords can connect" />
-      <section className="sp-card sp-sec">
-        <div className="sp-card-head"><h2 className="sp-h3">Bank connection</h2><Status tone={b.enabled ? 'good' : 'bad'}>{b.enabled ? 'On' : 'Off for everyone'}</Status></div>
-        <p className="sp-small">{isLive()
-          ? 'Landlords see "Coming soon" until the bank service (Plaid) is connected. These switches are kept and apply from then.'
-          : 'Preview: the sample app simulates bank connections, and follows these switches.'}</p>
-        {canEdit ? <button id="banks-all" className={`btn${b.enabled ? ' ghost danger' : ' primary'}`} onClick={toggleAll}>{b.enabled ? 'Turn off for everyone' : 'Turn on for everyone'}</button> : <OnlySuper />}
-      </section>
-      <section className="sp-card sp-sec">
-        <div className="sp-card-head"><h2 className="sp-h3">Banks{b.off.length ? ` · ${b.off.length} turned off` : ''}</h2>
-          <label className="sp-filter-q"><Icon name="search" size={16} /><span className="sr-only">Find a bank</span><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a bank" /></label></div>
-        <ul className="sp-rows sp-bank-list">{list.map((name) => {
-          const off = b.off.includes(name);
-          return (
-            <li key={name} className={off || !b.enabled ? 'bank-off' : undefined}>
-              <span><strong>{name}</strong><span>{!b.enabled ? 'Off (bank connection is off for everyone)' : off ? 'Turned off: landlords see "Not available right now"' : 'Available'}</span></span>
-              <span className="btn-row">{canEdit ? <button className="btn small ghost" onClick={() => toggle(name, off)}>{off ? 'Turn on' : 'Turn off'}</button> : <Status tone={off ? 'off' : 'good'}>{off ? 'Off' : 'On'}</Status>}</span>
-            </li>
-          );
-        })}</ul>
-      </section>
-      {isLive() && canEdit && <StartFresh />}
-    </>
-  );
-}
-
 /** One time, when switching to real bank data: removes test expenses and bank data from every account. */
 function StartFresh() {
   const [password, setPassword] = useState('');
@@ -325,6 +285,7 @@ export function Connections() {
           </section>
         )}
       </form>
+      {!preview && <StartFresh />}
     </>
   );
 }

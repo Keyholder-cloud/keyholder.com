@@ -28,10 +28,6 @@ export function applicantPeople(a: Applicant): ApplicantPerson[] {
     : { name, email: '', phone: '', employer: '', monthlyIncome: 0 }));
 }
 
-/** "Lena and Tom Novak" style: everyone's name, joined for a sentence. */
-export function joinNames(names: string[]): string {
-  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-}
 
 /** The To: line of a receipt or reminder: every person on the lease, each with their own email. */
 export function toLine(t: Tenant | undefined): string {

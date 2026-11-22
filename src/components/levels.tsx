@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Mortgage, Property } from '../data/types';
 import { useStore } from '../data/store';
 import { levelInfo, propertyLevel, type Level } from '../lib/levels';
-import { keyholderScore } from '../lib/score';
-import { banksOn } from '../data/api';
+import { scoreTone } from '../lib/score';
 import { portfolio } from '../lib/finance';
 import { benchmarks } from '../lib/jurisdiction';
 import { fmtShort } from '../lib/money';
@@ -78,45 +77,11 @@ export function PropertyCard({ property, active, banner }: { property: Property;
   );
 }
 
-// ---------- Keyholder score chip: the only score in the app. Opens To do. ----------
-export function ScoreChip() {
-  const { state, today } = useStore();
-  const nav = useNavigate();
-  const { score, todo } = useMemo(() => keyholderScore(state, today, banksOn()), [state, today]);
-  const shown = useCountUp(score);
-  const prev = useRef(score);
-  const [bump, setBump] = useState(false);
-  useEffect(() => {
-    if (score > prev.current) { setBump(true); const t = setTimeout(() => setBump(false), 1200); prev.current = score; return () => clearTimeout(t); }
-    prev.current = score;
-  }, [score]);
-  const next = todo[0];
-  return (
-    <button data-tour="score" className={`score-chip${bump ? ' bump' : ''}`} onClick={() => { if (location.hash.includes('/today')) document.getElementById('score')?.scrollIntoView({ behavior: 'smooth' }); else nav('/today'); }} aria-label={`Setup progress ${score} percent. See what is left.`}>
-      <ScoreRing score={shown} />
-      <span className="score-label">Setup progress</span>
-      {next && <span className="score-next">+{next.points - next.earned} next</span>}
-    </button>
-  );
-}
 
 export function ScoreRing({ score, big }: { score: number; big?: boolean }) {
-  return <span className={`score-ring${big ? ' big' : ''}`} style={{ ['--p' as string]: `${score}` }}><span>{score}</span></span>;
+  return <span className={`score-ring tone-${scoreTone(score)}${big ? ' big' : ''}`} style={{ ['--p' as string]: `${score}` }}><span>{score}</span></span>;
 }
 
-function useCountUp(target: number) {
-  const [v, setV] = useState(target);
-  const from = useRef(target);
-  useEffect(() => {
-    const start = from.current, d = target - start;
-    if (!d || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { setV(target); from.current = target; return; }
-    let raf = 0; const t0 = performance.now();
-    const tick = (t: number) => { const k = Math.min(1, (t - t0) / 600); setV(Math.round(start + d * (1 - Math.pow(1 - k, 3)))); if (k < 1) raf = requestAnimationFrame(tick); else from.current = target; };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target]);
-  return v;
-}
 
 // ---------- The way up, one step at a time: Bronze → Silver (what you paid) → Gold (the mortgage) ----------
 const STEPS: { to: Level; title: string; gives: string }[] = [

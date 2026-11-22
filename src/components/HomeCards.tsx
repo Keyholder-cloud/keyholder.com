@@ -5,7 +5,7 @@ import { useStore } from '../data/store';
 import { Icon } from './Icon';
 import { SceneCelebrate } from './Art';
 import { currentLeases, leaseLedger, picture } from '../lib/finance';
-import { addDays, addMonths, addPeriods, daysBetween, fmtPeriod, periodOf } from '../lib/dates';
+import { addDays, addMonths, daysBetween, fmtPeriod, periodOf } from '../lib/dates';
 import { fmt0 } from '../lib/money';
 import { allJourneyCards, isHidden, prefKey } from '../lib/journey';
 import { trayItems } from '../lib/tray';
@@ -83,57 +83,7 @@ export function NextStep() {
   );
 }
 
-type Ev = { date: string; title: string; sub: string; icon: string; tone: string; to?: string };
-const names = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
-function upcoming(state: AppState, today: string): Ev[] {
-  const out: Ev[] = [];
-  const horizon = addDays(today, 120);
-  const rent = new Map<string, { who: string[]; total: number; ids: string[] }>();
-  const running = new Set(currentLeases(state, today).map((l) => l.id));
-  for (const l of state.leases) {
-    if (l.end && l.end < today) continue;
-    if (!running.has(l.id)) continue;
-    const t = state.tenants.find((x) => x.id === l.tenantId); const name = t?.names[0].split(' ')[0] ?? 'Tenant';
-    const next = leaseLedger(l, state.payments, today, addPeriods(periodOf(today), 1)).find((x) => x.due >= today && x.state !== 'paid');
-    if (next) { const g = rent.get(next.due) ?? { who: [], total: 0, ids: [] }; g.who.push(name); g.total += next.charge - next.paid; g.ids.push(l.tenantId); rent.set(next.due, g); }
-    if (l.end && l.end <= horizon) out.push({ date: l.end, title: `${name}'s lease ends`, sub: 'Renew or plan the move-out', icon: 'calendar', tone: 'sky', to: `/rent/tenant/${l.tenantId}` });
-  }
-  for (const [date, g] of rent) out.push({ date, title: `Rent due from ${names(g.who)}`, sub: fmt0(g.total), icon: 'cash', tone: 'mint', to: g.ids.length === 1 ? `/rent/tenant/${g.ids[0]}` : '/rentals' });
-  for (const m of state.mortgages) {
-    if (m.termEnd >= today && m.termEnd <= addDays(today, 200)) {
-      const p = state.properties.find((x) => x.id === m.propertyId);
-      out.push({ date: m.termEnd, title: `${p?.nickname ?? 'Mortgage'} mortgage renews`, sub: `${m.lender} · compare rates early`, icon: 'bank', tone: 'peach', to: `/rent/property/${m.propertyId}/mortgage` });
-    }
-  }
-  const y = Number(today.slice(0, 4)); const tax = `${today >= `${y}-04-30` ? y + 1 : y}-04-30`;
-  out.push({ date: tax, title: 'Tax return due', sub: 'Your rental numbers are ready in Taxes', icon: 'print', tone: 'sun', to: '/paperwork/taxes' });
-  return out.sort((a, b) => (a.date < b.date ? -1 : 1)).slice(0, 5);
-}
 
-/** What's coming in the next few months. */
-export function ComingUp() {
-  const { state, today } = useStore();
-  const evs = useMemo(() => upcoming(state, today), [state, today]);
-  return (
-    <section className="side-card" aria-label="Coming up">
-      <h2 className="side-title">Coming up</h2>
-      <ul className="timeline">
-        {evs.map((e, i) => {
-          const d = new Date(`${e.date}T12:00:00`);
-          const inDays = daysBetween(today, e.date);
-          const body = (
-            <>
-              <span className="tl-date"><b>{new Intl.DateTimeFormat('en-CA', { month: 'short' }).format(d)}</b>{d.getDate()}</span>
-              <span className={`tile-ic sm ${e.tone}`}><Icon name={e.icon} size={16} /></span>
-              <span className="tl-text"><strong>{e.title}</strong><span>{e.sub}{inDays >= 0 && inDays <= 14 ? ` · in ${inDays === 0 ? 'today' : `${inDays} day${inDays === 1 ? '' : 's'}`}` : ''}</span></span>
-            </>
-          );
-          return <li key={`${e.date}-${i}`}>{e.to ? <Link to={e.to}>{body}</Link> : <div>{body}</div>}</li>;
-        })}
-      </ul>
-    </section>
-  );
-}
 
 /** Last month at a glance, compared with the month before: a reason to come back each month. */
 export function MonthReview() {

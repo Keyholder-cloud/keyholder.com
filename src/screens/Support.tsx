@@ -13,7 +13,7 @@ import { CustomerPage, Customers } from '../support/Customers';
 import { Growth, Revenue } from '../support/Business';
 import { Announcements, Health, Rules } from '../support/Platform';
 import { Privacy, Team } from '../support/Admin';
-import { Banks, Connections, Pricing } from '../support/Super';
+import { Connections, Pricing } from '../support/Super';
 import { LandlordMap } from '../support/LandlordMap';
 
 // The support dashboard. Grouped by how often it is used: Today, Support, Business, Platform, Admin.
@@ -42,7 +42,6 @@ const NAV: { group: string; only?: (s: SupportState) => boolean; items: { to: st
   // The super user's own pages (the ADMIN_EMAIL account; admin / admin in the preview).
   { group: 'Super user', only: isSuper, items: [
     { to: '/support/pricing', label: 'Price & promotions', icon: 'cash' },
-    { to: '/support/banks', label: 'Banks', icon: 'bank' },
     { to: '/support/connections', label: 'Connections', icon: 'key' },
   ] },
 ];
@@ -115,7 +114,6 @@ function SupportShell() {
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/team" element={<Team />} />
             <Route path="/pricing" element={<Pricing />} />
-            <Route path="/banks" element={<Banks />} />
             <Route path="/connections" element={<Connections />} />
             <Route path="*" element={<Navigate to="/support" replace />} />
           </Routes>
@@ -196,8 +194,8 @@ function Overview() {
   const prev30 = cs.filter((c) => daysBetween(c.signedUp, t) >= 30 && daysBetween(c.signedUp, t) < 60).length;
   const active = cs.filter((c) => within(c.lastActive, t, 30)).length;
   const paying = cs.filter((c) => c.plan === 'landlord');
-  const revenue = cs.reduce((a, c) => a + mrr(c), 0);
-  const prevRevenue = cs.filter((c) => daysBetween(c.signedUp, t) >= 30).reduce((a, c) => a + mrr(c), 0);
+  const revenue = cs.reduce((a, c) => a + mrr(c, s.platform.unitCents), 0);
+  const prevRevenue = cs.filter((c) => daysBetween(c.signedUp, t) >= 30).reduce((a, c) => a + mrr(c, s.platform.unitCents), 0);
   const units = cs.reduce((a, c) => a + c.units, 0);
   const open = s.tickets.filter((x) => x.status === 'open');
   const overdue = open.filter((x) => timeLeft(s, x).overdue);
@@ -210,7 +208,7 @@ function Overview() {
     { n: overdue.length, icon: 'clock', tone: 'rose', text: `${overdue.length} request${overdue.length === 1 ? '' : 's'} overdue`, to: '/support/inbox', btn: 'Inbox' },
     { n: open.filter((x) => x.priority === 'urgent').length, icon: 'alert', tone: 'peach', text: `${open.filter((x) => x.priority === 'urgent').length} urgent`, to: '/support/inbox', btn: 'Answer' },
     { n: failingBanks.length, icon: 'bank', tone: 'sun', text: `${failingBanks.length} bank link${failingBanks.length === 1 ? '' : 's'} down`, to: '/support/health', btn: 'Banks' },
-    { n: failedPay.length, icon: 'cash', tone: 'peach', text: `${failedPay.length} failed payment${failedPay.length === 1 ? '' : 's'} · ${fmtMoney(failedPay.reduce((a, c) => a + mrr(c), 0))}`, to: '/support/revenue', btn: 'Review' },
+    { n: failedPay.length, icon: 'cash', tone: 'peach', text: `${failedPay.length} failed payment${failedPay.length === 1 ? '' : 's'} · ${fmtMoney(failedPay.reduce((a, c) => a + mrr(c, s.platform.unitCents), 0))}`, to: '/support/revenue', btn: 'Review' },
     { n: dueRequests.length, icon: 'shield', tone: 'lilac', text: `${dueRequests.length} privacy request${dueRequests.length === 1 ? '' : 's'} due this week`, to: '/support/privacy', btn: 'Handle' },
     { n: bounces.length, icon: 'mail', tone: 'sky', text: `${bounces.length} bounced email${bounces.length === 1 ? '' : 's'}`, to: '/support/health', btn: 'Emails' },
   ].filter((x) => x.n > 0);

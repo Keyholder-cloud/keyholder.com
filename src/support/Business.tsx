@@ -13,33 +13,32 @@ export function Revenue() {
   const s = useSupport();
   const cs = live(s);
   const [filter, setFilter] = useState<'all' | 'failed' | 'refunded'>('all');
-  const total = cs.reduce((a, c) => a + mrr(c), 0);
+  const price = s.platform.unitCents;
+  const total = cs.reduce((a, c) => a + mrr(c, price), 0);
   const paying = cs.filter((c) => c.plan === 'landlord');
   const failed = cs.filter((c) => c.paymentStatus === 'failed');
   // Monthly revenue at the end of each of the last 12 months: every paying account that had signed up by then.
   const months = Array.from({ length: 12 }, (_, i) => {
     const end = addDays(s.today, -30 * (11 - i));
-    return { label: monthLabel(end), value: cs.filter((c) => c.signedUp <= addDays(end, -30)).reduce((a, c) => a + mrr(c), 0) };
+    return { label: monthLabel(end), value: cs.filter((c) => c.signedUp <= addDays(end, -30)).reduce((a, c) => a + mrr(c, price), 0) };
   });
-  const free = cs.filter((c) => c.trialEnds && c.trialEnds >= s.today).length;
   const invoices = s.invoices.filter((i) => filter === 'all' || i.status === filter).slice(0, 40);
   return (
     <>
-      <PageHead eyebrow="Business" title="Revenue" sub="Paid: $8 per unit a month · Free: 1 unit" />
+      <PageHead eyebrow="Business" title="Revenue" sub={`Landlord: ${fmtMoney(price, 2)} per unit a month, 2 units or more · Starter: free, 1 unit`} />
       {isLive() && <p className="callout sp-callout">Card payments are not connected yet. Amounts show what each plan would bill.</p>}
       <div className="sp-tiles">
         <Tile label="Monthly revenue" value={fmtMoney(total)} spark={months.map((m) => m.value)} />
-        <Tile label="Paying accounts" value={String(paying.length)} note={`${free} on trial`} />
+        <Tile label="Paying accounts" value={String(paying.length)} note={`${cs.length - paying.length} on Starter`} />
         <Tile label="Average per account" value={fmtMoney(paying.length ? total / paying.length : 0, 2)} />
-        <Tile label="Failed payments" value={String(failed.length)} note={failed.length ? fmtMoney(failed.reduce((a, c) => a + mrr(c), 0)) + ' at risk' : 'None'} />
+        <Tile label="Failed payments" value={String(failed.length)} note={failed.length ? fmtMoney(failed.reduce((a, c) => a + mrr(c, price), 0)) + ' at risk' : 'None'} />
       </div>
       <div className="sp-two">
         <section className="sp-card"><h2 className="sp-h3">Monthly revenue · 12 months</h2>
           <LineChart points={months} fmt={(v) => fmtMoney(v)} label="Monthly revenue over the last 12 months" head={['Month', 'Monthly revenue']} /></section>
         <section className="sp-card"><h2 className="sp-h3">Plans</h2>
           <HBars rows={[
-            { label: 'Paid', value: paying.length - free },
-            { label: 'Paid, on trial', value: free },
+            { label: 'Landlord (paid)', value: paying.length },
             { label: 'Free (1 unit)', value: cs.length - paying.length },
           ]} />
         </section>
@@ -47,7 +46,7 @@ export function Revenue() {
       {failed.length > 0 && (
         <section className="sp-card sp-sec"><h2 className="sp-h3">Failed payments</h2>
           <ul className="sp-rows">{failed.map((c) => (
-            <li key={c.id}><Link to={`/support/customers/${c.id}`}><strong>{c.name}</strong><span>{fmtMoney(mrr(c), 2)} · {c.units} units</span></Link>
+            <li key={c.id}><Link to={`/support/customers/${c.id}`}><strong>{c.name}</strong><span>{fmtMoney(mrr(c, price), 2)} · {c.units} units</span></Link>
               <span className="btn-row"><button className="btn small primary" onClick={() => sup((d) => { d.customers.find((x) => x.id === c.id)!.paymentStatus = 'ok'; const inv = d.invoices.find((i) => i.customerId === c.id && i.status === 'failed'); if (inv) inv.status = 'paid'; }, { action: 'Payment retried', detail: c.name }, `${c.name.split(' ')[0]}'s payment went through`)}>Retry payment</button>
                 <button className="btn small" onClick={() => sup(() => undefined, { action: 'Card update email sent', detail: c.email }, 'Card update request sent')}>Ask for new card</button></span></li>
           ))}</ul>

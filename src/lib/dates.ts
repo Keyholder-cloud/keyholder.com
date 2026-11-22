@@ -68,13 +68,11 @@ const monthLong = new Intl.DateTimeFormat('en-CA', { month: 'long', year: 'numer
 const monthShort = new Intl.DateTimeFormat('en-CA', { month: 'short' });
 const dayFmt = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric' });
 const fullFmt = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
-const weekday = new Intl.DateTimeFormat('en-CA', { weekday: 'short' });
 
 export const fmtPeriod = (p: Period) => monthLong.format(parseISO(`${p}-01`));
 export const fmtMonthShort = (p: Period) => monthShort.format(parseISO(`${p}-01`));
 export const fmtDay = (d: ISODate) => dayFmt.format(parseISO(d));
 export const fmtDate = (d: ISODate) => fullFmt.format(parseISO(d));
-export const fmtWeekday = (d: ISODate) => weekday.format(parseISO(d));
 
 export function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' });
@@ -84,7 +82,3 @@ export function yearOf(d: ISODate): number {
   return Number(d.slice(0, 4));
 }
 
-/** Fractional years between two dates. */
-export function yearsBetween(a: ISODate, b: ISODate): number {
-  return daysBetween(a, b) / 365.25;
-}

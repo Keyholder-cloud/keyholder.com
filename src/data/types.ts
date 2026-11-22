@@ -75,6 +75,11 @@ export interface Property {
   /** Map position (from the address lookup). Only cities, never exact positions, leave the landlord's account. */
   geo?: { lat: number; lng: number };
   type: PropertyType;
+  /**
+   * The day this property's money is kept in Keyholder for taxes: from then on, rent, expenses and mortgage
+   * payments should all be recorded (missing ones are flagged). Not set: January 1 of the tax year.
+   */
+  recordsFrom?: ISODate;
   /** Share of the property that is rented out, 0–100 (PS-5). 100 when the owner lives elsewhere. */
   rentalSharePct: number;
   ownerOccupied: boolean;
@@ -172,7 +177,7 @@ export interface Lease {
   standingChecked?: boolean;
 }
 
-export type PaymentSource = 'manual' | 'bank' | 'email';
+export type PaymentSource = 'manual' | 'bank' | 'email' | 'statement';
 
 export interface Payment {
   id: ID;
@@ -217,7 +222,9 @@ export type TxnStatus = 'new' | 'matched' | 'suggested' | 'ignored' | 'expense' 
 
 export interface BankTxn {
   id: ID;
-  source: 'bank' | 'email';
+  source: 'bank' | 'email' | 'statement';
+  /** From an uploaded statement: which one. */
+  statementId?: ID;
   date: ISODate;
   amount: Cents; // positive = deposit, negative = withdrawal
   payer: string;
@@ -457,5 +464,23 @@ export interface AppState {
   applicants: Applicant[];
   notices: Notice[];
   todoPrefs: Record<string, TodoPref>;
+  /** Bank and card statements the owner uploaded (their lines are in txns, with statementId). */
+  statements?: StatementFile[];
   audit: AuditEntry[];
+}
+
+/** An uploaded bank or credit card statement: what it covers (for the months-covered check) and how it was read. */
+export interface StatementFile {
+  id: ID;
+  name: string;
+  bank: string;
+  account?: string;
+  kind: 'bank' | 'card';
+  format: string;
+  from: ISODate;
+  to: ISODate;
+  lines: number;
+  /** 'balanced': the lines add up to the statement's own balances. */
+  check: 'balanced' | 'mismatch' | 'unchecked';
+  importedAt: string;
 }

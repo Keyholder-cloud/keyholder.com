@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Icon } from '../components/Icon';
 import { PageHead } from '../screens/Support';
-import { addDays, daysBetween, fmtDate } from '../lib/dates';
+import { daysBetween, fmtDate } from '../lib/dates';
 import { PROVINCES } from '../lib/jurisdiction';
 import { Status } from './charts';
 import { PriorityChip } from './Inbox';
-import { customerOf, fmtMoney, health, HEALTH_LABEL, isLive, live, mrr, sup, useSupport, type SupportState } from './store';
+import { customerOf, fmtMoney, health, HEALTH_LABEL, isLive, live, mrr, sup, useSupport } from './store';
 import type { Customer, Health } from './data';
 
 const tone = (h: Health) => (h === 'good' ? 'good' : h === 'watch' ? 'warn' : 'bad') as 'good' | 'warn' | 'bad';
@@ -41,7 +41,7 @@ export function Customers() {
           <tbody>{rows.slice(0, shown).map((c) => (
             <tr key={c.id} className="click">
               <td><Link to={`/support/customers/${c.id}`} className="sp-cust"><strong>{c.name}</strong><span>{c.email}</span></Link></td>
-              <td>{c.plan === 'landlord' ? 'Paid' : 'Free'}{c.trialEnds && c.trialEnds >= s.today ? <span className="sp-muted"> · trial</span> : null}</td>
+              <td>{c.plan === 'landlord' ? 'Paid' : 'Free'}</td>
               <td className="num">{c.units}</td>
               <td>{c.city}, {c.province}</td>
               <td className="date">{fmtDate(c.signedUp)}</td>
@@ -81,7 +81,7 @@ export function CustomerPage() {
         <div className="sp-fact"><span>Plan</span><strong>{c.plan === 'landlord' ? 'Paid' : 'Free'}</strong></div>
         <div className="sp-fact"><span>Units</span><strong>{c.units}</strong></div>
         <div className="sp-fact"><span>Properties · tenants</span><strong>{c.properties} · {c.tenants}</strong></div>
-        <div className="sp-fact"><span>Monthly</span><strong>{fmtMoney(mrr(c))}</strong></div>
+        <div className="sp-fact"><span>Monthly</span><strong>{fmtMoney(mrr(c, s.platform.unitCents))}</strong></div>
         <div className="sp-fact"><span>Receipts sent</span><strong>{c.receiptsSent}</strong></div>
         <div className="sp-fact"><span>Joined · active</span><strong>{fmtDate(c.signedUp)} · {ago(c.lastActive, s.today)}</strong></div>
       </div>
@@ -96,7 +96,6 @@ export function CustomerPage() {
           </section>
           <section className="sp-card sp-sec"><h2 className="sp-h3">Billing</h2>
             {c.paymentStatus === 'failed' && <div className="callout warn sp-callout">Last payment failed. <button className="btn small" onClick={() => sup((d) => { d.customers.find((x) => x.id === c.id)!.paymentStatus = 'ok'; const inv = d.invoices.find((i) => i.customerId === c.id && i.status === 'failed'); if (inv) inv.status = 'paid'; }, { action: 'Payment retried', detail: c.name }, 'Payment went through')}>Retry</button></div>}
-            {c.trialEnds && c.trialEnds >= s.today && <p className="sp-muted">Trial until {fmtDate(c.trialEnds)}</p>}
             {c.credit > 0 && <p className="sp-muted">Credit: {fmtMoney(c.credit, 2)}</p>}
             {invoices.length ? <div className="table-scroll"><table className="ledger"><thead><tr><th>Date</th><th className="num">Amount</th><th>Status</th></tr></thead><tbody>{invoices.map((i) => <tr key={i.id}><td className="date">{fmtDate(i.date)}</td><td className="num">{fmtMoney(i.amount, 2)}</td><td><Status tone={i.status === 'paid' ? 'good' : i.status === 'failed' ? 'bad' : 'off'}>{i.status === 'paid' ? 'Paid' : i.status === 'failed' ? 'Failed' : 'Refunded'}</Status></td></tr>)}</tbody></table></div> : <p className="sp-muted">Free plan: no invoices.</p>}
           </section>
@@ -109,7 +108,6 @@ export function CustomerPage() {
           <aside className="sp-side"><div className="sp-card sp-actions">
             <h2 className="sp-h3">Actions</h2>
             <button className="btn" onClick={() => change(() => undefined, 'Sign-in link resent', `Link sent to ${c.email}`, c.email)}><Icon name="mail" size={16} />Resend sign-in link</button>
-            <button className="btn" onClick={() => change((x) => { x.trialEnds = addDays(x.trialEnds && x.trialEnds > s.today ? x.trialEnds : s.today, 30); }, 'Trial extended', 'Trial extended 30 days')}><Icon name="calendar" size={16} />Extend trial 30 days</button>
             <div className="field"><span className="label">Plan</span>
               <div className="seg" role="group" aria-label="Plan">{(['starter', 'landlord'] as const).map((p) => <button key={p} aria-pressed={c.plan === p} onClick={() => c.plan !== p && change((x) => { x.plan = p; x.paymentStatus = p === 'landlord' ? 'ok' : 'none'; x.unitPrice = p === 'landlord' ? s.platform.unitCents : undefined; }, 'Plan changed', `Now on the ${p === 'landlord' ? 'paid' : 'free'} plan`, `${c.name} → ${p === 'landlord' ? 'Paid' : 'Free'}`)}>{p === 'landlord' ? 'Paid' : 'Free'}</button>)}</div></div>
             <div className="field"><label className="label" htmlFor="cr">Credit</label>
@@ -127,4 +125,3 @@ export function CustomerPage() {
   );
 }
 
-export const healthOf = (s: SupportState, c: Customer) => health(s, c);

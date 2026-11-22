@@ -121,6 +121,3 @@ export function SlideToConfirm({ label, onConfirm }: { label: string; onConfirm:
   );
 }
 
-export function Initials({ names }: { names: string[] }) {
-  return <>{names.map((n) => n.split(' ').map((p) => p[0]).join('')).join(' · ')}</>;
-}
