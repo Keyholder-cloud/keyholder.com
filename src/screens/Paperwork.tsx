@@ -73,15 +73,15 @@ function Income() {
         <select className="input" style={{ width: 'auto' }} value={year} onChange={(e) => setYear(e.target.value)} aria-label="Year">{years.map((y) => <option key={y}>{y}</option>)}</select>
         <span className="soft">{rows.length} payments · <strong className="mono">{fmt(total)}</strong></span>
       </div>
-      <div className="sheet tight table-scroll"><table className="ledger">
+      <div className="sheet tight table-scroll"><table className="ledger stack">
         <thead><tr><th>Received</th><th>Tenant</th><th>Unit</th><th>For</th><th>How</th><th className="num">Amount</th><th>Receipt</th></tr></thead>
         <tbody>{shownRows.map((p) => {
           const l = state.leases.find((x) => x.id === p.leaseId); const t = state.tenants.find((x) => x.id === l?.tenantId); const u = state.units.find((x) => x.id === l?.unitId); const pr = state.properties.find((x) => x.id === u?.propertyId);
           const r = state.receipts.find((x) => x.paymentId === p.id && x.status !== 'superseded');
           return (
             <tr key={p.id}>
-              <td className="date">{fmtDate(p.date)}</td><td>{t?.names.join(' & ')}</td><td>{pr?.nickname.split(' ')[0]} · {u?.label}</td><td>{fmtPeriod(p.period)}</td><td className="small">{methodLabel(p.method)}{p.source !== 'manual' ? ' · bank' : ''}</td><td className="num in">{fmt(p.amount)}</td>
-              <td>{r ? <span className="spread" style={{ gap: 4, justifyContent: 'flex-start' }}><button className="btn small ghost" onClick={() => setOpen(r)}>#{r.number}{r.status === 'draft' ? ' (not sent)' : ''}</button><ResendReceipt receiptId={r.id} label={r.status === 'draft' ? 'Send' : 'Resend'} /></span> : '—'}</td>
+              <td className="date" data-label="Received">{fmtDate(p.date)}</td><td className="st-title" data-label="Tenant">{t?.names.join(' & ')}</td><td data-label="Unit">{pr?.nickname.split(' ')[0]} · {u?.label}</td><td data-label="For">{fmtPeriod(p.period)}</td><td className="small" data-label="How">{methodLabel(p.method)}{p.source !== 'manual' ? ' · bank' : ''}</td><td className="num in" data-label="Amount">{fmt(p.amount)}</td>
+              <td className="st-actions" data-label="Receipt">{r ? <span className="spread" style={{ gap: 4, justifyContent: 'flex-start' }}><button className="btn small ghost" onClick={() => setOpen(r)}>#{r.number}{r.status === 'draft' ? ' (not sent)' : ''}</button><ResendReceipt receiptId={r.id} label={r.status === 'draft' ? 'Send' : 'Resend'} /></span> : '—'}</td>
             </tr>
           );
         })}</tbody>
