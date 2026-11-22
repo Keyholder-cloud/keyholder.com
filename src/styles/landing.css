@@ -416,3 +416,82 @@ html body .lp .lp-sticky .btn.lp-go { justify-content: space-between; min-height
   .lp-toc ol { grid-template-columns: repeat(2, minmax(0, 1fr)); border-left: 0; gap: 4px 12px; }
   .lp-toc a { border-left: 0; padding: 4px 0; margin: 0; }
 }
+
+/* ================= Overview redesign: the money outcome first, the product shown, five jobs, a tabbed explorer ================= */
+.lp-hero-ctas { align-items: center; gap: 16px; margin-top: 24px; }
+.lp-how-link { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 6px; color: var(--indigo); font-weight: 700; text-decoration: none; }
+.lp-how-link:hover { text-decoration: underline; }
+.lp-hero-copy .lp-go-note { margin-top: 12px; }
+
+/* App-style pictures (cards, lists, figures), not photos. */
+.kh-mock { background: #fff; border: 1px solid var(--lp-rule); border-radius: 16px; box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 20px 40px -20px rgba(16,24,40,.25); padding: 16px; color: var(--lp-ink); font-size: 14px; line-height: 1.4; }
+.kh-hero-mock { padding: 0; overflow: hidden; max-width: 460px; margin-left: auto; }
+.kh-mock-bar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--lp-rule); background: var(--lp-tint); }
+.kh-mock-bar span { width: 10px; height: 10px; border-radius: 50%; background: #D0D5DD; }
+.kh-mock-bar em { margin-left: auto; font-style: normal; font-size: 12px; color: var(--lp-faint); }
+.kh-mock-body { padding: 18px; }
+.kh-k { display: block; font-size: 12px; font-weight: 600; color: var(--lp-faint); text-transform: uppercase; letter-spacing: .04em; }
+.kh-pl-n { display: block; font-family: var(--font-display); font-size: 40px; line-height: 1.1; color: #067647; margin-top: 4px; }
+.kh-pl-sub { color: var(--lp-soft); font-size: 13px; }
+.kh-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.kh-list li { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--lp-rule); border-radius: 10px; }
+.kh-list li small { display: block; color: var(--lp-faint); font-size: 12px; }
+.kh-list b { font-variant-numeric: tabular-nums; }
+.kh-ok { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #D1FADF; color: #067647; }
+.kh-app { display: grid; grid-template-columns: 32px 1fr auto; gap: 10px; align-items: center; margin-top: 12px; padding: 10px; border-radius: 12px; background: #EEF2FF; }
+.kh-app small { display: block; color: var(--lp-soft); font-size: 12px; }
+.kh-av { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: #E0E7FF; color: #3730A3; font-weight: 700; font-size: 12px; }
+.kh-btn { display: inline-grid; place-items: center; min-height: 32px; padding: 0 12px; border-radius: 8px; background: var(--indigo); color: #fff; font-weight: 600; font-size: 13px; }
+.kh-btn.ghost { background: #fff; color: var(--lp-ink); border: 1px solid var(--lp-rule); }
+
+/* The five jobs, one row. */
+.kh-jobs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 40px 0 0; padding: 8px; border: 1px solid var(--lp-rule); border-radius: 16px; background: #fff; }
+.kh-job { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 56px; padding: 8px 10px; border: 0; border-radius: 12px; background: none; color: var(--lp-ink); font: inherit; font-weight: 700; cursor: pointer; }
+.kh-job:hover { background: var(--lp-tint); }
+.kh-job-ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: #EEF2FF; color: var(--indigo); flex: none; }
+
+/* Feature explorer: tabs, then the benefit and a small picture side by side. */
+.kh-explorer { border: 1px solid var(--lp-rule); border-radius: 20px; background: #fff; overflow: hidden; }
+.kh-tabs { display: flex; gap: 4px; padding: 8px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--lp-rule); background: var(--lp-tint); }
+.kh-tabs::-webkit-scrollbar { display: none; }
+.kh-tab { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: none; color: var(--lp-soft); font: inherit; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.kh-tab.on { background: #fff; color: var(--lp-ink); box-shadow: 0 1px 2px rgba(16,24,40,.08); }
+.kh-tab:focus-visible { outline: 3px solid #A5B4FC; outline-offset: 2px; }
+.kh-panel { display: grid; grid-template-columns: 1fr 1.1fr; gap: 40px; align-items: center; padding: 40px; }
+.kh-panel-copy h3 { font-family: var(--font-display); font-size: clamp(24px, 2.6vw, 32px); line-height: 1.2; margin: 0; }
+.kh-panel-copy p { color: var(--lp-soft); margin: 12px 0 0; max-width: 46ch; }
+.kh-two { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; }
+.kh-raw { display: grid; gap: 6px; }
+.kh-raw code { font-size: 12px; padding: 6px 8px; border-radius: 8px; background: var(--lp-tint); color: var(--lp-soft); overflow-wrap: anywhere; }
+.kh-arrow { color: var(--indigo); }
+.kh-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.kh-grid3 > div, .kh-net, .kh-form { padding: 10px 12px; border-radius: 12px; background: var(--lp-tint); }
+.kh-grid3 b { display: block; font-size: 18px; margin-top: 2px; }
+.kh-good { background: #ECFDF3 !important; } .kh-good b { color: #067647; }
+.kh-net { margin-top: 8px; } .kh-net b { display: block; font-size: 22px; } .kh-net small { color: var(--lp-faint); }
+.kh-form { margin-top: 8px; display: grid; gap: 6px; }
+.kh-form div { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; border-top: 1px dashed var(--lp-rule); padding-top: 6px; }
+.kh-apps { margin-top: 8px; } .kh-apps li { grid-template-columns: 32px 1fr auto; }
+.kh-late { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px; border-radius: 12px; background: #FEF3F2; }
+.kh-bad { color: #B42318; font-weight: 700; }
+.kh-letter { margin-top: 10px; padding: 14px; border: 1px solid var(--lp-rule); border-radius: 12px; }
+.kh-letter p { margin: 6px 0; color: var(--lp-soft); } .kh-letter small { color: var(--lp-faint); }
+.kh-receipt { padding: 0; overflow: hidden; max-width: 360px; }
+.kh-rc-head { display: flex; justify-content: space-between; padding: 14px 16px; background: var(--indigo); color: #fff; }
+.kh-rc-body { position: relative; padding: 16px; } .kh-rc-body strong { display: block; font-size: 30px; font-family: var(--font-display); } .kh-rc-body small { color: var(--lp-soft); }
+.kh-stamp { position: absolute; right: 16px; top: 18px; padding: 4px 10px; border: 2px solid #067647; border-radius: 6px; color: #067647; font-weight: 800; transform: rotate(-6deg); }
+.lp-who-line { font-size: var(--fs-intro); color: var(--lp-soft); max-width: 70ch; margin: 0 auto; text-align: center; }
+.lp-faq-wrap { max-width: 760px; }
+
+@media (max-width: 900px) {
+  .kh-panel { grid-template-columns: 1fr; gap: 24px; padding: 24px; }
+  .kh-hero-mock { margin: 0 auto; }
+  .kh-jobs { grid-template-columns: repeat(5, minmax(132px, 1fr)); overflow-x: auto; scrollbar-width: none; }
+}
+@media (max-width: 560px) {
+  .kh-jobs { display: flex; }
+  .kh-job { flex: none; }
+  .kh-two { grid-template-columns: 1fr; } .kh-arrow { transform: rotate(90deg); justify-self: center; }
+  .kh-grid3 { grid-template-columns: 1fr 1fr; } .kh-grid3 > .kh-good { grid-column: 1 / -1; }
+  .kh-pl-n { font-size: 34px; }
+}

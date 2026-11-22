@@ -497,3 +497,15 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Home's "Money out" is the Cash flow page's (costs, improvements and mortgage payments), so Rent in − Money out
   = You kept on both.
 - A resent receipt is the same receipt (no "Copy" wording).
+
+### R56. Landing page: understood in 5 seconds ☑
+- Hero: "Keep every expense. Get back what you're owed at tax time." / "The rental toolkit for landlords:
+  expenses, rent receipts, tenant applications, notices and your year-end taxes in one place." Get started + How
+  it works; "Connect your bank or upload a statement · No credit card required"; a dashboard picture (sample
+  profit, expenses caught, an application to review) instead of a house photo.
+- The five jobs in one row (Track expenses, Send receipts, Screen tenants, Write notices, File taxes); each opens
+  its tab in the feature explorer: Expenses (the small-leaks problem, statement → sorted expenses), Year-end and
+  tax (profit, net worth, T776 lines for review), Applications, Letters and forms (late → letter), Receipts.
+- How it works (connect or upload, review, send and file), the real-screens tour, who it is for (every landlord),
+  questions. Footer: Keyholder is not a law firm or a tax advisor. Same colours and fonts.
+- [CONFIRM] provinces and forms beyond Ontario's LTB forms before claiming them on the page.
