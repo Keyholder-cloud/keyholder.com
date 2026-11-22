@@ -367,9 +367,9 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
         const nowIso = new Date().toISOString();
         const draft = d.messages.find((m) => m.kind === 'receipt' && m.receiptId === r.id && m.status === 'draft');
         if (draft) { draft.status = 'sent'; draft.sentAt = nowIso; }
-        else d.messages.push({ id: uid('msg'), kind: 'receipt', tenantId: lease.tenantId, leaseId: lease.id, period: pay.period, receiptId: r.id, subject: 'Copy of your rent receipt', body: '', status: 'sent', edited: false, createdAt: nowIso, sentAt: nowIso });
+        else d.messages.push({ id: uid('msg'), kind: 'receipt', tenantId: lease.tenantId, leaseId: lease.id, period: pay.period, receiptId: r.id, subject: 'Your rent receipt', body: '', status: 'sent', edited: false, createdAt: nowIso, sentAt: nowIso });
         if (r.status === 'draft') { r.status = 'sent'; r.sentAt = nowIso; }
-        text = `${draft ? 'Receipt' : 'Copy of receipt'} #${r.number} sent to ${tenantName(d, lease.id)}.`;
+        text = `Receipt #${r.number} ${draft ? 'sent' : 'sent again'} to ${tenantName(d, lease.id)}.`;
         audit(d, draft ? 'Receipt sent' : 'Receipt sent again', `#${r.number} · ${tenantName(d, lease.id)}`);
       });
       if (text) toast(text);

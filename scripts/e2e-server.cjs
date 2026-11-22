@@ -478,6 +478,9 @@ function watch(pg, errors, label) {
         // E12's password reset signed this browser out (a reset ends every other sign-in): sign in again.
         await pg.addInitScript(stubPlaidLink); await pg.reload();
         if (!(await api(pg, '/api/session')).body.user) await signIn(pg, email, password);
+        // Connecting a bank is part of the Landlord plan: this account is put on it (the free plan is checked in E34b).
+        await go(pg, 'today'); await pg.waitForSelector('.rent-row');
+        await pg.evaluate(() => fetch('/api/dev/plan', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Keyholder': '1' }, body: JSON.stringify({ plan: 'landlord' }) })); await pg.reload();
         await go(pg, 'today'); await pg.waitForSelector('.rent-row');
         await go(pg, 'settings#rent-tracking'); await pg.click('#rt-bank');
         await pg.waitForSelector('#plaid-go'); await pg.click('#plaid-go');
@@ -667,6 +670,8 @@ function watch(pg, errors, label) {
         await signIn(p, em, 'birch-road-2026'); await p.waitForSelector('h1:has-text("Where is your rental property?")');
         await answerQuestions(p); await p.click('text=Go to dashboard'); await p.waitForSelector(':is(h1, h2):has-text("Start here")');
         await notNow(p).catch(() => {}); if (await p.locator('.tour-card >> text=Skip tour').count()) await p.locator('.tour-card >> text=Skip tour').click();
+        // Free plan: connecting a bank is locked and explains the Landlord plan.
+        await go(p, 'settings/preferences'); await p.waitForSelector('#rt-bank >> text=Landlord plan'); await p.click('#rt-bank'); await p.waitForSelector('.drawer >> text=Part of the Landlord plan'); await p.keyboard.press('Escape');
         await go(p, 'settings#two-step'); await p.waitForSelector('#two-step #ts-turn-on'); await p.click('#ts-turn-on');
         await p.waitForSelector('#ts-way-app, #ts-start'); if (await p.locator('#ts-way-app').count()) await p.click('#ts-way-app');
         await p.click('#ts-start'); await p.waitForSelector('#ts-mobile');

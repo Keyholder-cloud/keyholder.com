@@ -83,6 +83,9 @@ export function NextStep() {
 
 
 
+/** Everything that left: costs, improvements and mortgage payments (the Cash flow page's "Money out"), so Rent in − Money out = You kept. */
+const moneyOut = (p: { opex: number; capital: number; mortgageInterest: number; mortgagePrincipal: number }) => p.opex + p.capital + p.mortgageInterest + p.mortgagePrincipal;
+
 /** This year so far: what you own (properties, units rented, value) and the cash flow since January 1. */
 export function YearToDate() {
   const { state, today } = useStore();
@@ -108,7 +111,7 @@ export function YearToDate() {
       <p className="side-sub">Cash flow</p>
       <div className="review-grid">
         <div><span>Rent in</span><strong>{fmt0(y.p.rentCollected)}</strong></div>
-        <div><span>Costs</span><strong>{fmt0(y.p.opex)}</strong></div>
+        <div title="Costs, improvements and mortgage payments: the same as Cash flow"><span>Money out</span><strong>{fmt0(moneyOut(y.p))}</strong></div>
         <div className={`kept${y.p.kept < 0 ? ' neg' : ''}`}><span>You kept</span><strong>{fmt0(y.p.kept)}</strong></div>
       </div>
       <Link className="side-link" to="/portfolio">See the full picture<Icon name="next" size={16} /></Link>
@@ -132,7 +135,7 @@ export function MonthReview() {
       <h2 className="side-title">{r.label.split(' ')[0]} in review</h2>
       <div className="review-grid">
         <div><span>Rent in</span><strong>{fmt0(r.p.rentCollected)}</strong></div>
-        <div><span>Costs</span><strong>{fmt0(r.p.opex)}</strong></div>
+        <div title="Costs, improvements and mortgage payments: the same as Cash flow"><span>Money out</span><strong>{fmt0(moneyOut(r.p))}</strong></div>
         <div className={`kept${r.p.kept < 0 ? ' neg' : ''}`}><span>You kept</span><strong>{fmt0(r.p.kept)}</strong></div>
       </div>
       {r.prev.rentExpected > 0 && <p className={`review-diff ${diff >= 0 ? 'up' : 'down'}`}><Icon name="trend" size={16} />{diff >= 0 ? `${fmt0(diff)} more than the month before` : `${fmt0(-diff)} less than the month before`}</p>}

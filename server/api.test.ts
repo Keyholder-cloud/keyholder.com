@@ -506,6 +506,10 @@ describe('bank data (Plaid)', () => {
     expect(ok.status).toBe(200);
     expect((await call('GET', '/api/session')).body.config.banks).toBe(true);
     expect((await call('POST', '/api/bank/link-token', { cookie: sup, body: {} })).status).toBe(403); // the team has no rental data
+    // Connecting a bank is part of the Landlord plan.
+    await db.query(`update accounts set plan = 'starter' where owner_id = (select id from users where lower(email) = 'alex@morgan.ca')`);
+    expect((await call('POST', '/api/bank/link-token', { cookie: alex, body: {} })).status).toBe(402);
+    await db.query(`update accounts set plan = 'landlord' where owner_id = (select id from users where lower(email) = 'alex@morgan.ca')`);
     const lt = await call('POST', '/api/bank/link-token', { cookie: alex, body: {} });
     expect(lt.body).toEqual({ linkToken: 'link-sandbox-123' });
     const create = plaidCalls.find((c) => c.path === '/link/token/create')!.body;

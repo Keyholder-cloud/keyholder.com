@@ -8,6 +8,7 @@ import QRCode from 'qrcode';
 import type { Applicant, Lease, Listing, Notice, Tenant, Unit } from '../data/types';
 import { currentLine, unitTenant, useStore } from '../data/store';
 import { serverMode } from '../data/api';
+import { canAddProperty, FREE_PROPERTIES, useUpgrade } from '../components/Billing';
 import { activeLeases, byRoom, currentLeases, hasSpace, leaseLedger, openRooms, paidOn, roomsLine, roomsPaid, roomsPill } from '../lib/finance';
 import { applicantPeople } from '../lib/people';
 import { addDays, daysBetween, fmtDate, fmtDay, fmtPeriod } from '../lib/dates';
@@ -65,12 +66,17 @@ export function Rentals() {
   const { state, today } = useStore();
   const [addProp, setAddProp] = useState(false);
   const props = byValue(state, today);
+  // Free plan: up to 2 properties; the button stays, greyed, and explains the upgrade.
+  const [upgrade, upgradeScreen] = useUpgrade();
+  const mayAdd = canAddProperty(state);
+  const add = () => (mayAdd ? setAddProp(true) : upgrade(`Adding more than ${FREE_PROPERTIES} properties`));
   return (
     <div className="page">
       <div className="page-head">
         <div><h1 className="title-ic"><span className="tile-ic sky" aria-hidden><Icon name="home" size={22} /></span>Rentals</h1><PageSub>Properties, units, tenants and notices</PageSub></div>
-        <button className="btn" onClick={() => setAddProp(true)}><Icon name="plus" size={16} />Add property</button>
+        <button className={`btn${mayAdd ? '' : ' locked'}`} id="add-property" title={mayAdd ? undefined : `The free plan covers ${FREE_PROPERTIES} properties. Upgrade to add more.`} onClick={add}><Icon name={mayAdd ? 'plus' : 'lock'} size={16} />Add property</button>
       </div>
+      {upgradeScreen}
       <BankDeposits />
       {!props.length && <div className="sheet"><Empty title="No properties yet." art={<SceneEmptyHome />} action={<button className="btn primary" onClick={() => setAddProp(true)}>Add your first property</button>}>Start with the address. Units and tenants come next.</Empty></div>}
       {props.map((p) => <PropertyBlock key={p.id} propertyId={p.id} />)}

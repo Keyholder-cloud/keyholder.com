@@ -9,16 +9,16 @@ describe('rent receipt PDF', () => {
     expect(Buffer.from(b.slice(0, 5)).toString()).toBe('%PDF-');
     expect(b.length).toBeGreaterThan(1000);
   });
-  it('every receipt email carries the PDF; a resend is marked as a copy', () => {
+  it('every receipt email carries the PDF; a resend is the same receipt', () => {
     const s = seedState();
     const m = s.messages.find((x) => x.kind === 'receipt' && x.receiptId && s.tenants.find((t) => t.id === x.tenantId)?.email)!;
     const mails = tenantMails(s, { ...m, status: 'sent', sentAt: '2026-11-03T12:00:00.000Z' }, 'acct');
     expect(mails.length).toBeGreaterThan(0);
-    const a = mails[0].attachment as { kind: string; filename: string; receipt: { copy?: boolean } };
-    expect(a.kind).toBe('receipt'); expect(a.filename).toMatch(/^Rent receipt \d+/); expect(a.receipt.copy).toBe(false);
+    const a = mails[0].attachment as { kind: string; filename: string };
+    expect(a.kind).toBe('receipt'); expect(a.filename).toMatch(/^Rent receipt \d+/);
     const again = { ...m, id: 'msg-again', status: 'sent' as const, sentAt: '2026-11-20T12:00:00.000Z' };
     s.messages.push({ ...m, status: 'sent', sentAt: '2026-11-03T12:00:00.000Z' }, again);
     const copy = tenantMails(s, again, 'acct')[0];
-    expect(copy.subject).toMatch(/^Copy: Rent receipt/); expect((copy.attachment as { receipt: { copy?: boolean } }).receipt.copy).toBe(true);
+    expect(copy.subject).toBe(mails[0].subject); // the same receipt, sent again
   });
 });

@@ -13,6 +13,7 @@ import { addDays, addPeriods, fmtDate, fmtMonthShort, periodOf } from '../lib/da
 import { picture, rentalPortion, taxPack } from '../lib/finance';
 import { CATEGORIES, OTHER_BANKS, POPULAR_BANKS, category } from '../lib/jurisdiction';
 import { banksOn, paidPlan, serverMode } from '../data/api';
+import { useUpgrade } from '../components/Billing';
 import { connectWithPlaid } from '../data/plaid';
 import * as sync from '../data/sync';
 import { fmt, fmt0 } from '../lib/money';
@@ -44,8 +45,16 @@ export function Money() {
 export function LinkBankButton() {
   const { state, act } = useStore();
   const [open, setOpen] = useState(false);
+  const [upgrade, upgradeScreen] = useUpgrade();
   if (!banksOn()) return null;
   const linked = (state.banks ?? []).some((b) => b.status === 'connected');
+  // Free plan: connecting a bank is a Landlord feature (statements can still be uploaded).
+  if (!paidPlan()) return (
+    <>
+      {!linked && <button className="btn small link-bank locked" title="Connecting a bank is part of the Landlord plan" onClick={() => upgrade('Connecting your bank')}><Icon name="lock" size={16} />Link bank</button>}
+      {upgradeScreen}
+    </>
+  );
   return (
     <>
       {linked
@@ -208,16 +217,20 @@ export function RentTracking() {
   const banks = state.banks ?? [];
   const manual = banks.length === 0;
   const soon = !banksOn();
+  // Free plan: connecting a bank is part of the Landlord plan (one already connected keeps working).
+  const [upgrade, upgradeScreen] = useUpgrade();
+  const paid = paidPlan();
   // A bank that asks to sign in again (Plaid's window in "update" mode).
   const reconnect = (id: string) => { connectWithPlaid(id).then((r) => { if (r) { void sync.refresh(); act.say(`${r.bank} is connected again.`); } }, (e) => act.say((e as Error).message)); };
   return (
     <>
       <span className="seg-icons" role="radiogroup" aria-label="How rent is tracked">
         <button role="radio" id="rt-manual" aria-checked={manual} title="Tap Mark paid when rent comes in" onClick={() => !manual && setConfirmManual(true)}><Icon name="hand" size={15} />I mark it</button>
-        <button role="radio" id="rt-bank" aria-checked={!manual} disabled={soon} title={soon ? 'Bank checks are coming soon' : 'Keyholder spots rent, bills and mortgage payments in your bank (view only)'} onClick={() => manual && setConnect(true)}>
-          <Icon name="bank" size={15} />My bank{soon && <span className="soon-tag">{serverMode() ? 'Coming soon' : 'Not available right now'}</span>}
+        <button role="radio" id="rt-bank" aria-checked={!manual} disabled={soon} title={soon ? 'Bank checks are coming soon' : 'Keyholder spots rent, bills and mortgage payments in your bank (view only)'} onClick={() => manual && (paid ? setConnect(true) : upgrade('Connecting your bank'))}>
+          <Icon name={paid || !manual ? 'bank' : 'lock'} size={15} />My bank{soon && <span className="soon-tag">{serverMode() ? 'Coming soon' : 'Not available right now'}</span>}{!soon && !paid && manual && <span className="soon-tag">Landlord plan</span>}
         </button>
       </span>
+      {upgradeScreen}
       {banks.map((b) => (
         <span key={b.id} className={`chip bank-chip${b.status === 'needs-reauth' ? ' warn' : ''}`} title={b.status === 'connected' ? `Last checked ${new Date(b.lastSync).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Needs you to sign in again'}>
           <Icon name="bank" size={14} />{b.bank}{b.accountMask ? ` ${b.accountMask}` : ''}
@@ -226,7 +239,7 @@ export function RentTracking() {
         </span>
       ))}
       {!manual && paidPlan() && <button className="chip" id="rt-check" title="Check every bank now" onClick={() => act.syncBank()}><Icon name="sync" size={14} />Check now</button>}
-      {!manual && <button className="chip" id="rt-add" title="Add another bank (view only: Keyholder can never move money)" onClick={() => setConnect(true)}><Icon name="plus" size={14} />Add bank</button>}
+      {!manual && <button className="chip" id="rt-add" title="Add another bank (view only: Keyholder can never move money)" onClick={() => (paid ? setConnect(true) : upgrade('Connecting another bank'))}><Icon name={paid ? 'plus' : 'lock'} size={14} />Add bank</button>}
       {connect && (serverMode() ? <PlaidConnect onClose={() => setConnect(false)} /> : <ConnectBank onClose={() => setConnect(false)} />)}
       {confirmManual && createPortal(
         <div className="acct-modal" role="alertdialog" aria-modal="true" aria-labelledby="rt-confirm-h">
