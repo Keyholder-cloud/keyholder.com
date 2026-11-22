@@ -354,10 +354,10 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.goto(BASE);
       if (await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) throw new Error('sideways scroll');
     });
-    await step(tag, 'D2 Hero: the headline alone (12 words or fewer, no subhead), Get started + How it works, a slider of 3 app pictures (no house photo), and the five jobs opening the Features page', async () => {
+    await step(tag, 'D2 Hero: the headline (12 words or fewer) and the five jobs in one line, Get started + How it works, a slider of 3 app pictures (no house photo), and the five jobs opening the Features page', async () => {
       await pg.goto(BASE + '#/welcome'); await pg.waitForSelector('.lp-hero-h');
       const h = (await pg.locator('.lp-hero-h').textContent()).trim(); if (h.split(/\s+/).length > 12) throw new Error('headline too long: ' + h);
-      if (await pg.locator('.lp-hero-lede').count()) throw new Error('subhead still under the headline');
+      const lede = (await pg.locator('.lp-hero-lede').textContent()).trim(); if (!/^Track every expense/.test(lede) || /toolkit|manual effort/i.test(lede)) throw new Error('subhead: ' + lede);
       await pg.waitForSelector('.lp-hero .lp-how-link'); if (await pg.locator('.lp-hero .lp-photo img').count()) throw new Error('house photo in the hero');
       if ((await pg.locator('#hero-slider .kh-slide').count()) !== 3) throw new Error('slides');
       await pg.locator('#hero-slider .kh-dots button').nth(1).click(); await pg.waitForSelector('#hero-slider .kh-dots button.on[aria-label="Rent and receipts"]');

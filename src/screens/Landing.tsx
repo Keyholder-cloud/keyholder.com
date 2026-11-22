@@ -255,6 +255,7 @@ function Overview({ start }: { start: () => void }) {
           <div className="lp-hero-copy">
             <p className="lp-pill"><Icon name="home" size={16} />For Canadian landlords</p>
             <h1 className="lp-hero-h">Manage your rental property <em>with ease.</em></h1>
+            <p className="lp-lede lp-hero-lede">Track every expense, send rent receipts, screen tenants, write notices and get your taxes ready.</p>
             <div className="btn-row lp-hero-ctas" data-cta>
               <GetStarted start={start} big />
               <a className="lp-how-link" href="#how" onClick={(e) => { e.preventDefault(); document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' }); }}>How it works<Icon name="next" size={16} /></a>
