@@ -5,6 +5,7 @@ import type { Keys } from './keys';
 import type { PdfValue } from '../src/lib/ltbForms';
 import { fillOfficial } from './officialForms';
 import { receiptPdf, type ReceiptPdfData } from './receiptPdf';
+import { emailHtml } from './emailHtml';
 
 // Email goes through an outbox table: whatever creates an email only writes a row (inside its own
 // transaction), and the sender delivers queued rows in the background with retries. With
@@ -34,9 +35,10 @@ export async function queueMail(q: Q, m: Mail): Promise<string | null> {
   return rows[0]?.id ?? null;
 }
 
-type Row = { id: string; to_email: string; to_name: string | null; reply_to: string | null; subject: string; text_body: string; attempts: number; attachment: Attachment | null };
+type Row = { id: string; kind: string; to_email: string; to_name: string | null; reply_to: string | null; subject: string; text_body: string; attempts: number; attachment: Attachment | null };
 
-async function deliver(em: Config['email'], m: Row): Promise<{ providerId?: string }> {
+async function deliver(em: Config['email'], m: Row, appUrl: string): Promise<{ providerId?: string }> {
+  const html = emailHtml({ text: m.text_body, kind: m.kind, subject: m.subject, appUrl, hasPdf: !!m.attachment });
   const to = m.to_name ? `${m.to_name.replace(/[<>"]/g, '')} <${m.to_email}>` : m.to_email;
   // An official form or a rent receipt goes as a PDF attachment, made now from the details kept with the email.
   const pdf = m.attachment && em.provider !== 'log'
@@ -44,7 +46,7 @@ async function deliver(em: Config['email'], m: Row): Promise<{ providerId?: stri
   if (em.provider === 'resend') {
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST', headers: { Authorization: `Bearer ${em.resendKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: em.from, to: [to], subject: m.subject, text: m.text_body, reply_to: m.reply_to ?? undefined,
+      body: JSON.stringify({ from: em.from, to: [to], subject: m.subject, text: m.text_body, html, reply_to: m.reply_to ?? undefined,
         ...(pdf ? { attachments: [{ filename: m.attachment!.filename, content: pdf }] } : {}) }),
     });
     if (!r.ok) throw new Error(`Resend ${r.status}: ${(await r.text()).slice(0, 200)}`);
@@ -53,7 +55,7 @@ async function deliver(em: Config['email'], m: Row): Promise<{ providerId?: stri
   if (em.provider === 'postmark') {
     const r = await fetch('https://api.postmarkapp.com/email', {
       method: 'POST', headers: { 'X-Postmark-Server-Token': em.postmarkToken!, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ From: em.from, To: to, Subject: m.subject, TextBody: m.text_body, ReplyTo: m.reply_to ?? undefined, MessageStream: 'outbound',
+      body: JSON.stringify({ From: em.from, To: to, Subject: m.subject, TextBody: m.text_body, HtmlBody: html, ReplyTo: m.reply_to ?? undefined, MessageStream: 'outbound',
         ...(pdf ? { Attachments: [{ Name: m.attachment!.filename, Content: pdf, ContentType: 'application/pdf' }] } : {}) }),
     });
     if (!r.ok) throw new Error(`Postmark ${r.status}: ${(await r.text()).slice(0, 200)}`);
@@ -74,11 +76,11 @@ export async function sendDue(cfg: Config, db: Db, limit = 20, keys?: Keys): Pro
   const rows = await db.query<Row>(
     `update outbox set status = 'sending', attempts = attempts + 1
      where id in (select id from outbox where status = 'queued' and send_after <= now() order by created_at limit $1 for update skip locked)
-     returning id, to_email, to_name, reply_to, subject, text_body, attempts, attachment`, [limit]);
+     returning id, kind, to_email, to_name, reply_to, subject, text_body, attempts, attachment`, [limit]);
   let sent = 0, failed = 0;
   for (const m of rows) {
     try {
-      const r = await deliver(em, m);
+      const r = await deliver(em, m, cfg.appUrl);
       await db.query(`update outbox set status = $2, provider = $3, provider_id = $4, sent_at = now(), last_error = null where id = $1`,
         [m.id, em.provider === 'log' ? 'logged' : 'sent', em.provider, r.providerId ?? null]);
       sent++;

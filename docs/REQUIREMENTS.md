@@ -526,3 +526,6 @@ Status: ☐ to do · ◐ in progress · ☑ done
   Setup ring: plain inner circle. Home 2026 so far: each number in a box. Income list: no How or receipt number
   (View + Send/Resend). Expenses: year buttons without totals; regular costs as same-size boxes, 8 then Show more.
   Leases: end date only, next increase as date ↑ %. Prepare: compact summary; only failing checks are listed.
+- Owner (Nov 22): every email also goes out as a designed HTML version (card, buttons for links, a details table for
+  receipts, a big sign-in code); tenant emails lead with the landlord's name; Keyholder is only a tiny logo and line
+  at the bottom. The plain text stays as the fallback.
