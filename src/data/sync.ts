@@ -63,9 +63,11 @@ async function push(): Promise<void> {
   setStatus({ state: 'saving' });
   inFlight = (async () => {
     try {
-      const r = await api<{ revision: number; merged: boolean; data?: AppState }>('PUT', '/api/state', { baseRevision: base, data: s });
+      const r = await api<{ revision: number; merged: boolean; data?: AppState; stale?: boolean }>('PUT', '/api/state', { baseRevision: base, data: s });
       const changedSince = get() !== s;
-      if (r.merged && r.data) {
+      // This device's copy is out of date (the data was reset, or it is very old): use the account's copy.
+      if (r.stale && r.data) { adopt(r.data); writeMeta({ userId: u.id, revision: r.revision, dirty: false }); toast('Updated to your latest data.'); }
+      else if (r.merged && r.data) {
         if (!changedSince) { adopt(r.data); writeMeta({ userId: u.id, revision: r.revision, dirty: false }); toast('Updated with changes from your other device.'); }
         // Changed again while saving: keep the old starting point, so the next save merges correctly.
       } else {

@@ -433,6 +433,11 @@ export interface AuditEntry {
 
 export interface AppState {
   version: number;
+  /**
+   * Changes when the server resets this data (Start fresh). A device holding an older copy cannot save it back:
+   * the server answers with its own copy, which the device then uses.
+   */
+  epoch?: string;
   profile: Profile;
   properties: Property[];
   units: Unit[];

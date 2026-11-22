@@ -369,3 +369,15 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Removed: "$… below market · raise from … up to …" on Rentals/Tenants, "Rent compared with the area" on the
   property, and "Rent increase possible" in Home's Coming up. Raise rent stays in each tenant's ⋯ menu (N1 etc.);
   the owner chooses the amount. Pages start 35px from the top on computers.
+
+### R42. Old data cannot come back; turned-off banks greyed; Overview top row half height ☑
+- Owner, 2026-11-22: "My bank data went back to old data why is that? fix it". Cause: a device still holding its
+  copy from before Start fresh saved it later; its starting version was older than the 50 kept, so the merge put
+  everything removed back. Now: Start fresh gives the data a new epoch and the server refuses copies with an older
+  one (the device gets the current copy); a save from a version no longer kept keeps the server's copy; 200
+  versions are kept. A one-time repair at start-up removes what came back (expenses and bank-matched rent from
+  before the reset, transactions of banks no longer connected) and keeps everything added since.
+- Owner: "when a bank is turned off from admin, it should be greyed out": greyed in Rent tracking ("Turned off by
+  Keyholder") and in Support → Banks.
+- Owner: "Needs you and where your landlords are is too long, half the height": 378px; the map sits beside its city
+  list; the list scrolls.

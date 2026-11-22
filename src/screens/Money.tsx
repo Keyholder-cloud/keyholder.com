@@ -176,6 +176,9 @@ export function RentTracking() {
   const { state, act } = useStore();
   const [connect, setConnect] = useState(false);
   const [confirmManual, setConfirmManual] = useState(false);
+  // Banks the Keyholder team turned off (Support → Banks): shown greyed.
+  const offList = banksOff().map((x) => x.toLowerCase());
+  const offBanks = { has: (n: string) => offList.some((o) => n.includes(o) || o.includes(n)) };
   const banks = state.banks ?? [];
   const manual = banks.length === 0;
   const soon = !banksOn();
@@ -189,13 +192,14 @@ export function RentTracking() {
           <Icon name="bank" size={15} />My bank{soon && <span className="soon-tag">{serverMode() ? 'Coming soon' : 'Not available right now'}</span>}
         </button>
       </span>
-      {banks.map((b) => (
-        <span key={b.id} className={`chip bank-chip${b.status === 'needs-reauth' ? ' warn' : ''}`} title={b.status === 'connected' ? `Last checked ${new Date(b.lastSync).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Needs you to sign in again'}>
+      {banks.map((b) => { const turnedOff = offBanks.has(b.bank.toLowerCase()); return (
+        <span key={b.id} className={`chip bank-chip${b.status === 'needs-reauth' ? ' warn' : ''}${turnedOff ? ' off' : ''}`} aria-disabled={turnedOff || undefined} title={turnedOff ? 'Turned off by Keyholder for now: not checked until it is turned back on' : b.status === 'connected' ? `Last checked ${new Date(b.lastSync).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Needs you to sign in again'}>
           <Icon name="bank" size={14} />{b.bank}{b.accountMask ? ` ${b.accountMask}` : ''}
           {b.status === 'needs-reauth' && <button className="chip-btn" onClick={() => (serverMode() ? reconnect(b.id) : act.reauthBank(b.id))}>Sign in again</button>}
+          {turnedOff && <span className="tiny">Turned off by Keyholder</span>}
           <button className="chip-x" aria-label={`Disconnect ${b.bank}`} title="Disconnect" onClick={() => act.disconnectBank(b.id)}><Icon name="close" size={12} /></button>
         </span>
-      ))}
+      ); })}
       {!manual && <button className="chip" id="rt-check" title="Check every bank now" onClick={() => act.syncBank()}><Icon name="sync" size={14} />Check now</button>}
       {!manual && <button className="chip" id="rt-add" title="Add another bank (view only: Keyholder can never move money)" onClick={() => setConnect(true)}><Icon name="plus" size={14} />Add bank</button>}
       {connect && (serverMode() ? <PlaidConnect onClose={() => setConnect(false)} /> : <ConnectBank onClose={() => setConnect(false)} />)}

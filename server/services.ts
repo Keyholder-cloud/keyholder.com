@@ -161,19 +161,24 @@ export async function readState(q: Q, accountId: string): Promise<Saved> {
 }
 
 /** Saved versions kept per account (for merging two devices, and for support to undo a mistake). */
-const HISTORY_KEEP = 50;
+const HISTORY_KEEP = 200;
 
 /**
  * Saves a landlord's data. `baseRevision` is the version the device started from. If someone else saved
  * in between, the two are merged (server/merge.ts) and the merged copy is returned for the device to use.
  * Receipts and reminders that became "sent" in this save are queued as emails to the tenants.
  */
-export async function writeState(db: Db, accountId: string, baseRevision: number, incoming: AppState, by: string): Promise<{ revision: number; merged: boolean; data: AppState }> {
+export async function writeState(db: Db, accountId: string, baseRevision: number, incoming: AppState, by: string, opts: { reset?: boolean } = {}): Promise<{ revision: number; merged: boolean; data: AppState; stale?: boolean }> {
   return db.tx(async (q) => {
     const cur = await q.one<{ revision: number; data: AppState }>('select revision, data from account_state where account_id = $1 for update', [accountId]);
     let data = incoming, merged = false;
+    // A copy from before the server reset this data (Start fresh): never saved back; the device gets the current copy.
+    if (cur && !opts.reset && (cur.data.epoch ?? '') !== (incoming.epoch ?? '')) return { revision: cur.revision, merged: true, data: cur.data, stale: true };
     if (cur && cur.revision !== baseRevision) {
       const base = baseRevision > 0 ? (await q.one<{ data: AppState }>('select data from account_state_history where account_id = $1 and revision = $2', [accountId, baseRevision]))?.data : undefined;
+      // The version this device started from is no longer kept (very old copy): the server's copy stands,
+      // rather than merging blindly (which would bring back everything removed since).
+      if (!base) return { revision: cur.revision, merged: true, data: cur.data, stale: true };
       data = merge3(base, cur.data, incoming) as AppState;
       merged = true;
     }
