@@ -511,3 +511,4 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - [CONFIRM] provinces and forms beyond Ontario's LTB forms before claiming them on the page.
 - Owner: headline changed to "Manage your rental property without the paperwork." (managing first); the subhead
   names the jobs: track every expense, send rent receipts, screen tenants, write notices, get taxes ready.
+- Setup progress ring: one colour from red (0) through amber to green (100), ring and inner circle alike (dark mode too).

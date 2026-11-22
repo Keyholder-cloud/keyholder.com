@@ -78,8 +78,15 @@ export function PropertyCard({ property, active, banner }: { property: Property;
 }
 
 
+/** Setup progress ring: its colour moves from red (0) through amber to green (100), ring and inner circle alike. */
 export function ScoreRing({ score, big }: { score: number; big?: boolean }) {
-  return <span className={`score-ring tone-${scoreTone(score)}${big ? ' big' : ''}`} style={{ ['--p' as string]: `${score}` }}><span>{score}</span></span>;
+  const hue = Math.round(Math.max(0, Math.min(100, score)) * 1.25); // 0 red → 125 green
+  return (
+    <span className={`score-ring tone-${scoreTone(score)}${big ? ' big' : ''}`}
+      style={{ ['--p' as string]: `${score}`, ['--ring' as string]: `hsl(${hue} 78% 45%)`, ['--inner' as string]: `hsl(${hue} 85% 96%)`, ['--num' as string]: `hsl(${hue} 70% 28%)`, ['--inner-dark' as string]: `hsl(${hue} 45% 16%)`, ['--num-dark' as string]: `hsl(${hue} 70% 70%)` }}>
+      <span>{score}</span>
+    </span>
+  );
 }
 
 
