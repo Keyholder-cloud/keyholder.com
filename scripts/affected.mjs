@@ -7,7 +7,7 @@ const files = execSync('git diff --name-only origin/main...HEAD; git diff --name
   .split('\n').map((f) => f.trim()).filter(Boolean);
 // File (or folder) → browser-only test sections (scripts/ux-flow-test.cjs). Unlisted app files → A and B.
 const MAP = [
-  [/^src\/screens\/(Landing|Security)/, 'C,D,G'], [/^src\/screens\/(Account|AuthLinks|Onboarding)/, 'D,E'],
+  [/^src\/screens\/(Landing|LandingParts|Security)/, 'C,D,F,G,I'], [/^src\/screens\/(Account|AuthLinks|Onboarding)/, 'D,E'],
   [/^src\/support\/|^src\/screens\/Support/, 'J'], [/^src\/screens\/Money|^src\/components\/StatementUpload|^src\/lib\/(taxyear|statements)/, 'F,H'],
   [/^src\/screens\/(Rentals|PropertyDetail|TenantDetail)|^src\/components\/(TenantActions|PropertyActions)/, 'B,H'],
   [/^src\/components\/(HomeCards|Journey|levels|Setup)|^src\/lib\/score/, 'A,B,F'], [/^src\/screens\/Settings|^src\/components\/Billing/, 'A,C,E,H'], [/^src\/App\.tsx/, 'C,D,E'],
