@@ -24,13 +24,13 @@ const THEMES = [
 const TABS = [
   { id: 'profile', label: 'Profile', icon: 'user' },
   { id: 'preferences', label: 'Preferences', icon: 'sparkle' },
-  { id: 'reminders', label: 'Reminders', icon: 'bell' },
-  { id: 'data', label: 'Data', icon: 'paper' },
   { id: 'billing', label: 'Billing', icon: 'cash' },
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
 /** Old in-page links (/settings#two-step) → the tab that has that line now. */
-const HASH_TAB: Record<string, TabId> = { profile: 'profile', account: 'profile', 'two-step': 'preferences', preferences: 'preferences', appearance: 'preferences', 'rent-tracking': 'preferences', reminders: 'reminders', tone: 'reminders', grace: 'reminders', auto: 'reminders', data: 'data', billing: 'billing' };
+const HASH_TAB: Record<string, TabId> = { profile: 'profile', account: 'profile', 'two-step': 'preferences', preferences: 'preferences', appearance: 'preferences', 'rent-tracking': 'preferences', reminders: 'preferences', tone: 'preferences', grace: 'preferences', auto: 'preferences', data: 'preferences', billing: 'billing' };
+/** Reminders and Data are sections of Preferences now: their old tab links open Preferences at that section. */
+const OLD_TAB: Record<string, string> = { reminders: 'reminders-receipts', data: 'data' };
 
 /** One preference on one line: an icon, its name, and its options right there (wraps to two lines on phones). */
 function Pref({ id, icon, title, children }: { id: string; icon: string; title: string; children: React.ReactNode }) {
@@ -54,7 +54,8 @@ export function Settings() {
   // Tabs: /settings/profile, /settings/preferences… Old links like /settings#two-step open the right tab.
   const { tab } = useParams();
   const fromHash = HASH_TAB[loc.hash.slice(1)];
-  const cur: TabId = (TABS.find((t) => t.id === tab)?.id ?? fromHash ?? 'profile');
+  const cur: TabId = (TABS.find((t) => t.id === tab)?.id ?? (tab && OLD_TAB[tab] ? 'preferences' : undefined) ?? fromHash ?? 'profile');
+  useEffect(() => { const id = tab && OLD_TAB[tab]; if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'start' })); }, [tab]);
   // A link like /settings#two-step scrolls to that line.
   useEffect(() => { const id = loc.hash.slice(1); if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'center' })); }, [loc.hash]);
   // Your profile: changes wait in the form until Save.
@@ -150,7 +151,7 @@ export function Settings() {
         </div>
       </section>}
 
-      {cur === 'reminders' && <section className="section">
+      {cur === 'preferences' && <section className="section" id="reminders-receipts">
         <h2 className="section-title">Reminders and receipts</h2>
         <div className="sheet prefs" id="reminders">
           <Pref id="tone" icon="message" title="Reminder tone">
@@ -171,7 +172,7 @@ export function Settings() {
         </div>
       </section>}
 
-      {cur === 'data' && <section className="section" id="data">
+      {cur === 'preferences' && <section className="section" id="data">
         <h2 className="section-title">Data</h2>
         <div className="sheet data-sheet">
           {live ? <ServerData /> : <p className="small soft" style={{ margin: 0 }}>Saved in this browser. Clearing browser data clears Keyholder.</p>}

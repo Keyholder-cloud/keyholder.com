@@ -325,7 +325,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if (await pg.locator('.page > .page-head >> text=Sign out').count()) throw new Error('a big Sign out button is still by the title');
       // Settings in tabs: Profile first (with two-step sign-in), then Preferences (Appearance, Rent tracking).
       const tabs = (await pg.locator('.settings-tabs .tab').allTextContents()).join(' | ');
-      if (tabs !== 'Profile | Preferences | Reminders | Data | Billing') throw new Error('Settings tabs: ' + tabs);
+      if (tabs !== 'Profile | Preferences | Billing') throw new Error('Settings tabs: ' + tabs);
       await pg.waitForSelector('#profile #profile-form');
       await pg.click('#st-tab-preferences'); await pg.waitForSelector('#preferences .pref-t'); const prefs = (await pg.locator('#preferences .pref-t').allTextContents()).join(' | ');
       if (prefs !== 'Appearance | Two-step sign-in | Rent tracking') throw new Error('Preferences: ' + prefs);
@@ -888,8 +888,9 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'expenses'); await pg.click('.add-expense'); await pg.waitForSelector('#ex-amt'); await pg.waitForSelector('#ex-photo');
       await pg.keyboard.press('Escape');
     });
-    await step(tag, 'H26 Settings in tabs (Profile, Preferences, Reminders, Data, Billing); old links open the right tab; Billing shows the plan and payment', async () => {
-      await go(pg, 'settings'); if ((await pg.locator('.settings-tabs .tab').count()) !== 5) throw new Error('tabs');
+    await step(tag, 'H26 Settings in 3 tabs (Profile, Preferences with Reminders and Data, Billing); old links open the right tab; Billing shows the plan and payment', async () => {
+      await go(pg, 'settings'); if ((await pg.locator('.settings-tabs .tab').count()) !== 3) throw new Error('tabs');
+      await go(pg, 'settings/data'); await pg.waitForSelector('#st-tab-preferences.on'); await pg.waitForSelector('#data'); await pg.waitForSelector('#reminders-receipts');
       await go(pg, 'settings#rent-tracking'); await pg.waitForSelector('#st-tab-preferences.on'); await pg.waitForSelector('#rent-tracking');
       await pg.click('#st-tab-billing'); await pg.waitForSelector('#billing-plan >> text=Your plan'); await pg.waitForSelector('#billing-pay >> text=No card on file');
       await go(pg, 'today'); await pg.waitForSelector('#ytd >> text=Net worth'); if (await pg.$('#ytd-worth')) throw new Error('worth/owed line should be gone');
