@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { AddressField, addressLookupOn, type PickedAddress } from './AddressField';
 import type {
-  CCAClass, Expense, ExpenseCategory, Lease, Mortgage, MortgageFrequency, PayMethod, Payment, Person, Property, PropertyType, Tenant, Unit, Valuation,
+  CCAClass, Expense, ExpenseCategory, IncomeKind, Lease, Mortgage, MortgageFrequency, PayMethod, Payment, Person, Property, PropertyType, Tenant, Unit, Valuation,
 } from '../data/types';
 import { uid, useStore } from '../data/store';
 import { propertyLevel } from '../lib/levels';
@@ -12,6 +12,7 @@ import { CATEGORIES, CCA_CLASSES, PROVINCES, category, province } from '../lib/j
 import { fmt } from '../lib/money';
 import { Icon } from './Icon';
 import { ResendReceipt } from './More';
+import { INCOME_KINDS } from '../lib/receiptData';
 import { canReadReceipts, readReceiptPhoto } from '../lib/ocr';
 import { Drawer, Field, MoneyInput, Seg, Term } from './ui';
 
@@ -165,6 +166,95 @@ export function MarkRentPaid({ onClose, leaseId }: { onClose: () => void; leaseI
           ) : null}
         </div>
       )}
+    </Drawer>
+  );
+}
+
+/**
+ * Income → Add other income: money in that is not rent. A tenant's share of a bill (pick the bill: the amount is
+ * split between the tenants who share it), parking, laundry, storage, a late fee, or anything else. From a tenant,
+ * the receipt is made right away and can be sent from the done step.
+ */
+export function OtherIncomeForm({ onClose, prefill }: { onClose: () => void; prefill?: { amount?: number; date?: string; leaseId?: string; kind?: IncomeKind; txnId?: string; source?: 'bank' | 'statement' } }) {
+  const { state, act, today } = useStore();
+  const leases = state.leases.filter((l) => !l.end || l.end >= addMonths(today, -3));
+  const [kind, setKind] = useState<IncomeKind>(prefill?.kind ?? 'bill');
+  const [lid, setLid] = useState(prefill?.leaseId ?? '');
+  const lease = state.leases.find((l) => l.id === lid);
+  const leaseProp = lease ? state.units.find((u) => u.id === lease.unitId)?.propertyId : undefined;
+  const props = state.properties.filter((p) => !p.archived);
+  const [propId, setPropId] = useState(props.length === 1 ? props[0].id : '');
+  const pid = leaseProp ?? propId;
+  // Bills to share: utilities and other running costs of that property, newest first.
+  const bills = state.expenses.filter((e) => e.kind !== 'capital' && (!pid || e.propertyId === pid) && ['utilities', 'insurance', 'repairs', 'other'].includes(e.category) && e.date >= addMonths(today, -6)).sort((a, b) => Number(b.category === 'utilities') - Number(a.category === 'utilities') || b.date.localeCompare(a.date)).slice(0, 12);
+  const [billId, setBillId] = useState('');
+  const bill = state.expenses.find((e) => e.id === billId);
+  // The share: the bill split evenly between the tenants on that property (the landlord can change it).
+  const sharers = pid ? state.leases.filter((l) => (!l.end || l.end >= today) && state.units.find((u) => u.id === l.unitId)?.propertyId === pid).length : 1;
+  const [label, setLabel] = useState('');
+  const [amount, setAmount] = useState<number | undefined>(prefill?.amount);
+  const [date, setDate] = useState(prefill?.date ?? today);
+  const [method, setMethod] = useState<PayMethod>(lease?.paymentMethod ?? 'etransfer');
+  const [done, setDone] = useState<string | null>(null);
+  const pickBill = (id: string) => {
+    setBillId(id); const e = state.expenses.find((x) => x.id === id); if (!e) return;
+    setLabel(`${e.vendor || category(e.category).label}, ${fmtPeriod(periodOf(e.date))}`);
+    if (!prefill?.amount) setAmount(Math.round(e.amount / Math.max(1, sharers)));
+  };
+  const words = INCOME_KINDS.find((k) => k.id === kind)!.label;
+  const finalLabel = label.trim() || (kind === 'bill' ? 'Shared bill' : words);
+  const ok = !!amount && amount > 0 && (kind !== 'bill' || !!lid);
+  const save = () => {
+    if (!ok) return;
+    const id = act.logIncome({ kind, label: finalLabel, amount: amount!, date, method, propertyId: pid || undefined, leaseId: lid || undefined, expenseId: bill?.id, source: prefill?.source ?? 'manual', txnId: prefill?.txnId });
+    // A bank deposit is marked as filed when this step closes (filing it at once would close the deposit's drawer
+    // before the receipt can be sent).
+    setDone(id);
+  };
+  const receipt = done ? state.receipts.find((r) => r.incomeId === done && r.status !== 'superseded') : undefined;
+  const tenant = lease ? state.tenants.find((t) => t.id === lease.tenantId) : undefined;
+  const finish = () => { if (done && prefill?.txnId) act.txnIsIncome(prefill.txnId, done); onClose(); };
+  if (done) return (
+    <Drawer title="Income recorded" onClose={finish} footer={<button className="btn primary" onClick={finish}>Done</button>}>
+      <div className="mrp-done" id="oi-done">
+        <p className="callout pine" role="status" style={{ marginTop: 0 }}><Icon name="check" size={16} /> {fmt(amount ?? 0)} · {finalLabel}{tenant ? ` from ${tenant.names.join(' & ')}` : ''} is recorded.</p>
+        {receipt ? (
+          <div className="mrp-receipt"><span><Icon name="receipt" size={16} /> Receipt #{receipt.number}{receipt.status === 'sent' ? ' · sent to the tenant' : ' · ready to send'}</span>
+            <ResendReceipt receiptId={receipt.id} label={receipt.status === 'sent' ? 'Resend' : 'Send receipt'} primary={receipt.status !== 'sent'} /></div>
+        ) : <p className="small soft">No tenant chosen, so there is no receipt to send.</p>}
+      </div>
+    </Drawer>
+  );
+  return (
+    <Drawer title="Add other income" onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" id="oi-save" disabled={!ok} onClick={save}>Save</button></>}>
+      <Field label="What is it?">
+        <div className="oi-kinds" role="radiogroup" aria-label="Type of income">
+          {INCOME_KINDS.map((k) => <button key={k.id} type="button" role="radio" aria-checked={kind === k.id} className={`oi-kind${kind === k.id ? ' on' : ''}`} onClick={() => setKind(k.id)}><Icon name={k.icon} size={16} />{k.label}</button>)}
+        </div>
+      </Field>
+      <Field label={kind === 'bill' ? 'Whose share is it?' : 'Who paid? (optional)'} htmlFor="oi-who" hint={kind === 'bill' ? 'The tenant gets a receipt for it.' : 'Pick a tenant to send them a receipt.'}>
+        <select id="oi-who" className="input" value={lid} onChange={(e) => setLid(e.target.value)}>
+          <option value="">{kind === 'bill' ? 'Choose a tenant' : 'No one in particular'}</option>
+          {leases.map((l) => { const t = state.tenants.find((x) => x.id === l.tenantId); const u = state.units.find((x) => x.id === l.unitId); return <option key={l.id} value={l.id}>{t?.names.join(' & ')} · {l.room ?? `Unit ${u?.label}`}</option>; })}
+        </select>
+      </Field>
+      {!lid && props.length > 1 && (
+        <Field label="Property" htmlFor="oi-prop"><select id="oi-prop" className="input" value={propId} onChange={(e) => setPropId(e.target.value)}><option value="">All properties</option>{props.map((p) => <option key={p.id} value={p.id}>{p.nickname}</option>)}</select></Field>
+      )}
+      {kind === 'bill' && (
+        <Field label="Which bill?" htmlFor="oi-bill" hint={bills.length ? `The share is the bill split between ${sharers} tenant${sharers === 1 ? '' : 's'}. Change it if needed.` : 'No recent bills for this property yet: describe it below.'}>
+          <select id="oi-bill" className="input" value={billId} onChange={(e) => pickBill(e.target.value)}>
+            <option value="">Choose a bill</option>
+            {bills.map((e) => <option key={e.id} value={e.id}>{e.vendor || category(e.category).label} · {fmtDate(e.date)} · {fmt(e.amount)}</option>)}
+          </select>
+        </Field>
+      )}
+      <Field label="What for" htmlFor="oi-label"><input id="oi-label" className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder={kind === 'bill' ? 'Enbridge Gas, November' : kind === 'parking' ? 'Parking spot, December' : words} maxLength={80} /></Field>
+      <div className="grid2">
+        <Field label="Amount received" htmlFor="oi-amt"><MoneyInput id="oi-amt" value={amount} onChange={setAmount} /></Field>
+        <Field label="Date received" htmlFor="oi-date"><input id="oi-date" type="date" className="input" value={date} max={today} onChange={(e) => setDate(e.target.value)} /></Field>
+      </div>
+      <Field label="Paid by"><Seg label="Method" value={method} onChange={setMethod} options={[{ id: 'etransfer', label: 'e-Transfer' }, { id: 'cheque', label: 'Cheque' }, { id: 'cash', label: 'Cash' }, { id: 'direct-deposit', label: 'Deposit' }]} /></Field>
     </Drawer>
   );
 }

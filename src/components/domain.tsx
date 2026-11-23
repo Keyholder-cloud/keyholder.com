@@ -119,17 +119,17 @@ export function ReceiptLetter({ receipt }: { receipt: Receipt }) {
     try {
       const { receiptPdf } = await import('../lib/receiptPdf');
       const url = URL.createObjectURL(new Blob([(await receiptPdf(d)) as Uint8Array<ArrayBuffer>], { type: 'application/pdf' }));
-      const a = document.createElement('a'); a.href = url; a.download = `Rent receipt ${d.number} - ${d.period}.pdf`; a.click();
+      const a = document.createElement('a'); a.href = url; a.download = `${d.forWhat ? 'Payment' : 'Rent'} receipt ${d.number}.pdf`; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
     } finally { setBusy(false); }
   };
-  const rows: [string, string][] = [['Receipt number', String(d.number)], ['Rent period', d.period], ['Date paid', day(d.paidOn)], ['Paid by', d.method], ['Received from', d.tenant], ['Rental', d.rental]];
+  const rows: [string, string][] = [['Receipt number', String(d.number)], d.forWhat ? ['For', `${d.kindLabel ? `${d.kindLabel}: ` : ''}${d.forWhat}`] : ['Rent period', d.period], ['Date paid', day(d.paidOn)], ['Paid by', d.method], ['Received from', d.tenant], ['Rental', d.rental]];
   if (d.note) rows.push(['Note', d.note]);
   return (
     <>
       <div className="rcpt print-me" id="receipt-view">
         <div className="rcpt-head">
-          <div><strong>RENT RECEIPT</strong><span>Official receipt for rent received</span></div>
+          <div><strong>{d.title ?? 'RENT RECEIPT'}</strong><span>{d.forWhat ? 'Official receipt for a payment received' : 'Official receipt for rent received'}</span></div>
           <div className="r"><strong>No. {d.number}</strong><span>Issued {day(d.issued)}</span></div>
         </div>
         <div className="rcpt-body">
@@ -140,14 +140,14 @@ export function ReceiptLetter({ receipt }: { receipt: Receipt }) {
           <span className="rcpt-k">RENTAL</span><div>{d.rental}</div>
           <div className="rcpt-amount">
             <div><span className="rcpt-k">AMOUNT RECEIVED</span><strong>{d.amount}</strong></div>
-            <div className="r"><b>Rent for {d.period}</b><span className={d.balance ? 'owing' : 'full'}>{d.balance ? `Still owing for the month: ${d.balance}` : 'Paid in full for the month'}</span></div>
+            <div className="r"><b>{d.forWhat ?? `Rent for ${d.period}`}</b><span className={d.balance && !d.forWhat ? 'owing' : 'full'}>{d.forWhat ? 'Received with thanks' : d.balance ? `Still owing for the month: ${d.balance}` : 'Paid in full for the month'}</span></div>
           </div>
           <table className="rcpt-rows"><tbody>{rows.map(([k, v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table>
           <div className="rcpt-sign">
             <div><span>Received with thanks,</span><b>{d.landlord.name}</b><span className="rcpt-k">Landlord</span></div>
             <span className={`rcpt-stamp${old ? ' old' : ''}`}>{old ? 'SUPERSEDED' : 'PAID'}</span>
           </div>
-          <p className="rcpt-foot">Keep this receipt for your records. It can be used as proof of rent paid (for example, for a tax credit or a new rental).<br />Issued for {d.landlord.name} by Keyholder · keyholder.cloud</p>
+          <p className="rcpt-foot">Keep this receipt for your records. It can be used as proof of {d.forWhat ? 'payment' : 'rent paid (for example, for a tax credit or a new rental)'}.<br />Issued for {d.landlord.name} by Keyholder · keyholder.cloud</p>
         </div>
       </div>
       <div className="btn-row" style={{ marginTop: 12 }}><button className="btn" id="receipt-pdf" onClick={download} disabled={busy}><Icon name="download" size={16} />{busy ? 'Making the PDF…' : 'Download PDF'}</button></div>

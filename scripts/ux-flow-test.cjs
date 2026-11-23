@@ -902,6 +902,30 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       const head = require('fs').readFileSync(await dl.path()).subarray(0, 5).toString(); if (head !== '%PDF-') throw new Error('not a PDF: ' + head);
       await pg.keyboard.press('Escape');
     });
+    await step(tag, 'H28 Income → Add other income: a bill share for a tenant, its receipt sent from the done step, tagged in the list and counted', async () => {
+      await go(pg, 'income'); await pg.click('#income-other'); await pg.waitForSelector('.oi-kind.on >> text=Bill share');
+      await pg.selectOption('#oi-who', { index: 1 }); if ((await pg.locator('#oi-bill option').count()) > 1) await pg.selectOption('#oi-bill', { index: 1 });
+      await pg.fill('#oi-amt', '75'); await pg.click('#oi-save'); await pg.waitForSelector('#oi-done >> text=ready to send');
+      await pg.locator('#oi-done .resend-receipt').click(); await pg.waitForTimeout(250); await pg.locator('.drawer-foot >> text=Done').click();
+      await pg.waitForSelector('tr.other-income .inc-tag >> text=Bill share');
+      const st = await state(pg); const inc = (st.income ?? []).find((i) => i.amount === 7500); if (!inc) throw new Error('not saved');
+      const r = st.receipts.find((x) => x.incomeId === inc.id); if (!r || r.status !== 'sent') throw new Error('receipt not sent: ' + JSON.stringify(r));
+      await pg.locator('tr.other-income button', { hasText: 'View' }).first().click(); await pg.waitForSelector('#receipt-view .rcpt-head >> text=PAYMENT RECEIPT'); await pg.keyboard.press('Escape');
+    });
+    await step(tag, 'H29 A bank deposit that matches no rent offers "Bill share or other" first; Taxes keeps improvements apart (class picker, download, how to file)', async () => {
+      await pg.evaluate(() => { const k = 'keyholder:v1'; const s = JSON.parse(localStorage.getItem(k)); s.txns.push({ id: 'tx-bill', source: 'bank', date: s.txns[0]?.date ?? '2026-11-05', amount: 6123, payer: 'MAYA CHEN', memo: 'gas share', status: 'new' }); localStorage.setItem(k, JSON.stringify(s)); });
+      await pg.reload(); await pg.waitForTimeout(600);
+      await go(pg, 'rentals'); const dep = pg.locator('#bank-deposits .bank-row', { hasText: '$61.23' });
+      if (await dep.count()) {
+        await dep.locator('button.btn.primary').click(); await pg.waitForSelector('#md-other.primary'); await pg.waitForSelector('#md-other-hint');
+        await pg.click('#md-other'); await pg.waitForSelector('#oi-save'); if ((await pg.inputValue('#oi-amt')) !== '61.23') throw new Error('amount not filled: ' + (await pg.inputValue('#oi-amt')));
+        await pg.click('#oi-save'); await pg.waitForSelector('#oi-done'); await pg.locator('.drawer-foot >> text=Done').click();
+        const st = await state(pg); if (st.txns.find((t) => t.id === 'tx-bill')?.status !== 'matched') throw new Error('deposit not filed');
+      }
+      await go(pg, 'paperwork/taxes'); await pg.waitForSelector('#improvements >> text=Capital improvements'); await pg.waitForSelector('#file-cca'); await pg.waitForSelector('#file-base');
+      if (await pg.locator('#imp-download').isEnabled()) { const [dl] = await Promise.all([pg.waitForEvent('download'), pg.click('#imp-download')]); const txt = require('fs').readFileSync(await dl.path(), 'utf8'); if (!/Adjusted cost base/.test(txt)) throw new Error('spreadsheet'); }
+      await pg.click('#file-base'); await pg.waitForSelector('#file-base.on'); await pg.click('#file-cca'); await pg.waitForSelector('#file-cca.on');
+    });
     await step(tag, 'H27 Resend a rent receipt from Income and from a tenant\'s messages; long lists show 8 lines, then Show more', async () => {
       await go(pg, 'income'); await pg.waitForSelector('.resend-receipt');
       const before = (await state(pg)).messages.length; await pg.locator('.resend-receipt').first().click(); await pg.waitForTimeout(250);

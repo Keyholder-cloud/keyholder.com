@@ -836,3 +836,34 @@ a.unit-who:hover strong, .unit-who.as-link:hover strong { text-decoration: under
   .exp-actions > .link-bank { grid-column: 1 / -1; justify-self: start; }
   .exp-actions > .btn:not(.link-bank) { width: 100%; min-height: 46px; padding: 0 10px; font-size: 14px; white-space: nowrap; justify-content: center; }
 }
+
+/* Other income: type chips in the form, a Type tag in the Income list */
+.oi-kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.oi-kind { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 10px; border-radius: 12px; border: 1px solid var(--rule-strong); background: var(--paper-raised); color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.oi-kind.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--paper-raised)); color: var(--primary); }
+.inc-tag { display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700; background: var(--ink-blue-tint); color: var(--ink-blue); vertical-align: 1px; }
+.inc-tag.bill { background: var(--brass-tint); color: var(--brass); }
+/* Improvements: kept separate from Money out, one small line under the cash flow */
+.ytd-improve { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: var(--paper); color: var(--ink-soft); font-size: 13px; text-decoration: none; }
+.ytd-improve strong { color: var(--ink); } .ytd-improve:hover { color: var(--ink); }
+.ytd-improve strong { margin-left: auto; } .ytd-improve { flex-wrap: nowrap; }
+.ytd-improve-line { display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--paper); }
+@media (max-width: 640px) {
+  .income-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+  .income-actions > .link-bank { grid-column: 1 / -1; justify-self: start; }
+  .income-actions > .btn:not(.link-bank) { width: 100%; min-height: 46px; padding: 0 10px; font-size: 14px; white-space: nowrap; justify-content: center; }
+  .oi-kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Taxes → Capital improvements */
+.imp-table .imp-class { min-width: 200px; padding-block: 6px; }
+.imp-table tr.needs td { background: color-mix(in srgb, var(--brass-tint) 50%, transparent); }
+.file-opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.file-opt { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 14px; border-radius: 14px; border: 1px solid var(--rule-strong); background: var(--paper-raised); color: var(--ink); font: inherit; cursor: pointer; }
+.file-opt strong { display: flex; align-items: center; gap: 6px; font-size: 15px; }
+.file-opt span { font-size: 13px; color: var(--ink-soft); line-height: 1.45; }
+.file-opt.on { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent); }
+.file-opt:disabled { opacity: .6; cursor: default; }
+@media (max-width: 760px) { .file-opts { grid-template-columns: minmax(0, 1fr); } .imp-table .imp-class { min-width: 0; width: 100%; } }
+.rc-acts { display: inline-flex; align-items: center; gap: 2px; flex-wrap: nowrap; white-space: nowrap; }
+.rc-acts .icon-only { padding: 0 8px; }

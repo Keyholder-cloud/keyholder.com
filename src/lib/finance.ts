@@ -254,6 +254,8 @@ export function mortgagePaidBetween(m: Mortgage, from: ISODate, to: ISODate, row
 export interface Picture {
   from: ISODate; to: ISODate;
   rentCollected: Cents;
+  /** Money in that is not rent: bill shares, parking, laundry, storage, late fees… */
+  otherIncome: Cents;
   rentExpected: Cents;
   arrearsLoss: Cents;
   vacancyLoss: Cents;
@@ -261,7 +263,9 @@ export interface Picture {
   noi: Cents;
   mortgageInterest: Cents;
   mortgagePrincipal: Cents;
+  /** Improvements (capital): kept apart from Money out and You kept; they go to the tax section and the cost base. */
   capital: Cents;
+  /** Rent and other income, less running costs and mortgage payments (improvements are not taken off). */
   kept: Cents;
   /** "You keep $X of every $1,000 of rent" */
   keptPer1000: number;
@@ -283,6 +287,10 @@ export function picture(state: AppState, from: ISODate, to: ISODate, opts: { pro
   const rentCollected = state.payments
     .filter((p) => !p.voided && leaseIds.has(p.leaseId) && p.date >= from && p.date <= to)
     .reduce((a, p) => a + p.amount, 0);
+
+  const otherIncome = (state.income ?? [])
+    .filter((i) => !i.voided && i.date >= from && i.date <= to && ((i.leaseId && leaseIds.has(i.leaseId)) || (!!i.propertyId && propIds.has(i.propertyId)) || (!i.leaseId && !i.propertyId && !opts.propertyId)))
+    .reduce((a, i) => a + i.amount, 0);
 
   // Expected rent = charges falling due inside the window.
   let rentExpected = 0;
@@ -328,10 +336,10 @@ export function picture(state: AppState, from: ISODate, to: ISODate, opts: { pro
     }
   }
 
-  const noi = rentCollected - opex;
-  const kept = noi - mortgageInterest - mortgagePrincipal - capital;
+  const noi = rentCollected + otherIncome - opex;
+  const kept = noi - mortgageInterest - mortgagePrincipal;
   return {
-    from, to, rentCollected, rentExpected, arrearsLoss, vacancyLoss, opex, noi,
+    from, to, rentCollected, otherIncome, rentExpected, arrearsLoss, vacancyLoss, opex, noi,
     mortgageInterest, mortgagePrincipal, capital, kept, hasMortgageData, mortgageIsRough,
     keptPer1000: rentCollected > 0 ? Math.round((kept / rentCollected) * 1000) : 0,
     expenseRatio: rentCollected > 0 ? (opex / rentCollected) * 100 : 0,
@@ -494,6 +502,8 @@ export interface CCARow { cls: string; label: string; ratePct: number; opening: 
 export interface TaxPack {
   year: number;
   grossRents: Cents;
+  /** Other related income (T776 line 8230): bill shares, parking, laundry, storage, late fees. */
+  otherIncome: Cents;
   /** label = plain words for the owner; craLabel = the official T776 wording for the accountant. */
   lines: { t776: string; label: string; craLabel: string; amount: Cents; count: number }[];
   totalExpenses: Cents;
@@ -562,6 +572,7 @@ export function taxPack(state: AppState, prop: Property, year: number, start?: I
   const units = state.units.filter((u) => u.propertyId === prop.id).map((u) => u.id);
   const leaseIds = new Set(state.leases.filter((l) => units.includes(l.unitId)).map((l) => l.id));
   const grossRents = state.payments.filter((p) => !p.voided && leaseIds.has(p.leaseId) && p.date >= from && p.date <= to).reduce((a, p) => a + p.amount, 0);
+  const otherIncome = (state.income ?? []).filter((i) => !i.voided && i.date >= from && i.date <= to && ((i.leaseId && leaseIds.has(i.leaseId)) || i.propertyId === prop.id)).reduce((a, i) => a + i.amount, 0);
 
   const exps = state.expenses.filter((e) => e.propertyId === prop.id && e.date >= from && e.date <= to);
   const byLine = new Map<string, TaxPack['lines'][number]>();
@@ -583,7 +594,7 @@ export function taxPack(state: AppState, prop: Property, year: number, start?: I
   }
   const lines = [...byLine.values()].sort((a, b) => a.t776.localeCompare(b.t776));
   const totalExpenses = lines.reduce((a, l) => a + l.amount, 0);
-  const netBeforeCCA = grossRents - totalExpenses;
+  const netBeforeCCA = grossRents + otherIncome - totalExpenses;
   // Depreciation needs the full purchase picture (Gold).
   const cca = hasGold(state, prop) ? ccaSchedule(state, prop, year, netBeforeCCA) : [];
   const ccaClaimed = cca.reduce((a, r) => a + r.claimed, 0);
@@ -612,5 +623,45 @@ export function taxPack(state: AppState, prop: Property, year: number, start?: I
   }
   if (prop.ownerOccupied && prop.claimCCA) preflight.push({ id: 'cca-pre', text: 'Depreciation is on for a home you live in. This can affect tax when you sell. Ask your accountant.', severity: 'check' });
 
-  return { year, grossRents, lines, totalExpenses, netBeforeCCA, cca, ccaClaimed, netIncome, ownerShare: Math.round(netIncome * (prop.ownershipPct / 100)), preflight };
+  return { year, grossRents, otherIncome, lines, totalExpenses, netBeforeCCA, cca, ccaClaimed, netIncome, ownerShare: Math.round(netIncome * (prop.ownershipPct / 100)), preflight };
+}
+
+// ---- Capital improvements, kept apart from running costs (Taxes → Capital improvements) ----
+export interface ImprovementRow { id: string; date: ISODate; year: number; what: string; amount: Cents; rental: Cents; ccaClass?: string; classLabel: string }
+/**
+ * Every improvement for a property, newest first, with its rental share and depreciation class, plus totals by year
+ * and class and the adjusted cost base (what the property cost: price, buying costs and improvements).
+ */
+export function improvements(state: AppState, prop: Property) {
+  const rows: ImprovementRow[] = state.expenses.filter((e) => e.propertyId === prop.id && e.kind === 'capital').sort((a, b) => b.date.localeCompare(a.date)).map((e) => ({
+    id: e.id, date: e.date, year: Number(e.date.slice(0, 4)), what: `${e.vendor || 'Improvement'}${e.note ? ` · ${e.note}` : ''}`, amount: e.amount, rental: rentalPortion(e, prop.rentalSharePct),
+    ccaClass: e.ccaClass, classLabel: CCA_CLASSES.find((c) => c.id === e.ccaClass)?.label ?? 'Needs a class',
+  }));
+  const byYearClass = new Map<string, { year: number; classLabel: string; amount: Cents; rental: Cents; count: number }>();
+  for (const r of rows) {
+    const k = `${r.year}|${r.classLabel}`;
+    const t = byYearClass.get(k) ?? { year: r.year, classLabel: r.classLabel, amount: 0, rental: 0, count: 0 };
+    t.amount += r.amount; t.rental += r.rental; t.count++; byYearClass.set(k, t);
+  }
+  return { rows, totals: [...byYearClass.values()].sort((a, b) => b.year - a.year || a.classLabel.localeCompare(b.classLabel)), needsClass: rows.filter((r) => !r.ccaClass).length, total: rows.reduce((a, r) => a + r.amount, 0), acb: adjustedCostBase(state, prop) };
+}
+
+/** The improvements spreadsheet (CSV, opens in Excel or Numbers): one row per improvement, totals by year and class, the cost base. */
+export function improvementsCsv(state: AppState, prop: Property): string {
+  const imp = improvements(state, prop);
+  const $ = (c: Cents) => (c / 100).toFixed(2);
+  const out: (string | number)[][] = [
+    ['Keyholder · capital improvements', prop.nickname, prop.address],
+    ['Kept separate from running costs. Ask your accountant how to claim them (CCA, or added to the cost base).'],
+    [],
+    ['Date', 'Year', 'What', 'Amount', `Rental share (${prop.rentalSharePct}%)`, 'CCA class'],
+    ...imp.rows.map((r) => [r.date, r.year, r.what, $(r.amount), $(r.rental), r.classLabel]),
+    [],
+    ['Totals by year and class'], ['Year', 'CCA class', 'Improvements', 'Amount', 'Rental share'],
+    ...imp.totals.map((t) => [t.year, t.classLabel, t.count, $(t.amount), $(t.rental)]),
+    [],
+    ['All improvements', '', '', $(imp.total)],
+    ['Adjusted cost base (price + buying costs + improvements)', '', '', $(imp.acb)],
+  ];
+  return out.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
 }

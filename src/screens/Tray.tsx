@@ -3,6 +3,7 @@ import type { Lease, Tone } from '../data/types';
 import { useStore } from '../data/store';
 import { fmtDate, fmtPeriod } from '../lib/dates';
 import { markedCandidates } from '../lib/matching';
+import { vendorKey } from '../lib/bankrules';
 import { currentLeases, leaseLedger, leasePlace } from '../lib/finance';
 import { fmt } from '../lib/money';
 import { reminderDraft, TONES } from '../lib/templates';
@@ -11,6 +12,8 @@ import type { TrayItem } from '../lib/tray';
 import { Letterhead } from '../components/domain';
 import { Drawer, Empty, Seg } from '../components/ui';
 import { Icon } from '../components/Icon';
+import { OtherIncomeForm } from '../components/forms';
+import { incomeKindLabel } from '../lib/receiptData';
 
 // Drawers used by Home's journey cards: writing a reminder, and matching a deposit to a tenant.
 
@@ -62,13 +65,24 @@ export function MatchDrawer({ item, onClose }: { item: Extract<TrayItem, { kind:
   const [leaseId, period] = sel.split('|');
   const chosen = options.find((o) => o.lease.id === leaseId);
   const markedPick = sel.startsWith('paid|') ? sel.slice(5) : '';
+  // Does the amount look like anyone's rent? If not, it is probably a bill share or other income: offer that first.
+  const rentLike = options.some((o) => o.line.charge - o.line.paid === item.txn.amount || o.lease.rent === item.txn.amount) || marked.length > 0;
+  const remembered = state.profile.incomePayers?.[vendorKey(item.txn.payer)];
+  // Whose it is, from the sender's name (or what this sender was last time).
+  const payer = item.txn.payer.toLowerCase();
+  const guess = remembered?.leaseId ?? state.leases.find((l) => !l.end || l.end >= today ? state.tenants.find((t) => t.id === l.tenantId)?.names.concat(state.tenants.find((t) => t.id === l.tenantId)?.aliases ?? []).some((n) => n.toLowerCase().split(/\s+/).some((w) => w.length > 2 && payer.includes(w))) : false)?.id;
+  const [other, setOther] = useState(false);
+  if (other) return <OtherIncomeForm onClose={onClose} prefill={{ amount: item.txn.amount, date: item.txn.date, txnId: item.txn.id, source: item.txn.source === 'bank' ? 'bank' : 'statement', leaseId: guess, kind: remembered?.kind ?? 'bill' }} />;
+  const otherFirst = !rentLike || !!remembered;
   return (
     <Drawer title={`${fmt(item.txn.amount)} from ${item.txn.payer}`} onClose={onClose} footer={<>
-      <button className={`btn ${options.length || marked.length ? 'ghost' : 'primary'}`} id="md-not-rent" onClick={() => { act.ignoreTxn(item.txn.id); onClose(); }}>Not rent</button>
-      {(options.length > 0 || marked.length > 0) && <button className="btn primary" disabled={!sel} onClick={() => { if (markedPick) act.linkDeposit(item.txn.id, markedPick); else act.confirmMatch(item.txn.id, leaseId, period, learn); onClose(); }}>This is their rent</button>}
+      <button className="btn ghost" id="md-not-rent" onClick={() => { act.ignoreTxn(item.txn.id); onClose(); }}>Not rental income</button>
+      <button className={`btn ${otherFirst ? 'primary' : ''}`} id="md-other" onClick={() => setOther(true)}>Bill share or other</button>
+      {(options.length > 0 || marked.length > 0) && <button className={`btn ${otherFirst ? '' : 'primary'}`} disabled={!sel} onClick={() => { if (markedPick) act.linkDeposit(item.txn.id, markedPick); else act.confirmMatch(item.txn.id, leaseId, period, learn); onClose(); }}>This is their rent</button>}
     </>}>
-      {!item.suggestion && (options.length > 1 || marked.length > 0) && <p className="small soft" style={{ marginTop: 0 }}>The sender's name doesn't say whose rent this is. Choose the tenant.</p>}
-      {options.length === 0 && !marked.length ? <Empty title="No rent is owed right now.">Money in is only ever rent, so this is not rent. Keyholder remembers the sender.</Empty> : (
+      {otherFirst && <p className="callout" id="md-other-hint" style={{ marginTop: 0 }}><Icon name="info" size={16} /> {remembered ? `Last time, money from this sender was a ${incomeKindLabel(remembered.kind).toLowerCase()}.` : "This amount doesn't match anyone's rent."} Is it a bill share or other income? Choose <strong>Bill share or other</strong>.</p>}
+      {!item.suggestion && !otherFirst && (options.length > 1 || marked.length > 0) && <p className="small soft" style={{ marginTop: 0 }}>The sender's name doesn't say whose rent this is. Choose the tenant.</p>}
+      {options.length === 0 && !marked.length ? <Empty title="No rent is owed right now.">So this is probably a bill share or other income: choose <strong>Bill share or other</strong>. If it is not rental income at all, choose <strong>Not rental income</strong> and Keyholder remembers the sender.</Empty> : (
         <div className="stack" role="radiogroup">
           {marked.map(({ p, l, t, u }) => {
             const v = `paid|${p.id}`;

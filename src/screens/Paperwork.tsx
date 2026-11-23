@@ -2,18 +2,19 @@ import { BackToMore, PageSub } from '../components/Guide';
 import { OfficialPdfButton } from '../components/OfficialForm';
 import { useState } from 'react';
 import { Link, Navigate, NavLink, useParams } from 'react-router-dom';
-import type { Lease, Message, Province, Receipt } from '../data/types';
+import type { IncomeKind, Lease, Message, Province, Receipt } from '../data/types';
 import { AUTHORITY_URL, SITUATIONS, formsFor } from '../lib/forms';
 import { FormWizard, SituationPicker } from '../components/FormWizard';
 import { useStore } from '../data/store';
 import { addDays, addMonths, fmtDate, fmtPeriod, fmtTime } from '../lib/dates';
 import { PROVINCES, province } from '../lib/jurisdiction';
 import { LinkBankButton, TaxPackPage } from './Money';
-import { MarkRentPaid } from '../components/forms';
+import { MarkRentPaid, OtherIncomeForm } from '../components/forms';
+import { incomeKindLabel } from '../lib/receiptData';
 import { fmt } from '../lib/money';
 import { messageBody } from '../lib/templates';
 import { Letterhead, ReceiptLetter } from '../components/domain';
-import { Drawer, Empty, Stamp, embedded } from '../components/ui';
+import { Drawer, Empty, Seg, Stamp, embedded } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { ResendReceipt, useMore } from '../components/More';
 import { SceneTap, SceneWelcome } from '../components/Art';
@@ -41,50 +42,61 @@ export function Paperwork() {
 export function IncomePage() {
   const { state } = useStore();
   const [pay, setPay] = useState(false);
+  const [other, setOther] = useState(false);
   const live = state.leases.some((l) => !l.end || l.end >= new Date().toISOString().slice(0, 10));
   return (
     <div className="page">
-      <div className="page-head"><div><h1 className="title-ic"><span className="tile-ic mint" aria-hidden><Icon name="cash" size={22} /></span>Income</h1><PageSub>Rent received, with a receipt for each payment</PageSub></div>
-        <div className="btn-row"><LinkBankButton />{live && <button className="btn primary" id="income-mark-paid" onClick={() => setPay(true)}><Icon name="cash" size={18} />Mark rent paid</button>}</div></div>
+      <div className="page-head"><div><h1 className="title-ic"><span className="tile-ic mint" aria-hidden><Icon name="cash" size={22} /></span>Income</h1><PageSub>Rent and other money in, with a receipt for each payment</PageSub></div>
+        <div className="btn-row income-actions"><LinkBankButton /><button className="btn" id="income-other" onClick={() => setOther(true)}><Icon name="plus" size={18} />Add other income</button>{live && <button className="btn primary" id="income-mark-paid" onClick={() => setPay(true)}><Icon name="cash" size={18} />Mark rent paid</button>}</div></div>
       <Income />
       {pay && <MarkRentPaid onClose={() => setPay(false)} />}
+      {other && <OtherIncomeForm onClose={() => setOther(false)} />}
     </div>
   );
 }
 
-/** Rental income log: every payment received, with its receipt. */
+/** Rental income log: rent and other money in (bill shares, parking…), each with its receipt. */
+type IncomeRow = { id: string; date: string; kind: 'rent' | IncomeKind; who: string; unit: string; forText: string; amount: number; receipt?: Receipt; incomeId?: string; propertyId?: string };
 function Income() {
-  const { state } = useStore();
+  const { state, act } = useStore();
   const [open, setOpen] = useState<Receipt | null>(null);
   const [prop, setProp] = useState('all');
-  const years = [...new Set(state.payments.map((p) => p.date.slice(0, 4)))].sort().reverse();
+  const [type, setType] = useState<'all' | 'rent' | 'other'>('all');
+  const others = (state.income ?? []).filter((i) => !i.voided);
+  const years = [...new Set([...state.payments.map((p) => p.date.slice(0, 4)), ...others.map((i) => i.date.slice(0, 4))])].sort().reverse();
   const [year, setYear] = useState(years[0] ?? '');
-  const rows = state.payments.filter((p) => !p.voided && p.date.startsWith(year)).filter((p) => {
-    if (prop === 'all') return true;
-    const l = state.leases.find((x) => x.id === p.leaseId); return state.units.find((u) => u.id === l?.unitId)?.propertyId === prop;
-  }).sort((a, b) => b.date.localeCompare(a.date));
-  const total = rows.reduce((a, p) => a + p.amount, 0);
+  const place = (leaseId?: string, propertyId?: string) => {
+    const l = state.leases.find((x) => x.id === leaseId); const u = state.units.find((x) => x.id === l?.unitId); const pr = state.properties.find((x) => x.id === (u?.propertyId ?? propertyId));
+    return { who: state.tenants.find((x) => x.id === l?.tenantId)?.names.join(' & ') ?? '—', unit: pr ? `${pr.nickname.split(' ')[0]}${u ? ` · ${l?.room ?? u.label}` : ''}` : '—', propertyId: pr?.id };
+  };
+  const all: IncomeRow[] = [
+    ...state.payments.filter((p) => !p.voided).map((p) => ({ id: p.id, date: p.date, kind: 'rent' as const, forText: fmtPeriod(p.period), amount: p.amount, receipt: state.receipts.find((x) => x.paymentId === p.id && x.status !== 'superseded'), ...place(p.leaseId) })),
+    ...others.map((i) => ({ id: i.id, date: i.date, kind: i.kind, forText: i.label, amount: i.amount, incomeId: i.id, receipt: state.receipts.find((x) => x.incomeId === i.id && x.status !== 'superseded'), ...place(i.leaseId, i.propertyId) })),
+  ];
+  const rows = all.filter((r) => r.date.startsWith(year) && (prop === 'all' || r.propertyId === prop) && (type === 'all' || (type === 'rent') === (r.kind === 'rent')))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const total = rows.reduce((a, r) => a + r.amount, 0);
   const [shownRows, more] = useMore(rows);
-  if (!state.payments.length) return <div className="sheet"><Empty title="No rent received yet." art={<SceneTap />}>Every payment, marked by you or found by the bank.</Empty></div>;
+  if (!all.length) return <div className="sheet"><Empty title="No income yet." art={<SceneTap />}>Every payment, marked by you or found by the bank.</Empty></div>;
   return (
     <>
       <div className="btn-row" style={{ marginBottom: 16 }}>
         <select className="input" style={{ width: 'auto' }} value={prop} onChange={(e) => setProp(e.target.value)} aria-label="Property"><option value="all">All properties</option>{state.properties.filter((p) => !p.archived).map((p) => <option key={p.id} value={p.id}>{p.nickname}</option>)}</select>
         <select className="input" style={{ width: 'auto' }} value={year} onChange={(e) => setYear(e.target.value)} aria-label="Year">{years.map((y) => <option key={y}>{y}</option>)}</select>
+        {others.length > 0 && <Seg label="Type" value={type} onChange={setType} options={[{ id: 'all', label: 'All' }, { id: 'rent', label: 'Rent' }, { id: 'other', label: 'Other income' }]} />}
         <span className="soft">{rows.length} payments · <strong className="mono">{fmt(total)}</strong></span>
       </div>
       <div className="sheet tight table-scroll"><table className="ledger stack">
-        <thead><tr><th>Received</th><th>Tenant</th><th>Unit</th><th>For</th><th className="num">Amount</th><th>Receipt</th></tr></thead>
-        <tbody>{shownRows.map((p) => {
-          const l = state.leases.find((x) => x.id === p.leaseId); const t = state.tenants.find((x) => x.id === l?.tenantId); const u = state.units.find((x) => x.id === l?.unitId); const pr = state.properties.find((x) => x.id === u?.propertyId);
-          const r = state.receipts.find((x) => x.paymentId === p.id && x.status !== 'superseded');
-          return (
-            <tr key={p.id}>
-              <td className="date" data-label="Received">{fmtDate(p.date)}</td><td className="st-title" data-label="Tenant">{t?.names.join(' & ')}</td><td data-label="Unit">{pr?.nickname.split(' ')[0]} · {u?.label}</td><td data-label="For">{fmtPeriod(p.period)}</td><td className="num in" data-label="Amount">{fmt(p.amount)}</td>
-              <td className="st-actions" data-label="Receipt">{r ? <span className="spread" style={{ gap: 4, justifyContent: 'flex-start' }}><button className="btn small ghost" title={`Receipt #${r.number}`} aria-label={`View receipt #${r.number}`} onClick={() => setOpen(r)}><Icon name="receipt" size={16} />View</button><ResendReceipt receiptId={r.id} label={r.status === 'draft' ? 'Send' : 'Resend'} /></span> : '—'}</td>
-            </tr>
-          );
-        })}</tbody>
+        <thead><tr><th>Received</th><th>From</th><th>Unit</th><th>For</th><th className="num">Amount</th><th>Receipt</th></tr></thead>
+        <tbody>{shownRows.map((r) => (
+          <tr key={r.id} className={r.kind === 'rent' ? undefined : 'other-income'}>
+            <td className="date" data-label="Received">{fmtDate(r.date)}</td><td className="st-title" data-label="From">{r.who}</td><td data-label="Unit">{r.unit}</td>
+            <td data-label="For">{r.kind !== 'rent' && <span className={`inc-tag ${r.kind}`}>{incomeKindLabel(r.kind)}</span>}{r.forText}</td><td className="num in" data-label="Amount">{fmt(r.amount)}</td>
+            <td className="st-actions" data-label="Receipt"><span className="rc-acts">{r.receipt ? <><button className="btn small ghost" title={`Receipt #${r.receipt.number}`} aria-label={`View receipt #${r.receipt.number}`} onClick={() => setOpen(r.receipt!)}><Icon name="receipt" size={16} />View</button><ResendReceipt receiptId={r.receipt.id} label={r.receipt.status === 'draft' ? 'Send' : 'Resend'} /></>
+              : r.incomeId ? <span className="small soft">No tenant</span> : '—'}
+              {r.incomeId && <button className="btn small ghost icon-only" title="Remove this income" aria-label="Remove this income" onClick={() => { if (window.confirm('Remove this income? Its receipt is cancelled.')) act.voidIncome(r.incomeId!); }}><Icon name="trash" size={14} /></button>}</span></td>
+          </tr>
+        ))}</tbody>
       </table>{more}</div>
       {open && <Drawer title={`Receipt #${open.number}`} onClose={() => setOpen(null)} wide footer={embedded ? undefined : <button className="btn" onClick={() => window.print()}><Icon name="print" size={16} />Print or save PDF</button>}><ReceiptLetter receipt={open} /></Drawer>}
     </>
