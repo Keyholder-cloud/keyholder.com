@@ -71,7 +71,7 @@ export function ExpensesPage() {
   return (
     <div className="page">
       <div className="page-head"><div><h1 className="title-ic"><span className="tile-ic peach" aria-hidden><Icon name="receipt" size={22} /></span>Expenses</h1><PageSub>Bills and receipts, sorted for tax time</PageSub></div>
-        <div className="btn-row"><LinkBankButton /><UploadStatementButton /><button className="btn primary add-expense" data-tour="add-expense" onClick={() => setAdding(true)}><Icon name="plus" size={18} />Add an expense</button></div></div>
+        <div className="btn-row exp-actions"><LinkBankButton /><UploadStatementButton /><button className="btn primary add-expense" data-tour="add-expense" onClick={() => setAdding(true)}><Icon name="plus" size={18} />Add an expense</button></div></div>
       <Expenses />
       {adding && <ExpenseForm onClose={() => setAdding(false)} />}
     </div>

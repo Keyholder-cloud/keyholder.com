@@ -829,3 +829,10 @@ a.unit-who:hover strong, .unit-who.as-link:hover strong { text-decoration: under
   .exp-table .ex-what .exp-cell > span:last-child { min-width: 0; overflow: hidden; }
   .exp-table .ex-amt .tiny { font-weight: 400; font-size: 11px; }
 }
+
+/* Expenses on phones: Upload statement and Add an expense side by side; Check bank small, above them. */
+@media (max-width: 640px) {
+  .exp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+  .exp-actions > .link-bank { grid-column: 1 / -1; justify-self: start; }
+  .exp-actions > .btn:not(.link-bank) { width: 100%; min-height: 46px; padding: 0 10px; font-size: 14px; white-space: nowrap; justify-content: center; }
+}
