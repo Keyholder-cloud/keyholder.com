@@ -56,7 +56,26 @@ export function tenantMails(state: AppState, m: Message, accountId: string): Mai
   let subject = m.subject || 'A message from your landlord';
   let text = m.body;
   let attachment: ReceiptAttachment | undefined;
-  if (m.kind === 'receipt') {
+  if (m.kind === 'receipt' && state.receipts.find((x) => x.id === m.receiptId)?.incomeId) {
+    // A receipt for other income (a bill share, parking…): the same PDF receipt, saying what it was for.
+    const r = state.receipts.find((x) => x.id === m.receiptId)!;
+    const data = receiptData(state, r, (m.sentAt ?? new Date().toISOString()).slice(0, 10));
+    if (!data) return [];
+    subject = `Payment receipt #${r.number}: ${data.forWhat}`;
+    attachment = { kind: 'receipt', filename: `Payment receipt ${r.number}.pdf`, receipt: data };
+    text = [
+      `Hi ${tenant.names.map((n) => n.split(' ')[0]).join(' & ')},`, '',
+      `Thank you. This is your receipt for your payment.`, '',
+      `Receipt number: ${r.number}`,
+      `Received from: ${tenant.names.join(' & ')}`,
+      `Amount: ${data.amount}`,
+      `For: ${data.kindLabel ? `${data.kindLabel}: ` : ''}${data.forWhat}`,
+      `Paid on: ${new Date(`${data.paidOn}T12:00:00`).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })} (${data.method})`,
+      data.rental !== '—' ? `Rental: ${data.rental}` : '',
+      data.note ? `Note: ${data.note}` : '', '',
+      `Your receipt is attached as a PDF. Keep it for your records.`, '', owner,
+    ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n');
+  } else if (m.kind === 'receipt') {
     const r = state.receipts.find((x) => x.id === m.receiptId);
     const pay = state.payments.find((p) => p.id === r?.paymentId);
     const lease = state.leases.find((l) => l.id === m.leaseId);

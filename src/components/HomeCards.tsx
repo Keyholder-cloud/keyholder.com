@@ -83,8 +83,8 @@ export function NextStep() {
 
 
 
-/** Everything that left: costs, improvements and mortgage payments (the Cash flow page's "Money out"), so Rent in − Money out = You kept. */
-const moneyOut = (p: { opex: number; capital: number; mortgageInterest: number; mortgagePrincipal: number }) => p.opex + p.capital + p.mortgageInterest + p.mortgagePrincipal;
+/** Running costs and mortgage payments (the Cash flow page's "Money out"). Improvements are kept apart: they are shown on their own and handled at tax time. */
+const moneyOut = (p: { opex: number; mortgageInterest: number; mortgagePrincipal: number }) => p.opex + p.mortgageInterest + p.mortgagePrincipal;
 
 /** This year so far: what you own (properties, units rented, value) and the cash flow since January 1. */
 export function YearToDate() {
@@ -108,10 +108,11 @@ export function YearToDate() {
       </div>
       <p className="side-sub" id="ytd-cash">Cash flow, {today.slice(0, 4)} so far</p>
       <div className="review-grid">
-        <div><span>Rent in</span><strong>{fmt0(y.p.rentCollected)}</strong></div>
-        <div title="Costs, improvements and mortgage payments: the same as Cash flow"><span>Money out</span><strong>{fmt0(moneyOut(y.p))}</strong></div>
+        <div title={y.p.otherIncome ? `Rent ${fmt0(y.p.rentCollected)} and other income ${fmt0(y.p.otherIncome)}` : undefined}><span>{y.p.otherIncome ? 'Money in' : 'Rent in'}</span><strong>{fmt0(y.p.rentCollected + y.p.otherIncome)}</strong></div>
+        <div title="Running costs and mortgage payments: the same as Cash flow"><span>Money out</span><strong>{fmt0(moneyOut(y.p))}</strong></div>
         <div className={`kept${y.p.kept < 0 ? ' neg' : ''}`}><span>You kept</span><strong>{fmt0(y.p.kept)}</strong></div>
       </div>
+      {y.p.capital > 0 && <Link className="ytd-improve" id="ytd-improve" to="/paperwork/taxes#improvements"><Icon name="wrench" size={14} /><span title="Kept apart from Money out: handled at tax time">Improvements · not in Money out</span><strong>{fmt0(y.p.capital)}</strong><Icon name="next" size={14} /></Link>}
       <Link className="side-link" to="/portfolio">See the full picture<Icon name="next" size={16} /></Link>
     </section>
   );

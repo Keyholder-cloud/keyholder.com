@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type {
-  AppState, Applicant, BankConnection, BankName, BankTxn, ExpenseCategory, Listing, Notice, TodoPref, Comparable, Expense, Lease, Mortgage, Payment, Profile, Property, Tenant, Tone, Unit, Valuation,
+  AppState, Applicant, BankConnection, BankName, BankTxn, ExpenseCategory, Income, Listing, Notice, TodoPref, Comparable, Expense, Lease, Mortgage, Payment, Profile, Property, Tenant, Tone, Unit, Valuation,
 } from './types';
 import { emptyState, seedState, STATE_VERSION, defaultProfile } from './seed';
 import { addDays, dueDate, periodOf, todayISO } from '../lib/dates';
@@ -316,6 +316,37 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
     },
 
     // ---- Payments & receipts ----
+    /** Money in that is not rent. From a tenant, a receipt is made too (sent at once when receipts go out automatically). */
+    logIncome(i: Omit<Income, 'id' | 'createdAt'>): string {
+      const id = uid('inc');
+      let auto = false;
+      mut((d) => {
+        const nowIso = new Date().toISOString();
+        d.income = [...(d.income ?? []), { ...i, id, createdAt: nowIso }];
+        const lease = i.leaseId ? d.leases.find((l) => l.id === i.leaseId) : undefined;
+        if (lease) {
+          auto = d.profile.autoSend;
+          const number = Math.max(1000, ...d.receipts.map((r) => r.number)) + 1;
+          const rid = uid('rcpt');
+          d.receipts.push({ id: rid, number, paymentId: '', incomeId: id, status: auto ? 'sent' : 'draft', createdAt: nowIso, sentAt: auto ? nowIso : undefined });
+          d.messages.push({ id: uid('msg'), kind: 'receipt', tenantId: lease.tenantId, leaseId: lease.id, period: periodOf(i.date), receiptId: rid, subject: 'Your payment receipt', body: '', status: auto ? 'sent' : 'draft', edited: false, createdAt: nowIso, sentAt: auto ? nowIso : undefined });
+        }
+        audit(d, 'Income logged', `${fmt(i.amount)} · ${i.label}${lease ? ` from ${tenantName(d, lease.id)}` : ''}`);
+      });
+      toast(i.leaseId ? (auto ? `${fmt(i.amount)} logged. Receipt sent.` : `${fmt(i.amount)} logged. Receipt ready to send.`) : `${fmt(i.amount)} logged.`);
+      return id;
+    },
+    voidIncome(id: string) {
+      mut((d) => {
+        const i = (d.income ?? []).find((x) => x.id === id); if (!i) return;
+        i.voided = true;
+        for (const r of d.receipts) if (r.incomeId === id) r.status = 'superseded';
+        for (const m of d.messages) if (m.kind === 'receipt' && m.status === 'draft' && d.receipts.some((r) => r.id === m.receiptId && r.incomeId === id)) m.status = 'cancelled';
+        for (const t of d.txns) if (t.incomeId === id) { t.status = 'new'; t.incomeId = undefined; }
+        audit(d, 'Income removed', `${fmt(i.amount)} · ${i.label}`);
+      });
+      toast('Removed. If it came from the bank, it is back in the list to sort.');
+    },
     logPayment(p: Omit<Payment, 'id' | 'createdAt'>) {
       let auto = false;
       mut((d) => { recordPayment(d, p); auto = d.profile.autoSend; });
@@ -352,7 +383,8 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
         m.status = 'sent'; m.sentAt = new Date().toISOString();
         if (m.receiptId) { const r = d.receipts.find((x) => x.id === m.receiptId); if (r) { r.status = 'sent'; r.sentAt = m.sentAt; } }
         if (!edit) d.profile.approvedUnchanged += 1;
-        const pay = d.payments.find((p) => p.id === d.receipts.find((r) => r.id === m.receiptId)?.paymentId);
+        const rr = d.receipts.find((r) => r.id === m.receiptId);
+        const pay = d.payments.find((p) => p.id === rr?.paymentId) ?? (d.income ?? []).find((x) => x.id === rr?.incomeId);
         text = m.kind === 'receipt' ? `Receipt for ${fmt(pay?.amount ?? 0)} sent to ${tenantName(d, m.leaseId)}.` : `Reminder sent to ${tenantName(d, m.leaseId)}.`;
         audit(d, m.kind === 'receipt' ? 'Receipt sent' : 'Reminder sent', tenantName(d, m.leaseId));
       });
@@ -363,11 +395,13 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
       let text = '';
       mut((d) => {
         const r = d.receipts.find((x) => x.id === receiptId); if (!r) return;
-        const pay = d.payments.find((p) => p.id === r.paymentId); const lease = d.leases.find((l) => l.id === pay?.leaseId); if (!pay || !lease) return;
+        const pay = d.payments.find((p) => p.id === r.paymentId);
+        const inc = r.incomeId ? (d.income ?? []).find((x) => x.id === r.incomeId) : undefined;
+        const lease = d.leases.find((l) => l.id === (pay?.leaseId ?? inc?.leaseId)); if ((!pay && !inc) || !lease) return;
         const nowIso = new Date().toISOString();
         const draft = d.messages.find((m) => m.kind === 'receipt' && m.receiptId === r.id && m.status === 'draft');
         if (draft) { draft.status = 'sent'; draft.sentAt = nowIso; }
-        else d.messages.push({ id: uid('msg'), kind: 'receipt', tenantId: lease.tenantId, leaseId: lease.id, period: pay.period, receiptId: r.id, subject: 'Your rent receipt', body: '', status: 'sent', edited: false, createdAt: nowIso, sentAt: nowIso });
+        else d.messages.push({ id: uid('msg'), kind: 'receipt', tenantId: lease.tenantId, leaseId: lease.id, period: pay?.period ?? periodOf(inc!.date), receiptId: r.id, subject: inc ? 'Your payment receipt' : 'Your rent receipt', body: '', status: 'sent', edited: false, createdAt: nowIso, sentAt: nowIso });
         if (r.status === 'draft') { r.status = 'sent'; r.sentAt = nowIso; }
         text = `Receipt #${r.number} ${draft ? 'sent' : 'sent again'} to ${tenantName(d, lease.id)}.`;
         audit(d, draft ? 'Receipt sent' : 'Receipt sent again', `#${r.number} · ${tenantName(d, lease.id)}`);
@@ -575,6 +609,14 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
         audit(d, 'Rent paid up to', `${t?.names.join(' & ') ?? 'Tenant'}: ${through ? `paid through ${through} before Keyholder` : 'owes what Keyholder shows'}`);
       });
       toast(through ? 'Saved. Rent before then counts as paid.' : 'Saved. Keyholder keeps tracking what is owed.');
+    },
+    /** A deposit filed as other income (a bill share, parking…): remembered for that sender, to suggest next time. */
+    txnIsIncome(txnId: string, incomeId: string) {
+      mut((d) => {
+        const t = d.txns.find((x) => x.id === txnId); const inc = (d.income ?? []).find((x) => x.id === incomeId); if (!t || !inc) return;
+        t.status = 'matched'; t.incomeId = incomeId;
+        d.profile.incomePayers = { ...(d.profile.incomePayers ?? {}), [vendorKey(t.payer)]: { kind: inc.kind, leaseId: inc.leaseId } };
+      });
     },
     confirmMatch(txnId: string, leaseId: string, period: string, learnAlias: boolean) {
       mut((d) => {

@@ -51,8 +51,8 @@ function BankDeposits() {
             <span className="unit-who"><strong>{fmt(t.txn.amount)} from {t.txn.payer}</strong><span>{fmtDate(t.txn.date)} · {who ? `Looks like ${who}'s rent` : 'Is it rent?'}</span></span>
             <span />
             <span className="row-act">
-              <button className="btn primary" onClick={() => setOpen(t.id)}>{who ? 'Confirm' : 'Whose rent?'}</button>
-              <button className="btn ghost" onClick={() => act.ignoreTxn(t.txn.id)}>Not rent</button>
+              <button className="btn primary" onClick={() => setOpen(t.id)}>{who ? 'Confirm' : 'Rent or bill?'}</button>
+              <button className="btn ghost" onClick={() => act.ignoreTxn(t.txn.id)}>Not rental income</button>
             </span>
           </li>
         );

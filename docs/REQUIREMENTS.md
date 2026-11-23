@@ -541,3 +541,10 @@ Status: ☐ to do · ◐ in progress · ☑ done
   Rentals, Tenants, the unit's "N of N paid", the tenant's ledger with its receipt).
 - Owner (Nov 23): a paid month shows "Receipt to send" (with Send receipt) until its receipt goes out, then "Rent paid"
   (Home, Rentals, Tenants, rooms and whole units alike).
+- Owner (Nov 23): Income → Add other income (bill share, parking, laundry, storage, late fee, other). A bill share picks
+  the bill and splits it between the tenants; from a tenant it makes a numbered PAYMENT RECEIPT (same PDF design) to
+  send. Bank deposits that match no rent offer "Bill share or other" first (sender remembered); "Not rental income"
+  stays. Other income counts as money in and as T776 line 8230. Improvements are kept out of Money out and You kept
+  (one line under the summary); Taxes has Capital improvements: class picker, spreadsheet download, and three ways to
+  file (claim CCA, cost base only, send to accountant), as options to discuss, not advice. You kept: same box as the
+  others, only the number red or green.

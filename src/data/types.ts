@@ -49,6 +49,8 @@ export interface Profile {
   vendorRules?: Record<string, { propertyId: string; category: ExpenseCategory }>;
   /** Senders whose deposits are not rent (the owner said so once): never asked about again. */
   notRentPayers?: string[];
+  /** Senders whose deposits were filed as other income (a bill share…), and as what: suggested next time. */
+  incomePayers?: Record<string, { kind: IncomeKind; leaseId?: ID }>;
   /** Vendors whose payments are personal, not a rental cost: never asked about again. */
   personalVendors?: string[];
   /** Showing the sample properties (demo). */
@@ -192,12 +194,40 @@ export interface Payment {
   createdAt: string;
 }
 
+/**
+ * Money in that is not rent: a tenant's share of a bill, parking, laundry, storage, a late fee, or anything else.
+ * Kept apart from rent payments so the rent ledger (and late-rent steps) never count it; it does count as income.
+ */
+export type IncomeKind = 'bill' | 'parking' | 'laundry' | 'storage' | 'late-fee' | 'other';
+export interface Income {
+  id: ID;
+  kind: IncomeKind;
+  /** What it was for, in a few words: "Enbridge Gas, November", "Parking spot". */
+  label: string;
+  amount: Cents;
+  date: ISODate;
+  method: PayMethod;
+  propertyId?: ID;
+  /** Who paid (a tenant's lease), when it was a tenant: then a receipt can be sent. */
+  leaseId?: ID;
+  /** For a bill share: the bill (an expense) it covers. */
+  expenseId?: ID;
+  source: 'manual' | 'bank' | 'statement';
+  txnId?: ID;
+  note?: string;
+  voided?: boolean;
+  createdAt: string;
+}
+
 export type ReceiptStatus = 'draft' | 'sent' | 'superseded';
 
 export interface Receipt {
   id: ID;
   number: number;
+  /** The rent payment this receipt is for ('' for other income). */
   paymentId: ID;
+  /** Other income (a bill share, parking…) this receipt is for, instead of rent. */
+  incomeId?: ID;
   status: ReceiptStatus;
   createdAt: string;
   sentAt?: string;
@@ -232,6 +262,8 @@ export interface BankTxn {
   status: TxnStatus;
   bankId?: ID;
   paymentId?: ID;
+  /** Filed as other income (a bill share, parking…). */
+  incomeId?: ID;
   expenseId?: ID;
   mortgageId?: ID;
   /** Looked at once by the app when it arrived from the bank (matched to rent, or filed by a vendor rule). */
@@ -466,6 +498,8 @@ export interface AppState {
   todoPrefs: Record<string, TodoPref>;
   /** Bank and card statements the owner uploaded (their lines are in txns, with statementId). */
   statements?: StatementFile[];
+  /** Money in that is not rent (bill shares, parking, laundry…). */
+  income?: Income[];
   audit: AuditEntry[];
 }
 

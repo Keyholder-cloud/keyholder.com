@@ -16,6 +16,10 @@ export interface ReceiptPdfData {
   method: string; // "e-Transfer"
   balance?: string; // still owing for that month, if any
   note?: string;
+  /** Other income: the receipt's title ("PAYMENT RECEIPT"), what it was for, and its type ("Bill share"). */
+  title?: string;
+  forWhat?: string;
+  kindLabel?: string;
 }
 
 const INK = rgb(0.07, 0.09, 0.15), SOFT = rgb(0.4, 0.44, 0.52), RULE = rgb(0.85, 0.87, 0.91), BRAND = rgb(0.31, 0.27, 0.9), PAID = rgb(0.01, 0.6, 0.38);
@@ -23,7 +27,7 @@ const day = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-
 
 export async function receiptPdf(d: ReceiptPdfData): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  doc.setTitle(`Rent receipt #${d.number}`); doc.setAuthor(d.landlord.name); doc.setCreator('Keyholder');
+  doc.setTitle(`${d.forWhat ? 'Payment' : 'Rent'} receipt #${d.number}`); doc.setAuthor(d.landlord.name); doc.setCreator('Keyholder');
   const page = doc.addPage([612, 792]);
   const reg = await doc.embedFont(StandardFonts.Helvetica), bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const L = 56, R = 556;
@@ -32,8 +36,8 @@ export async function receiptPdf(d: ReceiptPdfData): Promise<Uint8Array> {
 
   // Header band
   page.drawRectangle({ x: 0, y: 712, width: 612, height: 80, color: BRAND });
-  text(page, 'RENT RECEIPT', L, 748, bold, 22, rgb(1, 1, 1));
-  text(page, 'Official receipt for rent received', L, 730, reg, 10, rgb(0.9, 0.9, 1));
+  text(page, d.title ?? 'RENT RECEIPT', L, 748, bold, 22, rgb(1, 1, 1));
+  text(page, d.forWhat ? 'Official receipt for a payment received' : 'Official receipt for rent received', L, 730, reg, 10, rgb(0.9, 0.9, 1));
   const no = `No. ${d.number}`;
   text(page, no, R - bold.widthOfTextAtSize(no, 16), 748, bold, 16, rgb(1, 1, 1));
   const iss = `Issued ${day(d.issued)}`;
@@ -53,12 +57,12 @@ export async function receiptPdf(d: ReceiptPdfData): Promise<Uint8Array> {
   page.drawRectangle({ x: L, y: y - 64, width: R - L, height: 80, color: rgb(0.96, 0.97, 1), borderColor: RULE, borderWidth: 1 });
   text(page, 'AMOUNT RECEIVED', L + 20, y - 4, bold, 9, SOFT);
   text(page, d.amount, L + 20, y - 40, bold, 30);
-  right(`Rent for ${d.period}`, y - 18, bold, 13, INK, R - 20);
-  right(d.balance ? `Still owing for the month: ${d.balance}` : 'Paid in full for the month', y - 38, reg, 10, d.balance ? rgb(0.85, 0.18, 0.13) : PAID, R - 20);
+  right(d.forWhat ? (d.forWhat.length > 46 ? `${d.forWhat.slice(0, 44)}…` : d.forWhat) : `Rent for ${d.period}`, y - 18, bold, 13, INK, R - 20);
+  right(d.forWhat ? 'Received with thanks' : d.balance ? `Still owing for the month: ${d.balance}` : 'Paid in full for the month', y - 38, reg, 10, d.balance && !d.forWhat ? rgb(0.85, 0.18, 0.13) : PAID, R - 20);
 
   // Details table
   y -= 104;
-  const rows: [string, string][] = [['Receipt number', String(d.number)], ['Rent period', d.period], ['Date paid', day(d.paidOn)], ['Paid by', d.method], ['Received from', d.tenant], ['Rental', d.rental]];
+  const rows: [string, string][] = [['Receipt number', String(d.number)], d.forWhat ? ['For', `${d.kindLabel ? `${d.kindLabel}: ` : ''}${d.forWhat}`] : ['Rent period', d.period], ['Date paid', day(d.paidOn)], ['Paid by', d.method], ['Received from', d.tenant], ['Rental', d.rental]];
   if (d.note) rows.push(['Note', d.note]);
   for (const [k, v] of rows) {
     page.drawLine({ start: { x: L, y: y + 14 }, end: { x: R, y: y + 14 }, thickness: 0.6, color: RULE });
@@ -79,7 +83,7 @@ export async function receiptPdf(d: ReceiptPdfData): Promise<Uint8Array> {
   text(page, 'PAID', R - 60 - bold.widthOfTextAtSize('PAID', 22) / 2, y - 8, bold, 22, PAID);
 
   // Footer
-  text(page, 'Keep this receipt for your records. It can be used as proof of rent paid (for example, for a tax credit or a new rental).', L, 64, reg, 8.5, SOFT);
+  text(page, d.forWhat ? 'Keep this receipt for your records. It can be used as proof of payment.' : 'Keep this receipt for your records. It can be used as proof of rent paid (for example, for a tax credit or a new rental).', L, 64, reg, 8.5, SOFT);
   text(page, `Issued for ${d.landlord.name} by Keyholder · keyholder.cloud`, L, 50, reg, 8.5, SOFT);
   return doc.save();
 }

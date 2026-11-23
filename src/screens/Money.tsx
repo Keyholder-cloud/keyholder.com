@@ -3,15 +3,16 @@ import { PLAID_PRIVACY_URL } from './Security';
 import { UploadStatementButton } from '../components/StatementUpload';
 import { currentTaxYear, gapCount, recordsFromIn, yearCheck, type Gap } from '../lib/taxyear';
 import { PageSub } from '../components/Guide';
-import { useMemo, useState } from 'react';
-import { Link, NavLink, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, NavLink, useLocation, useParams } from 'react-router-dom';
 import type { BankName, BankTxn, Expense, ExpenseCategory, Property } from '../data/types';
 import { bankToSort, readWithdrawal } from '../lib/bankrules';
 import { useStore } from '../data/store';
 import { propertyLevel } from '../lib/levels';
 import { addDays, addPeriods, fmtDate, fmtMonthShort, periodOf } from '../lib/dates';
-import { picture, rentalPortion, taxPack } from '../lib/finance';
-import { CATEGORIES, OTHER_BANKS, POPULAR_BANKS, category } from '../lib/jurisdiction';
+import { improvements, improvementsCsv, picture, rentalPortion, taxPack } from '../lib/finance';
+import { incomeKindLabel } from '../lib/receiptData';
+import { CATEGORIES, CCA_CLASSES, OTHER_BANKS, POPULAR_BANKS, category } from '../lib/jurisdiction';
 import { banksOn, paidPlan, serverMode } from '../data/api';
 import { useUpgrade } from '../components/Billing';
 import { connectWithPlaid } from '../data/plaid';
@@ -321,7 +322,7 @@ export function ThePicture() {
     const end = m === periodOf(today) ? today : addDays(`${addPeriods(m, 1)}-01`, -1);
     return { m, p: picture(state, `${m}-01`, end, { propertyId: prop === 'all' ? undefined : prop }) };
   });
-  const max = Math.max(1, ...monthly.map((x) => Math.max(x.p.rentCollected, x.p.opex + x.p.capital + x.p.mortgageInterest + x.p.mortgagePrincipal)));
+  const max = Math.max(1, ...monthly.map((x) => Math.max(x.p.rentCollected + x.p.otherIncome, x.p.opex + x.p.mortgageInterest + x.p.mortgagePrincipal)));
 
   const row = (label: React.ReactNode, v: number, opts: { strong?: boolean; neg?: boolean; note?: string } = {}) => (
     <tr><td>{opts.strong ? <strong>{label}</strong> : label}{opts.note && <div className="tiny soft">{opts.note}</div>}</td><td className="num">{opts.neg && v ? '−' : ''}{opts.strong ? <strong>{fmt(Math.abs(v))}</strong> : fmt(Math.abs(v))}</td></tr>
@@ -337,8 +338,8 @@ export function ThePicture() {
         </select>
       </div>
       <div className="figures four" style={{ marginBottom: 24 }}>
-        <div><div className="label">Money in</div><Figure cents={pic.rentCollected} size="sm" className="in" /></div>
-        <div><div className="label">Money out</div><Figure cents={pic.opex + pic.capital + pic.mortgageInterest + pic.mortgagePrincipal} size="sm" /></div>
+        <div><div className="label">Money in</div><Figure cents={pic.rentCollected + pic.otherIncome} size="sm" className="in" /></div>
+        <div><div className="label">Money out</div><Figure cents={pic.opex + pic.mortgageInterest + pic.mortgagePrincipal} size="sm" /></div>
         <div><div className="label">Left over</div><Figure cents={pic.kept} size="sm" className={pic.kept < 0 ? 'urgent' : ''} /></div>
         <div><div className="label">Left from each $1,000 of rent</div><span className="figure sm">{fmt0(Math.max(0, pic.keptPer1000) * 100)}</span></div>
       </div>
@@ -347,10 +348,10 @@ export function ThePicture() {
           <h2 style={{ marginBottom: 12 }}>Month by month</h2>
           <div className="bars" role="img" aria-label="Monthly rent in and money out, last 12 months">
             {monthly.map(({ m, p }) => {
-              const out = p.opex + p.capital + p.mortgageInterest + p.mortgagePrincipal;
+              const out = p.opex + p.mortgageInterest + p.mortgagePrincipal;
               return (
                 <div key={m} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, alignItems: 'end', height: '100%' }} title={`${m}: in ${fmt(p.rentCollected)}, out ${fmt(out)}, kept ${fmt(p.kept)}`}>
-                  <div className="bar" style={{ height: `${(p.rentCollected / max) * 100}%` }} />
+                  <div className="bar" style={{ height: `${((p.rentCollected + p.otherIncome) / max) * 100}%` }} />
                   <div className="bar out" style={{ height: `${(out / max) * 100}%` }} />
                 </div>
               );
@@ -360,13 +361,14 @@ export function ThePicture() {
           <div className="legend"><span><i style={{ background: 'var(--pine)' }} />Rent in</span><span><i style={{ background: 'var(--ink-soft)' }} />Money out</span></div>
           <details style={{ marginTop: 16 }}><summary className="small">Show as a table</summary>
             <table className="ledger"><thead><tr><th>Month</th><th className="num">In</th><th className="num">Out</th><th className="num">Kept</th></tr></thead>
-              <tbody>{monthly.map(({ m, p }) => <tr key={m}><td>{fmtMonthShort(m)} {m.slice(0, 4)}</td><td className="num">{fmt(p.rentCollected)}</td><td className="num">{fmt(p.opex + p.capital + p.mortgageInterest + p.mortgagePrincipal)}</td><td className="num">{fmt(p.kept)}</td></tr>)}</tbody></table>
+              <tbody>{monthly.map(({ m, p }) => <tr key={m}><td>{fmtMonthShort(m)} {m.slice(0, 4)}</td><td className="num">{fmt(p.rentCollected + p.otherIncome)}</td><td className="num">{fmt(p.opex + p.mortgageInterest + p.mortgagePrincipal)}</td><td className="num">{fmt(p.kept)}</td></tr>)}</tbody></table>
           </details>
         </div>
         <div className="sheet">
           <h2 style={{ marginBottom: 8 }}>How it adds up</h2>
           <table className="ledger"><tbody>
             {row('Rent collected', pic.rentCollected)}
+            {pic.otherIncome > 0 && row('Other income', pic.otherIncome, { note: 'Bill shares, parking, laundry and more' })}
             {pic.arrearsLoss > 0 && row('Rent still owing', pic.arrearsLoss, { note: 'Not counted above until it arrives' })}
             {pic.vacancyLoss > 0 && row('Lost to vacancy', pic.vacancyLoss)}
             {row('Running costs', pic.opex, { neg: true, note: 'Repairs, utilities, property tax, insurance' })}
@@ -374,9 +376,9 @@ export function ThePicture() {
             {pic.hasMortgageData && !pic.mortgageIsRough && row('Mortgage interest', pic.mortgageInterest, { neg: true, note: 'Deductible' })}
             {pic.hasMortgageData && !pic.mortgageIsRough && row('Mortgage paid off', pic.mortgagePrincipal, { neg: true, note: 'This builds what you own' })}
             {pic.mortgageIsRough && row('Mortgage payments (rough)', pic.mortgageInterest + pic.mortgagePrincipal, { neg: true })}
-            {pic.capital > 0 && row('Upgrades', pic.capital, { neg: true })}
             {row('Left over', pic.kept, { strong: true })}
           </tbody></table>
+          {pic.capital > 0 && <p className="small ytd-improve-line" id="cf-improve"><Icon name="wrench" size={14} /> Improvements: <strong>{fmt(pic.capital)}</strong>, kept separate from Left over. They add to what the property cost you and are handled at tax time. <Link to="/paperwork/taxes#improvements">See them in Taxes</Link></p>}
           <ul className="plain-facts">
             {pic.rentCollected > 0 && <li>Running costs take <strong>{pic.expenseRatio.toFixed(0)}%</strong> of the rent.</li>}
             {pic.hasMortgageData && !pic.mortgageIsRough && pic.mortgageInterest + pic.mortgagePrincipal > 0 && <li>Rent covers the mortgage <strong>{(pic.noi / (pic.mortgageInterest + pic.mortgagePrincipal)).toFixed(1)} times</strong>. Banks like to see 1.2 or more.</li>}
@@ -451,6 +453,72 @@ export function RegularCosts({ prop, year }: { prop: Property; year: number }) {
       {settled.length > 0 && <button className="btn ghost small" onClick={() => setShowDone((x) => !x)}>{showDone ? 'Hide' : 'Show'} {settled.length} added or ignored</button>}
       {showDone && <ul className="rc-list">{settled.map(row)}</ul>}
       {add && <ExpenseForm onClose={() => setAdd(null)} prefill={{ propertyId: prop.id, vendor: add === other ? '' : add.label, category: add.cat, scope: category(add.cat).sharedByDefault ? 'shared' : 'direct', ...(add.cash ? { cashNoReceipt: true } : {}), ...(String(year) < today.slice(0, 4) ? { date: `${year}-12-31` } : {}) }} />}
+    </section>
+  );
+}
+
+/**
+ * Capital improvements, apart from running costs: each one with its depreciation class (picked right here), a
+ * spreadsheet of all of them, and the ways to file them, as options to discuss with an accountant (not advice).
+ */
+function CapitalImprovements({ p, year }: { p: Property; year: number }) {
+  const { state, act } = useStore();
+  const imp = useMemo(() => improvements(state, p), [state, p]);
+  const gold = propertyLevel(state, p) === 'gold';
+  const thisYear = imp.rows.filter((r) => r.year === year);
+  const [all, setAll] = useState(false);
+  const shown = all ? imp.rows : thisYear;
+  const download = () => {
+    const blob = new Blob([improvementsCsv(state, p)], { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `keyholder-improvements-${p.nickname.replace(/\W+/g, '-')}.csv`; a.click();
+  };
+  const setClass = (id: string, cls: string) => { const e = state.expenses.find((x) => x.id === id); if (e) act.saveExpense({ ...e, ccaClass: (cls || undefined) as Expense['ccaClass'] }); };
+  const choice: 'cca' | 'base' = p.claimCCA ? 'cca' : 'base';
+  // Linked from Home and Cash flow (#improvements): bring the section into view.
+  const loc = useLocation();
+  useEffect(() => { if (loc.hash === '#improvements') requestAnimationFrame(() => document.getElementById('improvements')?.scrollIntoView({ block: 'start' })); }, [loc.hash]);
+  return (
+    <section className="sheet improvements" id="improvements" aria-labelledby="imp-title">
+      <div className="spread" style={{ alignItems: 'flex-start' }}>
+        <div><h2 id="imp-title" style={{ margin: 0 }}>Capital improvements</h2>
+          <p className="small soft" style={{ margin: '4px 0 0' }}>Kept apart from running costs: they are not taken off your rent each year. {fmt(thisYear.reduce((a, r) => a + r.amount, 0))} in {year} · {fmt(imp.total)} in all.</p></div>
+        <button className="btn" id="imp-download" onClick={download} disabled={embedded || !imp.rows.length} title={embedded ? 'Downloads work on the Keyholder website' : undefined}><Icon name="download" size={16} />Download spreadsheet</button>
+      </div>
+      {imp.needsClass > 0 && <p className="callout warn" id="imp-needs" style={{ margin: '12px 0 0' }}><Icon name="alert" size={16} /> {imp.needsClass} improvement{imp.needsClass === 1 ? ' needs' : 's need'} a class. Pick one below.</p>}
+      {!imp.rows.length ? <p className="soft" style={{ margin: '12px 0 0' }}>No improvements yet. When you add an expense, choose <strong>Improvement</strong> for things like a new roof, windows, a furnace or appliances.</p> : (
+        <>
+          <div className="table-scroll" style={{ marginTop: 12 }}><table className="ledger stack imp-table">
+            <thead><tr><th>Date</th><th>What</th><th className="num">Amount</th><th>Class (for depreciation)</th></tr></thead>
+            <tbody>{shown.map((r) => (
+              <tr key={r.id} className={r.ccaClass ? undefined : 'needs'}>
+                <td className="date" data-label="Date">{fmtDate(r.date)}</td><td className="st-title" data-label="What">{r.what}</td>
+                <td className="num" data-label="Amount">{fmt(r.amount)}{r.rental !== r.amount && <div className="tiny soft">{fmt(r.rental)} rental</div>}</td>
+                <td data-label="Class"><select className="input imp-class" aria-label={`Class for ${r.what}`} value={r.ccaClass ?? ''} onChange={(e) => setClass(r.id, e.target.value)}>
+                  <option value="">Needs a class</option>{CCA_CLASSES.map((c) => <option key={c.id} value={c.id}>{c.label} ({c.ratePct}%)</option>)}
+                </select></td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+          {imp.rows.length > thisYear.length && <div className="more-row"><button className="btn ghost small" onClick={() => setAll((x) => !x)}>{all ? `Show ${year} only` : `Show all years (${imp.rows.length})`}</button></div>}
+        </>
+      )}
+
+      <h3 style={{ margin: '18px 0 8px' }}>How to file them</h3>
+      <div className="file-opts" role="radiogroup" aria-label="How to file improvements">
+        <button type="button" role="radio" aria-checked={choice === 'cca'} className={`file-opt${choice === 'cca' ? ' on' : ''}`} id="file-cca" onClick={() => act.saveProperty({ ...p, claimCCA: true })}>
+          <strong><Icon name="trend" size={16} />Claim depreciation (CCA)</strong>
+          <span>Deduct part of each improvement every year on T776 (Area A, line 9936). Keyholder fills in the additions by class.{gold ? '' : ' Needs what you paid for the property (Gold).'} CCA can't create or increase a rental loss, and some may be paid back when you sell.</span>
+        </button>
+        <button type="button" role="radio" aria-checked={choice === 'base'} className={`file-opt${choice === 'base' ? ' on' : ''}`} id="file-base" onClick={() => act.saveProperty({ ...p, claimCCA: false })}>
+          <strong><Icon name="home" size={16} />Add to the cost base only</strong>
+          <span>Don't claim depreciation this year. The improvements raise what the property cost you ({fmt(imp.acb)} so far), which lowers the gain when you sell. You can claim CCA in a later year.</span>
+        </button>
+        <button type="button" className="file-opt" id="file-accountant" onClick={download} disabled={embedded || !imp.rows.length}>
+          <strong><Icon name="send" size={16} />Send to your accountant</strong>
+          <span>Download the spreadsheet: every improvement, totals by year and class, and the cost base. Your accountant chooses what is best for you.</span>
+        </button>
+      </div>
+      <p className="tiny soft" style={{ margin: '10px 0 0' }}>Not sure if something is an improvement or a repair? A repair puts things back as they were (a running cost); an improvement makes them better or lasts many years. These are options to talk over with an accountant, not tax advice.</p>
     </section>
   );
 }
@@ -539,6 +607,7 @@ export function TaxPackPage() {
     if (partYear) rows.push(['Note', `Records in Keyholder start on ${from}. Rent and costs before that date are not included.`]);
     rows.push([], ['Line', 'Description', 'Amount']);
     rows.push(['8141', 'Gross rents', (pack.grossRents / 100).toFixed(2)]);
+    if (pack.otherIncome) rows.push(['8230', 'Other related income', (pack.otherIncome / 100).toFixed(2)]);
     for (const l of pack.lines) rows.push([l.t776, l.craLabel, (l.amount / 100).toFixed(2)]);
     rows.push(['9936', 'Capital cost allowance', (pack.ccaClaimed / 100).toFixed(2)]);
     rows.push(['', 'Net income', (pack.netIncome / 100).toFixed(2)]);
@@ -547,8 +616,13 @@ export function TaxPackPage() {
       const t = state.tenants.find((x) => x.id === leases.find((l) => l.id === pay.leaseId)?.tenantId);
       rows.push([pay.date, t?.names.join(' & ') ?? '', pay.period, (pay.amount / 100).toFixed(2)]);
     }
-    rows.push([], ['Costs'], ['Date', 'Paid to', 'Category', 'T776 line', 'Kind', 'Amount', 'Rental portion', 'Record']);
-    for (const e of state.expenses.filter((x) => x.propertyId === p.id && x.date >= from && x.date <= yearEnd).sort((a, b) => a.date.localeCompare(b.date))) {
+    const otherIn = (state.income ?? []).filter((i) => !i.voided && i.date >= from && i.date <= yearEnd && ((i.leaseId && leases.some((l) => l.id === i.leaseId)) || i.propertyId === p.id));
+    if (otherIn.length) {
+      rows.push([], ['Other income (line 8230)'], ['Date', 'From', 'Type', 'For', 'Amount']);
+      for (const i of otherIn.sort((a, b) => a.date.localeCompare(b.date))) rows.push([i.date, state.tenants.find((x) => x.id === leases.find((l) => l.id === i.leaseId)?.tenantId)?.names.join(' & ') ?? '', incomeKindLabel(i.kind), i.label, (i.amount / 100).toFixed(2)]);
+    }
+    rows.push([], ['Running costs (improvements are in their own spreadsheet)'], ['Date', 'Paid to', 'Category', 'T776 line', 'Kind', 'Amount', 'Rental portion', 'Record']);
+    for (const e of state.expenses.filter((x) => x.propertyId === p.id && x.kind !== 'capital' && x.date >= from && x.date <= yearEnd).sort((a, b) => a.date.localeCompare(b.date))) {
       const c = category(e.category);
       rows.push([e.date, e.vendor, c.label, c.t776, e.kind, (e.amount / 100).toFixed(2), (rentalPortion(e, p.rentalSharePct) / 100).toFixed(2),
         e.receiptImage ? 'Receipt photo' : e.cashNoReceipt ? 'Paid in cash, no receipt (this entry is the record)' : 'No receipt yet']);
@@ -595,6 +669,8 @@ export function TaxPackPage() {
 
       <RegularCosts prop={p} year={year} />
 
+      <CapitalImprovements p={p} year={year} />
+
       <div className="sheet print-me">
         <h2 style={{ marginBottom: 4 }}>{year} rental income · {p.nickname}</h2>
         {partYear && <p className="small" style={{ margin: '0 0 4px' }}>From {fmtDate(from)} (when your records start)</p>}
@@ -602,6 +678,7 @@ export function TaxPackPage() {
         <table className="ledger tax-totals">
           <tbody>
             <tr><td>Rent received</td><td className="line">8141</td><td className="num">{fmt(pack.grossRents)}</td></tr>
+            {pack.otherIncome > 0 && <tr><td>Other income <span className="tiny soft">· bill shares, parking, laundry…</span></td><td className="line">8230</td><td className="num">{fmt(pack.otherIncome)}</td></tr>}
             <tr><td>Expenses</td><td className="line" /><td className="num">−{fmt(pack.totalExpenses)}</td></tr>
             {propertyLevel(state, p) === 'gold' && <tr><td><Term def="Capital Cost Allowance: a yearly deduction for wear on the building and appliances">Depreciation (CCA)</Term>{!p.claimCCA && <span className="tiny soft"> · not claimed</span>}</td><td className="line">9936</td><td className="num">−{fmt(pack.ccaClaimed)}</td></tr>}
           </tbody>

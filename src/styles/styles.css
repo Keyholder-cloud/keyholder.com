@@ -251,7 +251,7 @@ h1, h2 { font-weight: 700; letter-spacing: -0.015em; font-variant-numeric: linin
 .review-grid div { padding: 12px 10px; border-radius: 14px; background: var(--paper); }
 .review-grid span { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); }
 .review-grid strong { display: block; margin-top: 4px; font-family: var(--font-display); font-size: 18px; font-weight: 700; }
-.review-grid .kept { background: var(--pine-tint); }
+.review-grid .kept { background: var(--paper); }
 .review-grid .kept strong { color: var(--pine); }
 .review-diff { display: flex; gap: 6px; align-items: center; margin: 12px 0 0; font-size: 14px; font-weight: 600; }
 .review-diff.up { color: var(--pine); }
@@ -900,9 +900,9 @@ a.chip { text-decoration: none; }
 .billing-features li { display: flex; align-items: center; gap: 8px; }
 .billing-features svg { color: #039855; flex: none; }
 .ytd-under { margin: -4px 0 10px; }
-/* "You kept": green when positive, light red when the costs were more than the rent. */
-.review-grid .kept.neg { background: var(--rust-tint); }
-.review-grid .kept.neg strong, .review-grid .kept.neg span { color: var(--rust); }
+/* "You kept": the same box as the others; only the number is coloured (green when positive, red when negative). */
+.review-grid .kept.neg { background: var(--paper); }
+.review-grid .kept.neg strong { color: var(--rust); }
 /* Long lists: "Show more" under the first 8 lines. */
 .more-row { display: flex; justify-content: center; padding: 8px 0 4px; }
 .resend-receipt { white-space: nowrap; }
