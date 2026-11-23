@@ -531,3 +531,6 @@ Status: ☐ to do · ◐ in progress · ☑ done
   at the bottom. The plain text stays as the fallback.
 - Owner (Nov 23): Settings has 3 tabs (Profile, Preferences with Reminders and Data, Billing). A receipt's View in the
   app is the same as what the tenant gets: the PDF's layout and details (one shared source), with Download PDF.
+- Owner (Nov 23): website header A (floating frosted pill, menu in a segmented pill, gradient Sign up). In night mode
+  (Keyholder set to Night, or the computer in dark mode) the website is dark with header B (navy bar, white logo,
+  gradient underline, white Sign up); pictures of the app stay light.

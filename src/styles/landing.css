@@ -549,3 +549,177 @@ html body .lp-hero-ctas { gap: 16px 36px; }
 .kh-flow-ic.ok { background: #D1FADF; color: #067647; }
 .kh-year strong { display: block; font-family: var(--font-display); font-size: 34px; line-height: 1.1; color: #067647; } .kh-year small { color: var(--lp-soft); font-size: 12.5px; }
 .kh-story .kh-bars li { grid-template-columns: 90px 1fr auto; } .kh-bars i.soft { background: #CBD5E1; }
+
+/* The website is always light: night mode must not turn its text (logo name, Sign in, Menu) white on the white header. */
+html body .lp, html[data-theme] body .lp {
+  color-scheme: light;
+  --paper: #F6F7FB; --paper-raised: #FFFFFF; --paper-sunk: #EEF0F6;
+  --ink: #101828; --ink-soft: #475467; --ink-faint: #667085;
+  --rule: #E7E9F0; --rule-strong: #D0D5DD;
+  --primary: #4F46E5; --on-primary: #FFFFFF; --accent-tint: #EEF0FF;
+  --pine: #079455; --pine-tint: #DCFAE6;
+  color: var(--lp-ink);
+}
+html body .lp .lp-brand .wm, html body .lp .lp-nav .btn.ghost, html body .lp .lp-burger { color: #101828; }
+
+/* ================= Header A (light): a rounded, frosted bar floating above the page ================= */
+html body .lp .lp-nav { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; border-bottom: 0; padding-top: 10px; pointer-events: none; }
+html body .lp .lp-nav-in { pointer-events: auto; height: 60px; width: calc(100% - 2 * var(--sp-side)); max-width: 1160px; padding: 0 8px 0 18px; border-radius: 999px;
+  background: rgba(255, 255, 255, .82); -webkit-backdrop-filter: saturate(1.6) blur(14px); backdrop-filter: saturate(1.6) blur(14px);
+  box-shadow: 0 12px 32px -16px rgba(16, 24, 40, .28), 0 0 0 1px rgba(16, 24, 40, .06); gap: 16px; }
+html body .lp .lp-links { margin: 0 auto; gap: 2px; padding: 4px; border-radius: 999px; background: #F2F4F7; }
+html body .lp .lp-links a { padding: 7px 15px; border-radius: 999px; font-size: 15px; color: #475467; }
+html body .lp .lp-links a:hover { background: rgba(255, 255, 255, .7); color: #101828; }
+html body .lp .lp-links a.on { background: #fff; color: #101828; box-shadow: 0 1px 3px rgba(16, 24, 40, .14); }
+html body .lp .lp-nav-cta { margin-left: 0; gap: 6px; }
+html body .lp .lp-nav-cta .btn { min-height: 44px; border-radius: 999px; }
+html body .lp .lp-nav-cta .btn.ghost { border-color: transparent; background: transparent; }
+html body .lp .lp-nav-cta .btn.primary { background: linear-gradient(100deg, #4F46E5, #7C3AED); border: 0; padding-inline: 20px; box-shadow: 0 8px 18px -10px rgba(79, 70, 229, .8); }
+html body .lp .lp-burger { border-radius: 999px; min-height: 44px; }
+html body .lp .lp-signin-xs { border-radius: 999px; }
+html body .lp .lp-menu { inset: 80px 12px 12px 12px; max-height: none; border-radius: 22px; box-shadow: 0 24px 48px -20px rgba(16, 24, 40, .35), 0 0 0 1px rgba(16, 24, 40, .06); }
+@media (max-width: 980px) { html body .lp .lp-nav-in { padding: 0 6px 0 14px; height: 56px; } }
+
+/* ================= Night mode: header B and a dark website (Keyholder set to Night, or the computer is in dark mode) ================= */
+html[data-theme="dark"] body .lp { color-scheme: dark; background: #0B1020; color: #F5F7FA;
+  --lp-ink: #F5F7FA; --lp-soft: #A9B1C1; --lp-faint: #8D94A3; --lp-rule: rgba(255, 255, 255, .10); --lp-tint: #131A33; --indigo: #7A73FF; --indigo-hover: #8F89FF;
+  --paper: #0B1020; --paper-raised: #121933; --paper-sunk: #0A0E1C; --ink: #F5F7FA; --ink-soft: #B4B9C5; --ink-faint: #8D94A3;
+  --rule: rgba(255, 255, 255, .10); --rule-strong: rgba(255, 255, 255, .18); --primary: #7A73FF; --accent-tint: #1F1D44; --pine: #3CCB7F; --pine-tint: #0F2A1E; }
+html[data-theme="dark"] body .lp .lp-nav { background: rgba(11, 16, 32, .86); -webkit-backdrop-filter: saturate(1.4) blur(12px); backdrop-filter: saturate(1.4) blur(12px); border-bottom: 1px solid rgba(255, 255, 255, .08); padding-top: 0; pointer-events: auto; }
+html[data-theme="dark"] body .lp .lp-nav-in { height: 72px; width: auto; max-width: 1180px; padding: 0 var(--sp-side); border-radius: 0; background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; gap: 30px; }
+html[data-theme="dark"] body .lp .lp-brand .wm { color: #fff; }
+html[data-theme="dark"] body .lp .lp-links { margin: 0 auto 0 0; padding: 0; background: transparent; gap: 22px; }
+html[data-theme="dark"] body .lp .lp-links a { position: relative; padding: 8px 2px; border-radius: 0; background: transparent; color: #98A2B3; box-shadow: none; }
+html[data-theme="dark"] body .lp .lp-links a:hover { background: transparent; color: #fff; }
+html[data-theme="dark"] body .lp .lp-links a.on { background: transparent; color: #fff; box-shadow: none; }
+html[data-theme="dark"] body .lp .lp-links a.on::after { content: ''; position: absolute; left: 0; right: 0; bottom: -18px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, #818CF8, #38BDF8); }
+html[data-theme="dark"] body .lp .lp-nav .btn.ghost,
+html[data-theme="dark"] body .lp .lp-signin-xs { color: #fff; }
+html[data-theme="dark"] body .lp .lp-nav-cta .btn.primary { background: #fff; color: #0B1020; box-shadow: none; border-radius: 10px; }
+html[data-theme="dark"] body .lp .lp-burger { background: rgba(255, 255, 255, .06); color: #fff; border-color: rgba(255, 255, 255, .14); }
+html[data-theme="dark"] body .lp .lp-menu { inset: 72px 0 0 0; max-height: none; border-radius: 0; box-shadow: none; background: #0B1020; }
+html[data-theme="dark"] body .lp .lp-menu a { color: #F5F7FA; border-color: rgba(255, 255, 255, .08); }
+html[data-theme="dark"] body .lp .lp-hero { background: radial-gradient(48% 70% at 88% 8%, rgba(124, 58, 237, .38), transparent 70%), radial-gradient(40% 60% at 0% 100%, rgba(56, 189, 248, .14), transparent 70%), #0B1020; }
+html[data-theme="dark"] body .lp .lp-hero-h { color: #fff; }
+html[data-theme="dark"] body .lp .lp-lines.a { stroke: rgba(129, 140, 248, .16); }
+html[data-theme="dark"] body .lp .lp-lines.b { stroke: rgba(56, 189, 248, .10); }
+html[data-theme="dark"] body .lp .lp-pill,
+html[data-theme="dark"] body .lp .lp-step-time,
+html[data-theme="dark"] body .lp .lp-map-info code { background: rgba(122, 115, 255, .16); color: #C7D2FE; }
+html[data-theme="dark"] body .lp .lp-menu-ic,
+html[data-theme="dark"] body .lp .kh-job-ic { background: rgba(122, 115, 255, .16); color: #A5B4FC; }
+html[data-theme="dark"] body .lp .lp-pagehead { background: radial-gradient(55% 70% at 92% 0%, rgba(124, 58, 237, .30) 0%, transparent 70%), #0B1020; }
+html[data-theme="dark"] body .lp .lp-burger,
+html[data-theme="dark"] body .lp .lp-auto li,
+html[data-theme="dark"] body .lp .lp-map-card,
+html[data-theme="dark"] body .lp .lp-map-info,
+html[data-theme="dark"] body .lp .lp-price,
+html[data-theme="dark"] body .lp .lp-faq,
+html[data-theme="dark"] body .lp .btn.lp-cta-ghost,
+html[data-theme="dark"] body .lp .lp-for li,
+html[data-theme="dark"] body .lp .lp-doc-part,
+html[data-theme="dark"] body .lp .kh-jobs,
+html[data-theme="dark"] body .lp .kh-explorer,
+html[data-theme="dark"] body .lp .lp-contact-card,
+html[data-theme="dark"] body .lp .lp-contact-side li,
+html[data-theme="dark"] body .lp .lp-tour-nav button { background: #121933; border-color: rgba(255, 255, 255, .10); }
+html[data-theme="dark"] body .lp .lp-foot { background: #080C19; border-top-color: rgba(255, 255, 255, .08); }
+html[data-theme="dark"] body .lp .lp-cta-card { background: linear-gradient(135deg, #1A1F45, #121933); border-color: rgba(122, 115, 255, .30); }
+html[data-theme="dark"] body .lp .lp-sticky { background: rgba(11, 16, 32, .94); border-top-color: rgba(255, 255, 255, .08); }
+html[data-theme="dark"] body .lp .lp-tour-tab.on,
+html[data-theme="dark"] body .lp .lp-tile:hover { background: rgba(122, 115, 255, .16); box-shadow: inset 0 0 0 1px rgba(122, 115, 255, .35); }
+html[data-theme="dark"] body .lp .lp-tile { background: #121933; border-color: rgba(255, 255, 255, .12); color: #F5F7FA; }
+html[data-theme="dark"] body .lp .kh-job,
+html[data-theme="dark"] body .lp .kh-tab { color: #E4E7EC; }
+html[data-theme="dark"] body .lp .kh-job:hover { background: #1A2142; }
+html[data-theme="dark"] body .lp .kh-tabs { background: #0E1430; }
+html[data-theme="dark"] body .lp .kh-tab.on { background: #1A2142; color: #fff; box-shadow: none; }
+html[data-theme="dark"] body .lp .lp-faq summary::after { background: #1A2142; color: #C7D2FE; }
+html[data-theme="dark"] body .lp .lp-flag { background: #7A73FF; }
+html[data-theme="dark"] body .lp .lp-price.best { border-color: #7A73FF; }
+html[data-theme="dark"] body .lp .btn.ghost { color: #F5F7FA; }
+html[data-theme="dark"] body .lp .lp-go-note,
+html[data-theme="dark"] body .lp .lp-lede { color: #A9B1C1; }
+html[data-theme="dark"] body /* Pictures of the app stay light,
+html[data-theme="dark"] body like real screenshots */
+.lp .kh-mock,
+html[data-theme="dark"] body .lp .mac,
+html[data-theme="dark"] body .lp .lp-step,
+html[data-theme="dark"] body .lp .lp-zoom-scroll { --lp-ink: #101828; --lp-soft: #475467; --lp-faint: #667085; --lp-rule: #EAECF0; --lp-tint: #F7F8FC; --indigo: #4F46E5; color: #101828; }
+html[data-theme="dark"] body .lp .kh-panel-copy h3 { color: #fff; }
+@media (prefers-color-scheme: dark) {
+html:not([data-theme]) body .lp { color-scheme: dark; background: #0B1020; color: #F5F7FA;
+  --lp-ink: #F5F7FA; --lp-soft: #A9B1C1; --lp-faint: #8D94A3; --lp-rule: rgba(255, 255, 255, .10); --lp-tint: #131A33; --indigo: #7A73FF; --indigo-hover: #8F89FF;
+  --paper: #0B1020; --paper-raised: #121933; --paper-sunk: #0A0E1C; --ink: #F5F7FA; --ink-soft: #B4B9C5; --ink-faint: #8D94A3;
+  --rule: rgba(255, 255, 255, .10); --rule-strong: rgba(255, 255, 255, .18); --primary: #7A73FF; --accent-tint: #1F1D44; --pine: #3CCB7F; --pine-tint: #0F2A1E; }
+html:not([data-theme]) body .lp .lp-nav { background: rgba(11, 16, 32, .86); -webkit-backdrop-filter: saturate(1.4) blur(12px); backdrop-filter: saturate(1.4) blur(12px); border-bottom: 1px solid rgba(255, 255, 255, .08); padding-top: 0; pointer-events: auto; }
+html:not([data-theme]) body .lp .lp-nav-in { height: 72px; width: auto; max-width: 1180px; padding: 0 var(--sp-side); border-radius: 0; background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; gap: 30px; }
+html:not([data-theme]) body .lp .lp-brand .wm { color: #fff; }
+html:not([data-theme]) body .lp .lp-links { margin: 0 auto 0 0; padding: 0; background: transparent; gap: 22px; }
+html:not([data-theme]) body .lp .lp-links a { position: relative; padding: 8px 2px; border-radius: 0; background: transparent; color: #98A2B3; box-shadow: none; }
+html:not([data-theme]) body .lp .lp-links a:hover { background: transparent; color: #fff; }
+html:not([data-theme]) body .lp .lp-links a.on { background: transparent; color: #fff; box-shadow: none; }
+html:not([data-theme]) body .lp .lp-links a.on::after { content: ''; position: absolute; left: 0; right: 0; bottom: -18px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, #818CF8, #38BDF8); }
+html:not([data-theme]) body .lp .lp-nav .btn.ghost,
+html:not([data-theme]) body .lp .lp-signin-xs { color: #fff; }
+html:not([data-theme]) body .lp .lp-nav-cta .btn.primary { background: #fff; color: #0B1020; box-shadow: none; border-radius: 10px; }
+html:not([data-theme]) body .lp .lp-burger { background: rgba(255, 255, 255, .06); color: #fff; border-color: rgba(255, 255, 255, .14); }
+html:not([data-theme]) body .lp .lp-menu { inset: 72px 0 0 0; max-height: none; border-radius: 0; box-shadow: none; background: #0B1020; }
+html:not([data-theme]) body .lp .lp-menu a { color: #F5F7FA; border-color: rgba(255, 255, 255, .08); }
+html:not([data-theme]) body .lp .lp-hero { background: radial-gradient(48% 70% at 88% 8%, rgba(124, 58, 237, .38), transparent 70%), radial-gradient(40% 60% at 0% 100%, rgba(56, 189, 248, .14), transparent 70%), #0B1020; }
+html:not([data-theme]) body .lp .lp-hero-h { color: #fff; }
+html:not([data-theme]) body .lp .lp-lines.a { stroke: rgba(129, 140, 248, .16); }
+html:not([data-theme]) body .lp .lp-lines.b { stroke: rgba(56, 189, 248, .10); }
+html:not([data-theme]) body .lp .lp-pill,
+html:not([data-theme]) body .lp .lp-step-time,
+html:not([data-theme]) body .lp .lp-map-info code { background: rgba(122, 115, 255, .16); color: #C7D2FE; }
+html:not([data-theme]) body .lp .lp-menu-ic,
+html:not([data-theme]) body .lp .kh-job-ic { background: rgba(122, 115, 255, .16); color: #A5B4FC; }
+html:not([data-theme]) body .lp .lp-pagehead { background: radial-gradient(55% 70% at 92% 0%, rgba(124, 58, 237, .30) 0%, transparent 70%), #0B1020; }
+html:not([data-theme]) body .lp .lp-burger,
+html:not([data-theme]) body .lp .lp-auto li,
+html:not([data-theme]) body .lp .lp-map-card,
+html:not([data-theme]) body .lp .lp-map-info,
+html:not([data-theme]) body .lp .lp-price,
+html:not([data-theme]) body .lp .lp-faq,
+html:not([data-theme]) body .lp .btn.lp-cta-ghost,
+html:not([data-theme]) body .lp .lp-for li,
+html:not([data-theme]) body .lp .lp-doc-part,
+html:not([data-theme]) body .lp .kh-jobs,
+html:not([data-theme]) body .lp .kh-explorer,
+html:not([data-theme]) body .lp .lp-contact-card,
+html:not([data-theme]) body .lp .lp-contact-side li,
+html:not([data-theme]) body .lp .lp-tour-nav button { background: #121933; border-color: rgba(255, 255, 255, .10); }
+html:not([data-theme]) body .lp .lp-foot { background: #080C19; border-top-color: rgba(255, 255, 255, .08); }
+html:not([data-theme]) body .lp .lp-cta-card { background: linear-gradient(135deg, #1A1F45, #121933); border-color: rgba(122, 115, 255, .30); }
+html:not([data-theme]) body .lp .lp-sticky { background: rgba(11, 16, 32, .94); border-top-color: rgba(255, 255, 255, .08); }
+html:not([data-theme]) body .lp .lp-tour-tab.on,
+html:not([data-theme]) body .lp .lp-tile:hover { background: rgba(122, 115, 255, .16); box-shadow: inset 0 0 0 1px rgba(122, 115, 255, .35); }
+html:not([data-theme]) body .lp .lp-tile { background: #121933; border-color: rgba(255, 255, 255, .12); color: #F5F7FA; }
+html:not([data-theme]) body .lp .kh-job,
+html:not([data-theme]) body .lp .kh-tab { color: #E4E7EC; }
+html:not([data-theme]) body .lp .kh-job:hover { background: #1A2142; }
+html:not([data-theme]) body .lp .kh-tabs { background: #0E1430; }
+html:not([data-theme]) body .lp .kh-tab.on { background: #1A2142; color: #fff; box-shadow: none; }
+html:not([data-theme]) body .lp .lp-faq summary::after { background: #1A2142; color: #C7D2FE; }
+html:not([data-theme]) body .lp .lp-flag { background: #7A73FF; }
+html:not([data-theme]) body .lp .lp-price.best { border-color: #7A73FF; }
+html:not([data-theme]) body .lp .btn.ghost { color: #F5F7FA; }
+html:not([data-theme]) body .lp .lp-go-note,
+html:not([data-theme]) body .lp .lp-lede { color: #A9B1C1; }
+html:not([data-theme]) body /* Pictures of the app stay light,
+html:not([data-theme]) body like real screenshots */
+.lp .kh-mock,
+html:not([data-theme]) body .lp .mac,
+html:not([data-theme]) body .lp .lp-step,
+html:not([data-theme]) body .lp .lp-zoom-scroll { --lp-ink: #101828; --lp-soft: #475467; --lp-faint: #667085; --lp-rule: #EAECF0; --lp-tint: #F7F8FC; --indigo: #4F46E5; color: #101828; }
+html:not([data-theme]) body .lp .kh-panel-copy h3 { color: #fff; }
+}
+
+/* Phones: the Menu button is a round icon so the header fits; "See every feature" readable on the purple panel. */
+@media (max-width: 480px) {
+  html body .lp .lp-burger > span { display: none; }
+  html body .lp .lp-burger { width: 44px; padding: 0; justify-content: center; flex: none; }
+  html body .lp .lp-nav-in { gap: 6px; }
+}
+html body .lp .lp-how .lp-see-all .lp-arrow { color: #fff; font-weight: 700; }
