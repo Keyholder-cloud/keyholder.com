@@ -362,7 +362,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if ((await pg.locator('#hero-slider .kh-slide').count()) !== 3) throw new Error('slides');
       await pg.locator('#hero-slider .kh-dots button').nth(1).click(); await pg.waitForSelector('#hero-slider .kh-dots button.on[aria-label="Rent and receipts"]');
       const jobs = (await pg.locator('.lp-hero .kh-job').allTextContents()).join(' | '); if (jobs !== 'Track expenses | Send receipts | Screen tenants | Write notices | File taxes') throw new Error('jobs: ' + jobs);
-      await pg.locator('.lp-hero .kh-job', { hasText: 'File taxes' }).click(); await pg.waitForSelector('#kh-tab-taxes[aria-selected="true"]'); await pg.waitForSelector('h1:has-text("Everything a landlord does")');
+      await pg.locator('.lp-hero .kh-job', { hasText: 'File taxes' }).click(); await pg.waitForSelector('h1:has-text("Everything a landlord does")'); await pg.waitForSelector('.lp-tour-tab[aria-selected="true"] >> text=Tax summary');
       await pg.goto(BASE + '#/welcome');
     });
     // The phone menu must really fill the screen (it once collapsed to a 40px strip that a test could still click into).
@@ -605,10 +605,10 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     pg.on('pageerror', (e) => errsG.push(`G ${e.message}`));
     const tour = async () => { await pg.goto(BASE + '#/welcome/features'); await pg.locator('#tour').scrollIntoViewIfNeeded(); await pg.waitForTimeout(500); };
     const active = () => pg.evaluate(() => { const on = document.querySelector('.mac-screen img.on'); const sel = document.querySelector('.lp-tour-tab[aria-selected="true"]'); return { alt: on?.getAttribute('alt') || '', loaded: !!on && on.complete && on.naturalWidth > 0, tab: sel?.textContent || '', count: document.querySelector('.lp-tour-count')?.textContent || '' }; });
-    await step(tag, 'G1 Features: a tabbed feature explorer (5 jobs, arrow keys move); Overview: How it works in 3 steps on the blue-purple panel and who it is for; About: the questions', async () => {
-      await pg.goto(BASE + '#/welcome/features'); await pg.waitForSelector('.kh-tab');
-      if ((await pg.locator('.kh-tab').count()) !== 5) throw new Error('explorer tabs');
-      await pg.locator('#kh-tab-expenses').focus(); await pg.keyboard.press('ArrowRight'); await pg.waitForSelector('#kh-tab-taxes[aria-selected="true"]');
+    await step(tag, 'G1 Features: the five jobs open their screen in Take a closer look (no separate tabbed section); Overview: How it works in 3 steps on the blue-purple panel and who it is for; About: the questions', async () => {
+      await pg.goto(BASE + '#/welcome/features'); await pg.waitForSelector('#tour');
+      if (await pg.locator('.kh-tab, #explore').count()) throw new Error('the tabbed section is still there');
+      await pg.locator('.kh-job', { hasText: 'Write notices' }).click(); await pg.waitForSelector('.lp-tour-tab[aria-selected="true"] >> text=Late-rent notices');
       await pg.goto(BASE + '#/welcome'); await pg.waitForSelector('.lp-hero-h');
       const panel = await pg.locator('.lp-how-panel').evaluate((el) => getComputedStyle(el).backgroundImage); if (!/gradient/.test(panel)) throw new Error('How it works has no blue-purple background');
       if ((await pg.locator('.lp-how .lp-step').count()) !== 3) throw new Error('steps');
