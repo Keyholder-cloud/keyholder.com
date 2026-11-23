@@ -4,7 +4,7 @@ import type { AppState } from '../data/types';
 import { useStore } from '../data/store';
 import { Icon } from './Icon';
 import { currentLeases, leaseLedger, picture, portfolio } from '../lib/finance';
-import { addDays, addMonths, daysBetween, fmtPeriod, periodOf } from '../lib/dates';
+import { addMonths, daysBetween, fmtPeriod, periodOf } from '../lib/dates';
 import { fmt0 } from '../lib/money';
 import { allJourneyCards, isHidden, prefKey } from '../lib/journey';
 import { trayItems } from '../lib/tray';
@@ -100,13 +100,13 @@ export function YearToDate() {
   if (!y.props) return null;
   return (
     <section className="side-card" aria-label="Year to date" id="ytd">
-      <h2 className="side-title">{today.slice(0, 4)} so far</h2>
+      <h2 className="side-title">Portfolio summary</h2>
       <p className="side-sub">Overview</p>
       <div className="ytd-over">
         <div><span>Net worth</span><strong id="ytd-net">{y.value ? fmt0(y.net) : '—'}</strong></div>
         <div><span>Units rented</span><strong>{y.rented} of {y.units}</strong></div>
       </div>
-      <p className="side-sub">Cash flow</p>
+      <p className="side-sub" id="ytd-cash">Cash flow, {today.slice(0, 4)} so far</p>
       <div className="review-grid">
         <div><span>Rent in</span><strong>{fmt0(y.p.rentCollected)}</strong></div>
         <div title="Costs, improvements and mortgage payments: the same as Cash flow"><span>Money out</span><strong>{fmt0(moneyOut(y.p))}</strong></div>
@@ -117,30 +117,6 @@ export function YearToDate() {
   );
 }
 
-/** Last month at a glance, compared with the month before: a reason to come back each month. */
-export function MonthReview() {
-  const { state, today } = useStore();
-  const r = useMemo(() => {
-    const first = `${periodOf(today)}-01`;
-    const last1 = addDays(first, -1), from1 = `${periodOf(last1)}-01`;
-    const last2 = addDays(from1, -1), from2 = `${periodOf(last2)}-01`;
-    return { p: picture(state, from1, last1), prev: picture(state, from2, last2), label: fmtPeriod(periodOf(last1)) };
-  }, [state, today]);
-  if (!r.p.rentExpected && !r.p.opex) return null;
-  const diff = r.p.kept - r.prev.kept;
-  return (
-    <section className="side-card" aria-label={`${r.label} in review`}>
-      <h2 className="side-title">{r.label.split(' ')[0]} in review</h2>
-      <div className="review-grid">
-        <div><span>Rent in</span><strong>{fmt0(r.p.rentCollected)}</strong></div>
-        <div title="Costs, improvements and mortgage payments: the same as Cash flow"><span>Money out</span><strong>{fmt0(moneyOut(r.p))}</strong></div>
-        <div className={`kept${r.p.kept < 0 ? ' neg' : ''}`}><span>You kept</span><strong>{fmt0(r.p.kept)}</strong></div>
-      </div>
-      {r.prev.rentExpected > 0 && <p className={`review-diff ${diff >= 0 ? 'up' : 'down'}`}><Icon name="trend" size={16} />{diff >= 0 ? `${fmt0(diff)} more than the month before` : `${fmt0(-diff)} less than the month before`}</p>}
-      <Link className="side-link" to="/portfolio/cash-flow">See the full picture<Icon name="next" size={16} /></Link>
-    </section>
-  );
-}
 
 /** Small milestones that build the habit. */
 export function Milestones() {
