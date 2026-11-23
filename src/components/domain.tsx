@@ -1,11 +1,11 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { receiptData } from '../lib/receiptData';
 import type { AppState, Receipt } from '../data/types';
 import { useStore } from '../data/store';
-import { addPeriods, fmtDate, fmtMonthShort, fmtPeriod, periodOf } from '../lib/dates';
+import { addPeriods, fmtMonthShort, fmtPeriod, periodOf } from '../lib/dates';
 import { byRoom, leaseLedger, type ChargeState } from '../lib/finance';
-import { fmt } from '../lib/money';
 import { Icon } from './Icon';
-import { Stamp } from './ui';
 import { Link } from 'react-router-dom';
 import { BANK_CHECK_HOURS } from '../lib/jurisdiction';
 import { banksOn, paidPlan, serverMode } from '../data/api';
@@ -103,39 +103,55 @@ export function Letterhead({ state }: { state: AppState }) {
   );
 }
 
+/**
+ * A rent receipt, exactly as the tenant gets it: the same details and the same layout as the PDF attached to the
+ * email (src/lib/receiptPdf.ts), with a button to download that very PDF.
+ */
 export function ReceiptLetter({ receipt }: { receipt: Receipt }) {
   const { state, today } = useStore();
-  const pay = state.payments.find((p) => p.id === receipt.paymentId);
-  if (!pay) return null;
-  const lease = state.leases.find((l) => l.id === pay.leaseId)!;
-  const tenant = state.tenants.find((t) => t.id === lease.tenantId)!;
-  const unit = state.units.find((u) => u.id === lease.unitId)!;
-  const prop = state.properties.find((p) => p.id === unit.propertyId)!;
-  const line = leaseLedger(lease, state.payments, today).find((l) => l.period === pay.period);
-  const balance = line ? line.balance : 0;
+  const [busy, setBusy] = useState(false);
+  const d = receiptData(state, receipt, (receipt.sentAt ?? today).slice(0, 10));
+  if (!d) return null;
+  const day = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
+  const old = receipt.status === 'superseded';
+  const download = async () => {
+    setBusy(true);
+    try {
+      const { receiptPdf } = await import('../lib/receiptPdf');
+      const url = URL.createObjectURL(new Blob([(await receiptPdf(d)) as Uint8Array<ArrayBuffer>], { type: 'application/pdf' }));
+      const a = document.createElement('a'); a.href = url; a.download = `Rent receipt ${d.number} - ${d.period}.pdf`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } finally { setBusy(false); }
+  };
+  const rows: [string, string][] = [['Receipt number', String(d.number)], ['Rent period', d.period], ['Date paid', day(d.paidOn)], ['Paid by', d.method], ['Received from', d.tenant], ['Rental', d.rental]];
+  if (d.note) rows.push(['Note', d.note]);
   return (
-    <div className="letter print-me">
-      <Letterhead state={state} />
-      <div className="spread" style={{ alignItems: 'flex-start' }}>
-        <div>
-          <div className="serif" style={{ fontSize: 'var(--t-28)' }}>Rent receipt</div>
-          <div className="mono tiny">No. {receipt.number}{receipt.supersedes ? ` · replaces No. ${state.receipts.find((r) => r.id === receipt.supersedes)?.number}` : ''}</div>
+    <>
+      <div className="rcpt print-me" id="receipt-view">
+        <div className="rcpt-head">
+          <div><strong>RENT RECEIPT</strong><span>Official receipt for rent received</span></div>
+          <div className="r"><strong>No. {d.number}</strong><span>Issued {day(d.issued)}</span></div>
         </div>
-        <Stamp kind={receipt.status === 'superseded' ? 'superseded' : 'paid'}>{receipt.status === 'superseded' ? 'Superseded' : 'Paid'}</Stamp>
+        <div className="rcpt-body">
+          <div className="rcpt-parties">
+            <div><span className="rcpt-k">FROM (LANDLORD)</span><b>{d.landlord.name}</b>{d.landlord.email && <span className="soft">{d.landlord.email}</span>}{d.landlord.phone && <span className="soft">{d.landlord.phone}</span>}</div>
+            <div><span className="rcpt-k">RECEIVED FROM (TENANT)</span><b>{d.tenant}</b></div>
+          </div>
+          <span className="rcpt-k">RENTAL</span><div>{d.rental}</div>
+          <div className="rcpt-amount">
+            <div><span className="rcpt-k">AMOUNT RECEIVED</span><strong>{d.amount}</strong></div>
+            <div className="r"><b>Rent for {d.period}</b><span className={d.balance ? 'owing' : 'full'}>{d.balance ? `Still owing for the month: ${d.balance}` : 'Paid in full for the month'}</span></div>
+          </div>
+          <table className="rcpt-rows"><tbody>{rows.map(([k, v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}</tbody></table>
+          <div className="rcpt-sign">
+            <div><span>Received with thanks,</span><b>{d.landlord.name}</b><span className="rcpt-k">Landlord</span></div>
+            <span className={`rcpt-stamp${old ? ' old' : ''}`}>{old ? 'SUPERSEDED' : 'PAID'}</span>
+          </div>
+          <p className="rcpt-foot">Keep this receipt for your records. It can be used as proof of rent paid (for example, for a tax credit or a new rental).<br />Issued for {d.landlord.name} by Keyholder · keyholder.cloud</p>
+        </div>
       </div>
-      <table>
-        <tbody>
-          <tr><td>Received from</td><td>{tenant.names.join(' & ')}</td></tr>
-          <tr><td>Rental unit</td><td>Unit {unit.label}, {prop.address}, {prop.city}</td></tr>
-          <tr><td>For the period</td><td>{fmtPeriod(pay.period)}</td></tr>
-          <tr><td>Amount</td><td>{fmt(pay.amount)}</td></tr>
-          <tr><td>Date received</td><td>{fmtDate(pay.date)}</td></tr>
-          <tr><td>Method</td><td>{methodLabel(pay.method)}</td></tr>
-          <tr><td>Balance after this payment</td><td>{balance <= 0 ? (balance < 0 ? `${fmt(-balance)} credit` : 'Paid in full') : `${fmt(balance)} owing`}</td></tr>
-        </tbody>
-      </table>
-      <p className="tiny" style={{ color: '#55605B' }}>Received with thanks by {state.profile.name || 'the landlord'}.</p>
-    </div>
+      <div className="btn-row" style={{ marginTop: 12 }}><button className="btn" id="receipt-pdf" onClick={download} disabled={busy}><Icon name="download" size={16} />{busy ? 'Making the PDF…' : 'Download PDF'}</button></div>
+    </>
   );
 }
 

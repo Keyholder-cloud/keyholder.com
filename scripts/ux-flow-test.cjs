@@ -325,7 +325,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       if (await pg.locator('.page > .page-head >> text=Sign out').count()) throw new Error('a big Sign out button is still by the title');
       // Settings in tabs: Profile first (with two-step sign-in), then Preferences (Appearance, Rent tracking).
       const tabs = (await pg.locator('.settings-tabs .tab').allTextContents()).join(' | ');
-      if (tabs !== 'Profile | Preferences | Reminders | Data | Billing') throw new Error('Settings tabs: ' + tabs);
+      if (tabs !== 'Profile | Preferences | Billing') throw new Error('Settings tabs: ' + tabs);
       await pg.waitForSelector('#profile #profile-form');
       await pg.click('#st-tab-preferences'); await pg.waitForSelector('#preferences .pref-t'); const prefs = (await pg.locator('#preferences .pref-t').allTextContents()).join(' | ');
       if (prefs !== 'Appearance | Two-step sign-in | Rent tracking') throw new Error('Preferences: ' + prefs);
@@ -354,10 +354,10 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.goto(BASE);
       if (await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) throw new Error('sideways scroll');
     });
-    await step(tag, 'D2 Hero: the headline alone (12 words or fewer, no subhead), Get started + How it works, a slider of 3 app pictures (no house photo), and the five jobs opening the Features page', async () => {
+    await step(tag, 'D2 Hero: the headline (12 words or fewer) and the five jobs in one line, Get started + How it works, a slider of 3 app pictures (no house photo), and the five jobs opening the Features page', async () => {
       await pg.goto(BASE + '#/welcome'); await pg.waitForSelector('.lp-hero-h');
       const h = (await pg.locator('.lp-hero-h').textContent()).trim(); if (h.split(/\s+/).length > 12) throw new Error('headline too long: ' + h);
-      if (await pg.locator('.lp-hero-lede').count()) throw new Error('subhead still under the headline');
+      const lede = (await pg.locator('.lp-hero-lede').textContent()).trim(); if (!/^Track every expense/.test(lede) || /toolkit|manual effort/i.test(lede)) throw new Error('subhead: ' + lede);
       await pg.waitForSelector('.lp-hero .lp-how-link'); if (await pg.locator('.lp-hero .lp-photo img').count()) throw new Error('house photo in the hero');
       if ((await pg.locator('#hero-slider .kh-slide').count()) !== 3) throw new Error('slides');
       await pg.locator('#hero-slider .kh-dots button').nth(1).click(); await pg.waitForSelector('#hero-slider .kh-dots button.on[aria-label="Rent and receipts"]');
@@ -888,11 +888,19 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'expenses'); await pg.click('.add-expense'); await pg.waitForSelector('#ex-amt'); await pg.waitForSelector('#ex-photo');
       await pg.keyboard.press('Escape');
     });
-    await step(tag, 'H26 Settings in tabs (Profile, Preferences, Reminders, Data, Billing); old links open the right tab; Billing shows the plan and payment', async () => {
-      await go(pg, 'settings'); if ((await pg.locator('.settings-tabs .tab').count()) !== 5) throw new Error('tabs');
+    await step(tag, 'H26 Settings in 3 tabs (Profile, Preferences with Reminders and Data, Billing); old links open the right tab; Billing shows the plan and payment', async () => {
+      await go(pg, 'settings'); if ((await pg.locator('.settings-tabs .tab').count()) !== 3) throw new Error('tabs');
+      await go(pg, 'settings/data'); await pg.waitForSelector('#st-tab-preferences.on'); await pg.waitForSelector('#data'); await pg.waitForSelector('#reminders-receipts');
       await go(pg, 'settings#rent-tracking'); await pg.waitForSelector('#st-tab-preferences.on'); await pg.waitForSelector('#rent-tracking');
       await pg.click('#st-tab-billing'); await pg.waitForSelector('#billing-plan >> text=Your plan'); await pg.waitForSelector('#billing-pay >> text=No card on file');
-      await go(pg, 'today'); await pg.waitForSelector('#ytd >> text=Net worth'); if (await pg.$('#ytd-worth')) throw new Error('worth/owed line should be gone');
+      await go(pg, 'today'); await pg.waitForSelector('#ytd >> text=Net worth'); if ((await pg.locator('#ytd .ytd-over > div').count()) !== 2 || (await pg.locator('#ytd .ytd-over >> text=Properties').count())) throw new Error('overview should be Net worth and Units rented only'); if (await pg.$('#ytd-worth')) throw new Error('worth/owed line should be gone');
+    });
+    await step(tag, 'H26b Income → View shows the receipt as the tenant gets it (the PDF layout), and Download PDF gives that PDF', async () => {
+      await go(pg, 'income'); await pg.locator('table.ledger button', { hasText: 'View' }).first().click();
+      await pg.waitForSelector('#receipt-view .rcpt-head >> text=RENT RECEIPT'); await pg.waitForSelector('#receipt-view .rcpt-amount >> text=AMOUNT RECEIVED'); await pg.waitForSelector('#receipt-view .rcpt-stamp');
+      const [dl] = await Promise.all([pg.waitForEvent('download'), pg.click('#receipt-pdf')]);
+      const head = require('fs').readFileSync(await dl.path()).subarray(0, 5).toString(); if (head !== '%PDF-') throw new Error('not a PDF: ' + head);
+      await pg.keyboard.press('Escape');
     });
     await step(tag, 'H27 Resend a rent receipt from Income and from a tenant\'s messages; long lists show 8 lines, then Show more', async () => {
       await go(pg, 'income'); await pg.waitForSelector('.resend-receipt');
