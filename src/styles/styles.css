@@ -901,8 +901,8 @@ a.chip { text-decoration: none; }
 .billing-features svg { color: #039855; flex: none; }
 .ytd-under { margin: -4px 0 10px; }
 /* "You kept": green when positive, light red when the costs were more than the rent. */
-.review-grid .kept.neg { background: #FEE4E2; }
-.review-grid .kept.neg strong { color: #D92D20; }
+.review-grid .kept.neg { background: var(--rust-tint); }
+.review-grid .kept.neg strong, .review-grid .kept.neg span { color: var(--rust); }
 /* Long lists: "Show more" under the first 8 lines. */
 .more-row { display: flex; justify-content: center; padding: 8px 0 4px; }
 .resend-receipt { white-space: nowrap; }
