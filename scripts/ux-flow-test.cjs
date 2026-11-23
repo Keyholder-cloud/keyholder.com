@@ -893,7 +893,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'settings/data'); await pg.waitForSelector('#st-tab-preferences.on'); await pg.waitForSelector('#data'); await pg.waitForSelector('#reminders-receipts');
       await go(pg, 'settings#rent-tracking'); await pg.waitForSelector('#st-tab-preferences.on'); await pg.waitForSelector('#rent-tracking');
       await pg.click('#st-tab-billing'); await pg.waitForSelector('#billing-plan >> text=Your plan'); await pg.waitForSelector('#billing-pay >> text=No card on file');
-      await go(pg, 'today'); await pg.waitForSelector('#ytd >> text=Net worth'); if (await pg.$('#ytd-worth')) throw new Error('worth/owed line should be gone');
+      await go(pg, 'today'); await pg.waitForSelector('#ytd >> text=Net worth'); if ((await pg.locator('#ytd .ytd-over > div').count()) !== 2 || (await pg.locator('#ytd .ytd-over >> text=Properties').count())) throw new Error('overview should be Net worth and Units rented only'); if (await pg.$('#ytd-worth')) throw new Error('worth/owed line should be gone');
     });
     await step(tag, 'H26b Income → View shows the receipt as the tenant gets it (the PDF layout), and Download PDF gives that PDF', async () => {
       await go(pg, 'income'); await pg.locator('table.ledger button', { hasText: 'View' }).first().click();

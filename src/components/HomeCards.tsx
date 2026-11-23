@@ -104,7 +104,6 @@ export function YearToDate() {
       <p className="side-sub">Overview</p>
       <div className="ytd-over">
         <div><span>Net worth</span><strong id="ytd-net">{y.value ? fmt0(y.net) : '—'}</strong></div>
-        <div><span>Properties</span><strong>{y.props}</strong></div>
         <div><span>Units rented</span><strong>{y.rented} of {y.units}</strong></div>
       </div>
       <p className="side-sub">Cash flow</p>

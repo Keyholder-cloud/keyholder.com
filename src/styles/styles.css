@@ -868,10 +868,10 @@ a.chip { text-decoration: none; }
 .all-in-ic { display: inline-grid; place-items: center; width: 1.15em; height: 1.15em; border-radius: 8px; background: #D1FADF; color: #039855; vertical-align: -0.12em; margin-right: 0.25em; }
 .all-in-ic svg { width: 0.7em; height: 0.7em; }
 /* Home: year to date. */
-.ytd-over { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 10px; }
-.ytd-over div { display: grid; gap: 2px; padding: 12px 10px; border-radius: 14px; background: var(--paper); min-width: 0; }
+.ytd-over { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 0 0 10px; }
+.ytd-over div { display: grid; gap: 4px; padding: 14px 14px; border-radius: 14px; background: var(--paper); min-width: 0; }
 .ytd-over span { font-size: 12px; font-weight: 600; color: var(--ink-soft, #667085); }
-.ytd-over strong { font-family: var(--font-display); font-size: 18px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ytd-over strong { font-family: var(--font-display); font-size: 24px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .side-sub { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft, #667085); margin: 4px 0 6px; }
 /* The second step: the other ways as light text links, Back as a quiet link at the start. */
 .two-step-form .ts-alt { justify-self: center; display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 6px 8px; color: var(--ink-blue, #4F46E5); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; }
