@@ -805,3 +805,27 @@ a.unit-who:hover strong, .unit-who.as-link:hover strong { text-decoration: under
 .rcpt-stamp.old { border-color: #98A2B3; color: #98A2B3; font-size: 16px; }
 .rcpt-foot { margin: 26px 0 0; font-size: 11px; color: #667085; line-height: 1.5; }
 @media (max-width: 560px) { .rcpt-head, .rcpt-body { padding-left: 16px; padding-right: 16px; } .rcpt-parties { grid-template-columns: 1fr; } .rcpt-amount { flex-direction: column; align-items: flex-start; } .rcpt-amount .r { text-align: left; } .rcpt-amount strong { font-size: 26px; } .rcpt-sign b { min-width: 160px; } }
+
+/* Expenses on phones: each expense is a compact two-line card that fits the screen (no sideways scroll). */
+@media (max-width: 640px) {
+  .exp-table, .exp-table tbody { display: block; width: 100%; }
+  .exp-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "what amt" "date tags"; column-gap: 10px; row-gap: 2px; padding: 10px 12px; border-bottom: 1px solid var(--rule); }
+  .exp-table tr:last-child { border-bottom: 0; }
+  .exp-table td { display: block; padding: 0; border: 0; min-width: 0; }
+  .exp-table .ex-thumb { display: none; }
+  .exp-table .ex-what { grid-area: what; }
+  .exp-table .ex-what .exp-cell { gap: 10px; align-items: center; }
+  .exp-table .ex-what strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .exp-table .ex-what .tiny { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .exp-table .ex-amt { grid-area: amt; align-self: center; text-align: right; white-space: nowrap; font-weight: 600; }
+  .exp-table .date { grid-area: date; font-size: 12px; color: var(--ink-soft); padding-left: 42px; }
+  .exp-table .ex-tags { grid-area: tags; justify-self: end; }
+  .exp-table .ex-tags .pill { font-size: 11px; padding: 1px 7px; }
+  .sheet.table-scroll:has(> .exp-table) { overflow-x: visible; }
+}
+@media (max-width: 640px) {
+  .exp-table .ex-what { overflow: hidden; }
+  .exp-table .ex-what .exp-cell { display: flex; min-width: 0; }
+  .exp-table .ex-what .exp-cell > span:last-child { min-width: 0; overflow: hidden; }
+  .exp-table .ex-amt .tiny { font-weight: 400; font-size: 11px; }
+}

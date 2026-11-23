@@ -169,17 +169,17 @@ export function Expenses() {
           {[...months.entries()].map(([m, es]) => (
             <section className="section" key={m}>
               <h2 className="section-title">{fmtMonthShort(m)} {m.slice(0, 4)} <span className="mono">{fmt(es.reduce((a, e) => a + e.amount, 0))}</span></h2>
-              <div className="sheet tight table-scroll"><table className="ledger">
+              <div className="sheet tight table-scroll"><table className="ledger exp-table">
                 <tbody>{es.map((e) => {
                   const p = state.properties.find((x) => x.id === e.propertyId);
                   const portion = rentalPortion(e, p?.rentalSharePct ?? 100);
                   return (
                     <tr key={e.id} className="click" onClick={() => setForm(e)} tabIndex={0} onKeyDown={(k) => k.key === 'Enter' && setForm(e)}>
                       <td className="date">{fmtDate(e.date)}</td>
-                      <td style={{ width: 48 }}>{e.receiptImage ? <img src={e.receiptImage} alt="" className="thumb" /> : e.cashNoReceipt ? <span className="tiny soft" title="Paid in cash, no receipt: this entry is the record">cash</span> : <span className="no-photo" title="No receipt photo yet" aria-label="No receipt photo"><Icon name="camera" size={14} /></span>}</td>
-                      <td><span className="exp-cell"><CategoryIcon id={e.category} /><span><strong>{e.vendor || 'Unknown vendor'}</strong><span className="tiny soft" style={{ display: 'block' }}>{category(e.category).label} · {p?.nickname}{e.unitId ? ` · Unit ${state.units.find((u) => u.id === e.unitId)?.label}` : ''}{e.note ? ` · ${e.note}` : ''}</span></span></span></td>
-                      <td>{e.kind === 'capital' && <span className="pill" style={{ borderColor: 'var(--brass)', color: 'var(--brass)' }}>Improvement</span>}{e.scope === 'personal' && <span className="pill">Personal</span>}</td>
-                      <td className="num">{fmt(e.amount)}{portion !== e.amount && <div className="tiny soft">{fmt(portion)} rental</div>}</td>
+                      <td className="ex-thumb" style={{ width: 48 }}>{e.receiptImage ? <img src={e.receiptImage} alt="" className="thumb" /> : e.cashNoReceipt ? <span className="tiny soft" title="Paid in cash, no receipt: this entry is the record">cash</span> : <span className="no-photo" title="No receipt photo yet" aria-label="No receipt photo"><Icon name="camera" size={14} /></span>}</td>
+                      <td className="ex-what"><span className="exp-cell"><CategoryIcon id={e.category} /><span><strong>{e.vendor || 'Unknown vendor'}</strong><span className="tiny soft" style={{ display: 'block' }}>{category(e.category).label} · {p?.nickname}{e.unitId ? ` · Unit ${state.units.find((u) => u.id === e.unitId)?.label}` : ''}{e.note ? ` · ${e.note}` : ''}</span></span></span></td>
+                      <td className="ex-tags">{e.kind === 'capital' && <span className="pill" style={{ borderColor: 'var(--brass)', color: 'var(--brass)' }}>Improvement</span>}{e.scope === 'personal' && <span className="pill">Personal</span>}</td>
+                      <td className="num ex-amt">{fmt(e.amount)}{portion !== e.amount && <div className="tiny soft">{fmt(portion)} rental</div>}</td>
                     </tr>
                   );
                 })}</tbody>
