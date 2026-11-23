@@ -64,9 +64,11 @@ export function paidOn(line: LedgerLine): ISODate | undefined {
 export function roomsPaid(state: AppState, unit: Unit, today: ISODate): { rented: number; charged: number; paid: number; late: number; startsOn?: ISODate } {
   const now = periodOf(today);
   const leases = activeLeases(state, unit.id, today);
-  const lines = leases.filter((l) => l.start <= today)
-    .map((l) => leaseLedger(l, state.payments, today).find((x) => x.period === now)).filter((x): x is LedgerLine => !!x);
-  const later = leases.filter((l) => l.start > today).map((l) => l.start).sort();
+  // A room starting in a later month counts once its first month is paid ahead (so "3 of 3 paid" before Dec 1).
+  const firstLine = (l: Lease) => leaseLedger(l, state.payments, today, periodOf(l.start)).find((x) => x.period === periodOf(l.start));
+  const lines = leases.map((l) => (l.start <= today ? leaseLedger(l, state.payments, today).find((x) => x.period === now) : periodOf(l.start) > now && (firstLine(l)?.paid ?? 0) > 0 ? firstLine(l) : undefined))
+    .filter((x): x is LedgerLine => !!x);
+  const later = leases.filter((l) => l.start > today && !((firstLine(l)?.paid ?? 0) > 0)).map((l) => l.start).sort();
   return { rented: leases.length, charged: lines.length, paid: lines.filter((x) => x.state === 'paid').length, late: lines.filter((x) => x.daysLate > 0 && x.paid < x.charge).length, ...(later.length ? { startsOn: later[0] } : {}) };
 }
 

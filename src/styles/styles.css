@@ -901,8 +901,8 @@ a.chip { text-decoration: none; }
 .billing-features svg { color: #039855; flex: none; }
 .ytd-under { margin: -4px 0 10px; }
 /* "You kept": green when positive, light red when the costs were more than the rent. */
-.review-grid .kept.neg { background: #FEE4E2; }
-.review-grid .kept.neg strong { color: #D92D20; }
+.review-grid .kept.neg { background: var(--rust-tint); }
+.review-grid .kept.neg strong, .review-grid .kept.neg span { color: var(--rust); }
 /* Long lists: "Show more" under the first 8 lines. */
 .more-row { display: flex; justify-content: center; padding: 8px 0 4px; }
 .resend-receipt { white-space: nowrap; }
@@ -928,3 +928,26 @@ html body .score-ring[style*="--ring"] { background: conic-gradient(from 0deg, #
   table.ledger.stack td.st-actions { grid-column: 1 / -1; }
   table.ledger.stack td.st-actions .btn { min-height: 40px; }
 }
+
+/* Phones (Rentals, Tenants): the status and its button share one line: status left, button and ⋯ right. */
+@media (max-width: 640px) {
+  html body .unit-row { grid-template-columns: max-content minmax(0, 1fr) auto; row-gap: 8px; }
+  html body .unit-row .unit-who { grid-column: 2 / -1; }
+  html body .unit-row .unit-state { grid-column: 2; align-self: center; min-width: 0; }
+  html body .unit-row .unit-state:empty + .row-act { grid-column: 2 / -1; }
+  html body .unit-row .row-act { grid-column: 3; justify-self: end; width: auto; }
+  html body .unit-row .row-act > .btn { flex: none; min-height: 40px; padding: 0 14px; font-size: 14px; }
+  html body .unit-row.room-row { grid-template-columns: 20px minmax(0, 1fr) auto; }
+  html body .unit-row .unit-state .pill-btn, html body .unit-row .unit-state .status { white-space: nowrap; }
+}
+@media (max-width: 640px) {
+  html body .unit-row .unit-state { overflow: hidden; }
+  html body .unit-row .unit-state > * { max-width: 100%; }
+  html body .unit-row .unit-state .pill-btn, html body .unit-row .unit-state .status { font-size: 12px; padding: 3px 9px; min-height: 0; overflow: hidden; text-overflow: ellipsis; display: inline-block; max-width: 100%; }
+  html body .unit-row .unit-state .pill-btn svg, html body .unit-row .unit-state .status svg { width: 12px; height: 12px; vertical-align: -2px; }
+  html body .unit-row .row-act > .btn { min-height: 36px; padding: 0 12px; font-size: 13.5px; }
+  /* Two buttons (Find a tenant + Add tenant): their own line, as before. */
+  html body .unit-row:has(.row-act > .btn + .btn) .row-act { grid-column: 1 / -1; justify-self: stretch; }
+  html body .unit-row:has(.row-act > .btn + .btn) .row-act > .btn { flex: 1; }
+}
+@media (max-width: 640px) { html body .unit-row:not(.room-row) .unit-state { grid-column: 1 / 3; } }

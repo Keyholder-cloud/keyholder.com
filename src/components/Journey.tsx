@@ -3,7 +3,7 @@ import { Avatar } from './Art';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Lease, Unit } from '../data/types';
-import { currentLine, useStore } from '../data/store';
+import { currentLine, receiptToSend, useStore } from '../data/store';
 import { addDays, addMonths, fmtDay, fmtPeriod, periodOf } from '../lib/dates';
 import { activeLease, byRoom, leasePlace, openRooms, paidOn, roomsLine, roomsPaid, roomsPill } from '../lib/finance';
 import { allJourneyCards, isHidden, journeyLeases, leaseStep, openStep, prefKey, propertySteps, unitStep, type JourneyCard } from '../lib/journey';
@@ -14,7 +14,7 @@ import { fmt } from '../lib/money';
 import { bankToSort } from '../lib/bankrules';
 import { FormWizard } from './FormWizard';
 import { LevelUpForm, ScoreRing } from './levels';
-import { PaymentForm } from './forms';
+import { MarkRentPaid } from './forms';
 import { Icon } from './Icon';
 import { FloatMenu } from './FloatMenu';
 import { MatchDrawer } from '../screens/Tray';
@@ -90,6 +90,11 @@ function statusFor(state: ReturnType<typeof useStore>['state'], lease: Lease | u
     if (c?.step.kind === 'send-form') return { label: 'Empty · listed', tone: 'vacant' };
     return { label: 'Empty', tone: 'vacant' };
   }
+  // Paid (this month, or the first month paid ahead): say so, whatever the next step is.
+  const paidLine = currentLine(state, lease, today)!;
+  // "Rent paid" once the receipt has gone out; until then the receipt is the thing to do.
+  if (paidLine.state === 'paid' && receiptToSend(state, paidLine)) return { label: 'Receipt to send', tone: 'due' };
+  if (paidLine.state === 'paid') { const d = paidOn(paidLine); return { label: d ? `Rent paid · ${fmtDay(d)}` : 'Rent paid', tone: 'paid' }; }
   if (c?.stage === 'lease' || c?.stage === 'moved-in') return { label: 'Moving in', tone: 'due' };
   if (c?.stage === 'moving-out') return { label: 'Moving out', tone: 'due' };
   if (c?.step.kind === 'confirm-payment') return { label: 'Rent to confirm', tone: 'due' };
@@ -122,6 +127,8 @@ function UnitLine({ unit }: { unit: Unit }) {
   // Rooms fold under their unit (closed at first, so Home stays short); the arrow opens them.
   const [open, setOpen] = useState(false);
   const rooms = running.length + (free.length > 0 ? 1 : 0);
+  // Receipts waiting in the folded rooms: say so on the unit's line, so they are not missed.
+  const toSend = state.messages.filter((m) => m.kind === 'receipt' && m.status === 'draft' && running.some((l) => l.id === m.leaseId)).length;
   return (
     <>
       <li className={`rent-row unit-head${sum.late ? ' late' : ''}${open ? ' open' : ''}`}>
@@ -131,7 +138,8 @@ function UnitLine({ unit }: { unit: Unit }) {
         </Link>
         <StatusPill tone={pill.tone} meaning={sum.rented ? "Each room's rent is tracked on its own row underneath." : undefined}>{pill.tone === 'paid' && <Icon name="check" size={16} />}{pill.label}</StatusPill>
         <span className="row-act">
-          {free.length > 0 && <Link className="btn add-tenant-quick" id={`home-add-${unit.id}`} to={`/rent/property/${unit.propertyId}/add-tenant?unit=${unit.id}`}><Icon name="plus" size={16} />Add tenant</Link>}
+          {!open && toSend > 0 && <button type="button" className="btn primary rooms-send" id={`rooms-send-${unit.id}`} onClick={() => setOpen(true)}><Icon name="send" size={15} />{toSend === 1 ? '1 receipt to send' : `${toSend} receipts to send`}</button>}
+          {free.length > 0 && (open || !toSend) && <Link className="btn add-tenant-quick" id={`home-add-${unit.id}`} to={`/rent/property/${unit.propertyId}/add-tenant?unit=${unit.id}`}><Icon name="plus" size={16} />Add tenant</Link>}
           <button type="button" className="rooms-toggle" id={`rooms-${unit.id}`} aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} the ${rooms} rooms of Unit ${unit.label}`} title={open ? 'Hide the rooms' : 'Show the rooms'} onClick={() => setOpen((x) => !x)}><Icon name="next" size={16} /></button>
         </span>
       </li>
@@ -156,9 +164,10 @@ function RentLine({ unit, lease, card, free, room }: { unit: Unit; lease?: Lease
   if (!visible && lease && line) {
     if (line.state === 'late' || (line.state === 'partial' && line.daysLate > 0)) fallback = <button className="btn" onClick={() => setLate(true)}>Late rent options</button>;
     else if (line.state !== 'paid') fallback = <button className="btn" onClick={() => setPay(true)}>Mark paid</button>;
+    else { const r = receiptToSend(state, line); if (r) fallback = <button className="btn primary" onClick={() => act.resendReceipt(r.id)}>Send receipt</button>; }
   }
   // Paid and nothing left to do (the receipt is sent): the pill says so, with the day it was paid.
-  const done = line?.state === 'paid' && !visible;
+  const done = line?.state === 'paid' && !visible && !receiptToSend(state, line);
   const doneReceipt = line?.state === 'paid' ? line.payments.map((p) => state.receipts.find((r) => r.paymentId === p.id && r.status !== 'superseded')).find(Boolean) : undefined;
   const meaning = done ? (line.payments.length ? 'Rent for this month is in, and the receipt was sent. Nothing left to do.' : 'Rent for this month counts as paid. Nothing left to do.') : undefined;
   return (
@@ -181,7 +190,7 @@ function RentLine({ unit, lease, card, free, room }: { unit: Unit; lease?: Lease
         {/* Paid and the receipt sent: ⋯ → Resend receipt (a PDF copy). */}
         {!visible && doneReceipt && <FloatMenu label="More for this rent" items={[{ label: 'Resend receipt', icon: 'send', onClick: () => act.resendReceipt(doneReceipt.id) }]} />}
       </span>
-      {pay && lease && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}
+      {pay && lease && <MarkRentPaid leaseId={lease.id} onClose={() => setPay(false)} />}
       {late && lease && <LateRentDrawer lease={lease} onClose={() => setLate(false)} />}
     </li>
   );

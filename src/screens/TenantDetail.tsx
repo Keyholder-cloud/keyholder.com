@@ -4,12 +4,12 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { DeleteTenantDrawer, EndLeaseDrawer } from '../components/TenantActions';
 import type { Payment, Person, Receipt } from '../data/types';
 import { useStore } from '../data/store';
-import { fmtDate, fmtPeriod, fmtTime } from '../lib/dates';
+import { fmtDate, fmtPeriod, fmtTime, periodOf } from '../lib/dates';
 import { leaseBalance, leaseLedger, leasePlace } from '../lib/finance';
 import { tenantPeople, withPeople } from '../lib/people';
 import { fmt } from '../lib/money';
 import { Letterhead, ReceiptLetter, methodLabel, ordinal } from '../components/domain';
-import { PaymentForm } from '../components/forms';
+import { PaymentForm, MarkRentPaid } from '../components/forms';
 import { LateRentDrawer, RaiseRent } from './Rentals';
 import { SituationPicker } from '../components/FormWizard';
 import { Drawer, Empty, Field, Stamp, embedded } from '../components/ui';
@@ -36,7 +36,10 @@ export function TenantDetail() {
   const lease = state.leases.filter((l) => l.tenantId === t?.id).sort((a, b) => b.start.localeCompare(a.start))[0];
   const unit = state.units.find((u) => u.id === lease?.unitId);
   const prop = state.properties.find((p) => p.id === unit?.propertyId);
-  const lines = lease ? leaseLedger(lease, state.payments, today).reverse() : [];
+  // The ledger runs to this month, or further when rent was paid ahead (a lease starting Dec 1, paid in November).
+  const ahead = lease ? state.payments.filter((p) => p.leaseId === lease.id && !p.voided).map((p) => p.period).sort().pop() : undefined;
+  const through = ahead && ahead > periodOf(today) ? ahead : undefined;
+  const lines = lease ? leaseLedger(lease, state.payments, today, through).reverse() : [];
   const [linesShown, linesMore] = useMore(lines);
   const bal = lease ? leaseBalance(lease, state.payments, today) : 0;
   const msgs = state.messages.filter((m) => m.tenantId === t?.id && m.status === 'sent').sort((a, b) => (b.sentAt ?? '').localeCompare(a.sentAt ?? ''));
@@ -166,7 +169,7 @@ export function TenantDetail() {
         </aside>
       </div>
 
-      {pay && lease && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}
+      {pay && lease && <MarkRentPaid leaseId={lease.id} onClose={() => setPay(false)} />}
       {correct && <PaymentForm correct={correct} onClose={() => setCorrect(null)} />}
       {receipt && (
         <Drawer title={`Receipt #${receipt.number}`} onClose={() => setReceipt(null)} wide

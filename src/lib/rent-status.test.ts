@@ -99,6 +99,20 @@ describe('rent marked paid stays paid, for every kind of rental', () => {
     expect(roomsPill(roomsPaid(rooms(), unit, today), (d) => d).label).toBe('0 of 2 paid');
   });
 
+  it('a room whose rent starts next month and is paid ahead counts as paid (unit pill and the room line)', async () => {
+    const { currentLine } = await import('../data/store');
+    const s = rooms();
+    const unit = s.units.find((u) => u.id === 'u-bsmt')!;
+    for (const l of s.leases.filter((x) => x.unitId === unit.id)) l.start = '2026-12-01';
+    s.payments = s.payments.filter((p) => !['l-sam', 'l-grace'].includes(p.leaseId));
+    s.payments.push({ id: 'pay-ahead', leaseId: 'l-grace', amount: 90_000, date: '2026-11-08', period: '2026-12', method: 'etransfer', source: 'manual', createdAt: '2026-11-08T10:00:00Z' } as Payment);
+    expect(currentLine(s, s.leases.find((l) => l.id === 'l-grace'), today)).toMatchObject({ period: '2026-12', state: 'paid' });
+    expect(currentLine(s, s.leases.find((l) => l.id === 'l-sam'), today)).toMatchObject({ period: '2026-12', paid: 0 });
+    const sum = roomsPaid(s, unit, today);
+    expect(sum).toMatchObject({ rented: 2, charged: 1, paid: 1, startsOn: '2026-12-01' });
+    expect(roomsPill(sum, (d) => d).label).toBe('1 of 1 paid');
+  });
+
   it('keeps a room tenant whose lease has no room number (the unit was switched to by the room later)', () => {
     const s = rooms();
     const unit = s.units.find((u) => u.id === 'u-bsmt')!;

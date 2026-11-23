@@ -534,3 +534,10 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Owner (Nov 23): website header A (floating frosted pill, menu in a segmented pill, gradient Sign up). In night mode
   (Keyholder set to Night, or the computer in dark mode) the website is dark with header B (navy bar, white logo,
   gradient underline, white Sign up); pictures of the app stay light.
+- Owner (Nov 23): Mark paid from Home, Rentals or a tenant's page opens on the month due (with Other month), then
+  shows the receipt with Send receipt. A receipt to send comes before other steps for that tenant; a unit rented by the
+  room says "N receipts to send" while its rooms are folded. On phones the status and its button share one line.
+- Owner (Nov 23): a room (or unit) whose rent starts next month and is paid ahead shows Rent paid everywhere (Home,
+  Rentals, Tenants, the unit's "N of N paid", the tenant's ledger with its receipt).
+- Owner (Nov 23): a paid month shows "Receipt to send" (with Send receipt) until its receipt goes out, then "Rent paid"
+  (Home, Rentals, Tenants, rooms and whole units alike).

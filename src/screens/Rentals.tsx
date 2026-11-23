@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import type { Applicant, Lease, Listing, Notice, Tenant, Unit } from '../data/types';
-import { currentLine, unitTenant, useStore } from '../data/store';
+import { currentLine, receiptToSend, unitTenant, useStore } from '../data/store';
 import { serverMode } from '../data/api';
 import { canAddProperty, FREE_PROPERTIES, useUpgrade } from '../components/Billing';
 import { activeLeases, byRoom, currentLeases, hasSpace, leaseLedger, openRooms, paidOn, roomsLine, roomsPaid, roomsPill } from '../lib/finance';
@@ -20,7 +20,7 @@ import { province } from '../lib/jurisdiction';
 import { fmt, fmt0 } from '../lib/money';
 import { propertyLevel } from '../lib/levels';
 import { byValue } from '../lib/score';
-import { PaymentForm, PropertyForm, TenancyForm, UnitForm } from '../components/forms';
+import { MarkRentPaid, PropertyForm, TenancyForm, UnitForm } from '../components/forms';
 import { Drawer, Empty, Field, MoneyInput, Seg, Stamp } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { MatchDrawer, ReminderDrawer } from './Tray';
@@ -212,7 +212,7 @@ function VacantRow({ unit, free, room }: { unit: Unit; free?: string[]; room?: b
 
 /** A lease: the whole unit's (one or several people), or one room's (`room`: shown under the unit's row). */
 function LeaseRow({ unit, lease, tenant, room, place }: { unit: Unit; lease: Lease; tenant: Tenant; room?: boolean; place?: string }) {
-  const { state, today } = useStore();
+  const { state, act, today } = useStore();
   const nav = useNavigate();
   const [pay, setPay] = useState(false);
   const [late, setLate] = useState<Lease | null>(null);
@@ -225,19 +225,22 @@ function LeaseRow({ unit, lease, tenant, room, place }: { unit: Unit; lease: Lea
   const found = trayItems(state, today).some((t) => t.kind === 'match' && t.suggestion?.leaseId === lease.id);
   const isLate = !found && (line.state === 'late' || (line.state === 'partial' && line.daysLate > 0));
   const paid = line.state === 'paid' ? paidOn(line) : undefined;
+  // Paid, but the receipt not sent yet: "Receipt to send" and the button, then "Rent paid" once it has gone out.
+  const toSend = line.state === 'paid' ? receiptToSend(state, line) : undefined;
   return (
     <li className={`unit-row${room ? ' room-row' : ''}${isLate ? ' late' : ''}`}>
       {room ? <RoomMark /> : <span className={`unit-label${unit.label.length > 2 ? ' long' : ''}`}>{unit.label}</span>}
       <Link to={`/rent/tenant/${tenant.id}`} className="unit-who"><strong>{tenant.names.join(' & ')}</strong><span>{place ? `${place} · ` : ''}{lease.room ? `${lease.room} · ` : ''}{fmt(lease.rent)} a month{tenant.names.length > 1 ? ' · shared lease' : ''}</span></Link>
       <span className="unit-state">
-        {line.state === 'paid' && <StatusPill tone="paid" meaning={paid ? undefined : 'Rent for this month counts as paid.'}><Icon name="check" size={16} />{paid ? `Rent paid · ${fmtDay(paid)}` : 'Rent paid'}</StatusPill>}
+        {toSend && <StatusPill tone="due" meaning="Rent is recorded. Send the receipt and this turns into Rent paid.">Receipt to send</StatusPill>}
+        {line.state === 'paid' && !toSend && <StatusPill tone="paid" meaning={paid ? undefined : 'Rent for this month counts as paid.'}><Icon name="check" size={16} />{paid ? `Rent paid · ${fmtDay(paid)}` : 'Rent paid'}</StatusPill>}
         {isLate && <StatusPill tone="late">Late · {line.daysLate} days</StatusPill>}
         {line.state === 'partial' && !isLate && !found && <StatusPill tone="partial">{fmt(line.charge - line.paid)} owed</StatusPill>}
         {(line.state === 'due' || line.state === 'upcoming') && !found && <StatusPill tone="due">{lease.start > today && lease.start.slice(0, 7) > today.slice(0, 7) ? `Rent starts ${fmtDay(lease.start)}` : line.state === 'due' ? 'Rent due today' : `Rent due ${fmtDay(line.due)}`}</StatusPill>}
         {found && line.state !== 'paid' && <StatusPill tone="due">Payment found</StatusPill>}
       </span>
       <span className="row-act">
-        {found && line.state !== 'paid' ? <button className="btn primary" onClick={() => nav('/today')}>Confirm</button> : isLate ? <button className="btn primary" onClick={() => setLate(lease)}>Late rent options</button>
+        {toSend ? <button className="btn primary" onClick={() => act.resendReceipt(toSend.id)}>Send receipt</button> : found && line.state !== 'paid' ? <button className="btn primary" onClick={() => nav('/today')}>Confirm</button> : isLate ? <button className="btn primary" onClick={() => setLate(lease)}>Late rent options</button>
           : line.state !== 'paid' ? <button className="btn" onClick={() => setPay(true)}>Mark paid</button> : null}
         <UnitMenu items={[
           { label: 'Raise rent', onClick: () => setRaise(true) },
@@ -250,7 +253,7 @@ function LeaseRow({ unit, lease, tenant, room, place }: { unit: Unit; lease: Lea
       {editUnit && <UnitForm propertyId={unit.propertyId} unit={unit} onClose={() => setEditUnit(false)} />}
       {deleting && <DeleteTenantDrawer tenant={tenant} onClose={() => setDeleting(false)} onEndInstead={() => { setDeleting(false); setEnding(true); }} />}
       {raise && <RaiseRent lease={lease} onClose={() => setRaise(false)} />}
-      {pay && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}
+      {pay && <MarkRentPaid leaseId={lease.id} onClose={() => setPay(false)} />}
       {late && <LateRentDrawer lease={late} onClose={() => setLate(null)} />}
     </li>
   );
