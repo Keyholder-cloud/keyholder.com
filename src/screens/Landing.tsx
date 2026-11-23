@@ -1,7 +1,7 @@
 import { SecurityPage } from './Security';
 import { useEffect, useRef, useState } from 'react';
 import { fmtPrice, useUnitPrice } from '../data/pricing';
-import { FeatureExplorer, HeroSlider, HOW, JobsStrip, useFeatureTab } from './LandingParts';
+import { HeroSlider, HOW, JobsStrip } from './LandingParts';
 import { ContactForm } from '../components/ContactForm';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -298,18 +298,17 @@ function Overview({ start }: { start: () => void }) {
 /** Features: what Keyholder does, one tab per job, then real screens. */
 function Features() {
   const loc = useLocation();
-  const ft = useFeatureTab(new URLSearchParams(loc.search).get('tab') ?? undefined);
+  // The five jobs (Overview, and the strip here) open the matching screen of "Take a closer look".
+  const first = JOB_STOP[new URLSearchParams(loc.search).get('tab') ?? ''];
+  const [pick, setPick] = useState<{ id: Stop['id']; n: number } | undefined>(first ? { id: first, n: 0 } : undefined);
+  const choose = (job: string) => { const id = JOB_STOP[job]; if (id) setPick((p) => ({ id, n: (p?.n ?? 0) + 1 })); };
   return (
     <>
       <PageHead kicker="Features" icon="sparkle" title={<>Everything a landlord does, <em>in one place.</em></>}>Track expenses, send receipts, screen tenants, write notices and get your taxes ready.</PageHead>
-      <section className="lp-sec lp-sec-top0" id="explore">
-        <div className="lp-wrap">
-          <JobsStrip onPick={ft.pick} />
-          <SecHead kicker="What Keyholder does" title="Less money lost, less paperwork, fewer mistakes." />
-          <FeatureExplorer tab={ft.tab} setTab={ft.setTab} />
-        </div>
+      <section className="lp-sec lp-sec-top0">
+        <div className="lp-wrap"><JobsStrip onPick={choose} /></div>
       </section>
-      <Tour />
+      <Tour pick={pick} />
     </>
   );
 }
@@ -346,8 +345,17 @@ const TOUR: Stop[] = [
   { id: 'tenants', t: 'Finding tenants', icon: 'users', mode: 'approve', d: 'Compare applicants side by side.', spot: 'Side by side', img: shotTenants, alt: 'Two rental applications compared side by side' },
 ];
 
-function Tour() {
-  const [i, setI] = useState(0);
+/** Each of the five jobs, and the screen of the tour that shows it. */
+const JOB_STOP: Record<string, Stop['id']> = { expenses: 'bills', receipts: 'receipt', tenants: 'tenants', notices: 'notice', taxes: 'taxes' };
+
+function Tour({ pick }: { pick?: { id: Stop['id']; n: number } } = {}) {
+  const [i, setI] = useState(() => Math.max(0, TOUR.findIndex((x) => x.id === pick?.id)));
+  // A job chosen above: show its screen and bring the tour into view.
+  useEffect(() => {
+    if (!pick) return;
+    const k = TOUR.findIndex((x) => x.id === pick.id); if (k >= 0) setI(k);
+    requestAnimationFrame(() => document.getElementById('tour')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }, [pick?.id, pick?.n]);
   const [zoom, setZoom] = useState(false);
   const list = useRef<HTMLDivElement>(null);
   const touch = useRef<{ x: number; moved: boolean } | null>(null);
