@@ -549,3 +549,15 @@ html body .lp-hero-ctas { gap: 16px 36px; }
 .kh-flow-ic.ok { background: #D1FADF; color: #067647; }
 .kh-year strong { display: block; font-family: var(--font-display); font-size: 34px; line-height: 1.1; color: #067647; } .kh-year small { color: var(--lp-soft); font-size: 12.5px; }
 .kh-story .kh-bars li { grid-template-columns: 90px 1fr auto; } .kh-bars i.soft { background: #CBD5E1; }
+
+/* The website is always light: night mode must not turn its text (logo name, Sign in, Menu) white on the white header. */
+html body .lp, html[data-theme] body .lp {
+  color-scheme: light;
+  --paper: #F6F7FB; --paper-raised: #FFFFFF; --paper-sunk: #EEF0F6;
+  --ink: #101828; --ink-soft: #475467; --ink-faint: #667085;
+  --rule: #E7E9F0; --rule-strong: #D0D5DD;
+  --primary: #4F46E5; --on-primary: #FFFFFF; --accent-tint: #EEF0FF;
+  --pine: #079455; --pine-tint: #DCFAE6;
+  color: var(--lp-ink);
+}
+html body .lp .lp-brand .wm, html body .lp .lp-nav .btn.ghost, html body .lp .lp-burger { color: #101828; }
