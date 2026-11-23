@@ -527,3 +527,7 @@ html body .lp .lp-sticky .btn.lp-go { justify-content: space-between; min-height
 .lp-contact-side li > span:last-child { display: flex; flex-direction: column; } .lp-contact-side li > span:last-child > span { color: var(--lp-soft); font-size: var(--fs-label); }
 .lp-see-all { text-align: center; margin: 24px 0 0; }
 @media (max-width: 860px) { .lp-contact-grid { grid-template-columns: 1fr; } .lp-contact-card { padding: 18px; } }
+
+/* Hero headline: bold, 5% larger; more room between Get started and How it works. */
+html body .lp-hero-h.lp-hero-h { font-size: calc(var(--fs-hero) * 1.05); font-weight: 700; }
+html body .lp-hero-ctas { gap: 16px 36px; }
