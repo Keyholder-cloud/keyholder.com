@@ -3,7 +3,7 @@ import { Avatar } from './Art';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Lease, Unit } from '../data/types';
-import { currentLine, useStore } from '../data/store';
+import { currentLine, receiptToSend, useStore } from '../data/store';
 import { addDays, addMonths, fmtDay, fmtPeriod, periodOf } from '../lib/dates';
 import { activeLease, byRoom, leasePlace, openRooms, paidOn, roomsLine, roomsPaid, roomsPill } from '../lib/finance';
 import { allJourneyCards, isHidden, journeyLeases, leaseStep, openStep, prefKey, propertySteps, unitStep, type JourneyCard } from '../lib/journey';
@@ -92,6 +92,8 @@ function statusFor(state: ReturnType<typeof useStore>['state'], lease: Lease | u
   }
   // Paid (this month, or the first month paid ahead): say so, whatever the next step is.
   const paidLine = currentLine(state, lease, today)!;
+  // "Rent paid" once the receipt has gone out; until then the receipt is the thing to do.
+  if (paidLine.state === 'paid' && receiptToSend(state, paidLine)) return { label: 'Receipt to send', tone: 'due' };
   if (paidLine.state === 'paid') { const d = paidOn(paidLine); return { label: d ? `Rent paid · ${fmtDay(d)}` : 'Rent paid', tone: 'paid' }; }
   if (c?.stage === 'lease' || c?.stage === 'moved-in') return { label: 'Moving in', tone: 'due' };
   if (c?.stage === 'moving-out') return { label: 'Moving out', tone: 'due' };
@@ -162,9 +164,10 @@ function RentLine({ unit, lease, card, free, room }: { unit: Unit; lease?: Lease
   if (!visible && lease && line) {
     if (line.state === 'late' || (line.state === 'partial' && line.daysLate > 0)) fallback = <button className="btn" onClick={() => setLate(true)}>Late rent options</button>;
     else if (line.state !== 'paid') fallback = <button className="btn" onClick={() => setPay(true)}>Mark paid</button>;
+    else { const r = receiptToSend(state, line); if (r) fallback = <button className="btn primary" onClick={() => act.resendReceipt(r.id)}>Send receipt</button>; }
   }
   // Paid and nothing left to do (the receipt is sent): the pill says so, with the day it was paid.
-  const done = line?.state === 'paid' && !visible;
+  const done = line?.state === 'paid' && !visible && !receiptToSend(state, line);
   const doneReceipt = line?.state === 'paid' ? line.payments.map((p) => state.receipts.find((r) => r.paymentId === p.id && r.status !== 'superseded')).find(Boolean) : undefined;
   const meaning = done ? (line.payments.length ? 'Rent for this month is in, and the receipt was sent. Nothing left to do.' : 'Rent for this month counts as paid. Nothing left to do.') : undefined;
   return (

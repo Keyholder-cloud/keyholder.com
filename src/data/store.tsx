@@ -851,6 +851,16 @@ export function unitTenant(state: AppState, unitId: string, today: string) {
   return { lease, tenant };
 }
 
+/** The receipt still to send for a month that is paid (recorded, receipt drafted but not sent yet), if any. */
+export function receiptToSend(state: AppState, line: { payments: Payment[] } | undefined) {
+  if (!line) return undefined;
+  for (const p of line.payments) {
+    const r = state.receipts.find((x) => x.paymentId === p.id && x.status === 'draft');
+    if (r) return r;
+  }
+  return undefined;
+}
+
 /**
  * The month a lease's rent status is about: this month, or, for a lease that starts in a later month (moving in
  * Dec 1), that first month, so paying it ahead shows as paid everywhere (Home, Rentals, Tenants).
