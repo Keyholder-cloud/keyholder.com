@@ -85,11 +85,15 @@ export function Billing() {
   };
   return (
     <section className="section billing" id="billing">
-      <h2 className="section-title">Your plan</h2>
+      <div className="bill-summary" id="billing-usage">
+        <div><span>Plan</span><strong>{plan === 'landlord' ? 'Landlord' : 'Starter'}</strong></div>
+        <div><span>Properties</span><strong>{props.length}{plan === 'starter' ? <small> of {FREE_PROPERTIES}</small> : null}</strong></div>
+        <div><span>Units</span><strong>{units}</strong></div>
+        <div><span>Monthly</span><strong>{plan === 'landlord' ? fmtPrice(monthly) : 'Free'}</strong></div>
+      </div>
+      {plan === 'starter' && props.length > FREE_PROPERTIES && <p className="small soft bill-note">Starter covers {FREE_PROPERTIES} properties: the ones you have stay, and adding more needs Landlord.</p>}
+      <h2 className="section-title">Plans</h2>
       <div className="bill-tiers" id="billing-plan">{tier('starter')}{tier('landlord')}</div>
-      <p className="small soft" id="billing-usage" style={{ margin: '10px 0 0' }}>You have {units} unit{units === 1 ? '' : 's'} in {props.length} propert{props.length === 1 ? 'y' : 'ies'}.
-        {plan === 'starter' && props.length > FREE_PROPERTIES && <> Starter covers {FREE_PROPERTIES} properties: the ones you have stay, and adding more needs Landlord.</>}
-      </p>
       {upgradeScreen}
       {cancel && (
         <Drawer title="Switch to Starter?" onClose={() => setCancel(null)} footer={<><button className="btn ghost" onClick={() => setCancel(null)}>Keep Landlord</button><button className="btn primary" id="billing-cancel-go" disabled={cancel === 'busy'} onClick={doCancel}>{cancel === 'busy' ? 'Switching…' : 'Switch to Starter'}</button></>}>
@@ -101,9 +105,10 @@ export function Billing() {
       )}
 
       <h2 className="section-title">Payment</h2>
-      <div className="sheet billing-pay" id="billing-pay">
-        <p style={{ margin: 0 }}><Icon name="cash" size={16} /> <strong>No card on file.</strong></p>
-        <p className="small soft" style={{ margin: '6px 0 0' }}>You won't be charged until card payments open, and Keyholder will ask you first. Your card, invoices and subscription will show here then.</p>
+      <div className="bill-pay" id="billing-pay">
+        <span className="bill-pay-ic"><Icon name="cash" size={20} /></span>
+        <div><strong>No card on file</strong><p>You won't be charged until card payments open, and Keyholder will ask you first. Your card and invoices will show here then.</p></div>
+        <span className="bill-pill">Nothing due</span>
       </div>
     </section>
   );
