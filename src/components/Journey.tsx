@@ -90,6 +90,9 @@ function statusFor(state: ReturnType<typeof useStore>['state'], lease: Lease | u
     if (c?.step.kind === 'send-form') return { label: 'Empty · listed', tone: 'vacant' };
     return { label: 'Empty', tone: 'vacant' };
   }
+  // Paid (this month, or the first month paid ahead): say so, whatever the next step is.
+  const paidLine = currentLine(state, lease, today)!;
+  if (paidLine.state === 'paid') { const d = paidOn(paidLine); return { label: d ? `Rent paid · ${fmtDay(d)}` : 'Rent paid', tone: 'paid' }; }
   if (c?.stage === 'lease' || c?.stage === 'moved-in') return { label: 'Moving in', tone: 'due' };
   if (c?.stage === 'moving-out') return { label: 'Moving out', tone: 'due' };
   if (c?.step.kind === 'confirm-payment') return { label: 'Rent to confirm', tone: 'due' };

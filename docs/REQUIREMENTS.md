@@ -537,3 +537,5 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Owner (Nov 23): Mark paid from Home, Rentals or a tenant's page opens on the month due (with Other month), then
   shows the receipt with Send receipt. A receipt to send comes before other steps for that tenant; a unit rented by the
   room says "N receipts to send" while its rooms are folded. On phones the status and its button share one line.
+- Owner (Nov 23): a room (or unit) whose rent starts next month and is paid ahead shows Rent paid everywhere (Home,
+  Rentals, Tenants, the unit's "N of N paid", the tenant's ledger with its receipt).
