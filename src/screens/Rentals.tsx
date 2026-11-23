@@ -20,7 +20,7 @@ import { province } from '../lib/jurisdiction';
 import { fmt, fmt0 } from '../lib/money';
 import { propertyLevel } from '../lib/levels';
 import { byValue } from '../lib/score';
-import { PaymentForm, PropertyForm, TenancyForm, UnitForm } from '../components/forms';
+import { MarkRentPaid, PropertyForm, TenancyForm, UnitForm } from '../components/forms';
 import { Drawer, Empty, Field, MoneyInput, Seg, Stamp } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { MatchDrawer, ReminderDrawer } from './Tray';
@@ -250,7 +250,7 @@ function LeaseRow({ unit, lease, tenant, room, place }: { unit: Unit; lease: Lea
       {editUnit && <UnitForm propertyId={unit.propertyId} unit={unit} onClose={() => setEditUnit(false)} />}
       {deleting && <DeleteTenantDrawer tenant={tenant} onClose={() => setDeleting(false)} onEndInstead={() => { setDeleting(false); setEnding(true); }} />}
       {raise && <RaiseRent lease={lease} onClose={() => setRaise(false)} />}
-      {pay && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}
+      {pay && <MarkRentPaid leaseId={lease.id} onClose={() => setPay(false)} />}
       {late && <LateRentDrawer lease={late} onClose={() => setLate(null)} />}
     </li>
   );

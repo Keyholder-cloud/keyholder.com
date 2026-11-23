@@ -14,7 +14,7 @@ import { fmt } from '../lib/money';
 import { bankToSort } from '../lib/bankrules';
 import { FormWizard } from './FormWizard';
 import { LevelUpForm, ScoreRing } from './levels';
-import { PaymentForm } from './forms';
+import { MarkRentPaid } from './forms';
 import { Icon } from './Icon';
 import { FloatMenu } from './FloatMenu';
 import { MatchDrawer } from '../screens/Tray';
@@ -122,6 +122,8 @@ function UnitLine({ unit }: { unit: Unit }) {
   // Rooms fold under their unit (closed at first, so Home stays short); the arrow opens them.
   const [open, setOpen] = useState(false);
   const rooms = running.length + (free.length > 0 ? 1 : 0);
+  // Receipts waiting in the folded rooms: say so on the unit's line, so they are not missed.
+  const toSend = state.messages.filter((m) => m.kind === 'receipt' && m.status === 'draft' && running.some((l) => l.id === m.leaseId)).length;
   return (
     <>
       <li className={`rent-row unit-head${sum.late ? ' late' : ''}${open ? ' open' : ''}`}>
@@ -131,7 +133,8 @@ function UnitLine({ unit }: { unit: Unit }) {
         </Link>
         <StatusPill tone={pill.tone} meaning={sum.rented ? "Each room's rent is tracked on its own row underneath." : undefined}>{pill.tone === 'paid' && <Icon name="check" size={16} />}{pill.label}</StatusPill>
         <span className="row-act">
-          {free.length > 0 && <Link className="btn add-tenant-quick" id={`home-add-${unit.id}`} to={`/rent/property/${unit.propertyId}/add-tenant?unit=${unit.id}`}><Icon name="plus" size={16} />Add tenant</Link>}
+          {!open && toSend > 0 && <button type="button" className="btn primary rooms-send" id={`rooms-send-${unit.id}`} onClick={() => setOpen(true)}><Icon name="send" size={15} />{toSend === 1 ? '1 receipt to send' : `${toSend} receipts to send`}</button>}
+          {free.length > 0 && (open || !toSend) && <Link className="btn add-tenant-quick" id={`home-add-${unit.id}`} to={`/rent/property/${unit.propertyId}/add-tenant?unit=${unit.id}`}><Icon name="plus" size={16} />Add tenant</Link>}
           <button type="button" className="rooms-toggle" id={`rooms-${unit.id}`} aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} the ${rooms} rooms of Unit ${unit.label}`} title={open ? 'Hide the rooms' : 'Show the rooms'} onClick={() => setOpen((x) => !x)}><Icon name="next" size={16} /></button>
         </span>
       </li>
@@ -181,7 +184,7 @@ function RentLine({ unit, lease, card, free, room }: { unit: Unit; lease?: Lease
         {/* Paid and the receipt sent: ⋯ → Resend receipt (a PDF copy). */}
         {!visible && doneReceipt && <FloatMenu label="More for this rent" items={[{ label: 'Resend receipt', icon: 'send', onClick: () => act.resendReceipt(doneReceipt.id) }]} />}
       </span>
-      {pay && lease && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}
+      {pay && lease && <MarkRentPaid leaseId={lease.id} onClose={() => setPay(false)} />}
       {late && lease && <LateRentDrawer lease={lease} onClose={() => setLate(false)} />}
     </li>
   );

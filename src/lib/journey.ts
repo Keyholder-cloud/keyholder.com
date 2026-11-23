@@ -63,6 +63,13 @@ function tenantCard(state: AppState, lease: Lease, today: ISODate): JourneyCard 
   const base = { id: `lease-${lease.id}`, title: tenant.names.join(' & '), subtitle: `${prop.nickname} · ${leasePlace(unit, lease)}` };
   const tray = trayItems(state, today);
 
+  // A receipt waiting to go out comes first: the tenant has paid and is waiting for it.
+  const receipt = tray.find((t) => t.kind === 'message' && t.message.leaseId === lease.id && t.message.kind === 'receipt');
+  if (receipt && receipt.kind === 'message') {
+    const pay = state.payments.find((p) => p.id === state.receipts.find((r) => r.id === receipt.message.receiptId)?.paymentId);
+    return { ...base, stepKey: `receipt-${receipt.message.id}`, stage: 'paying', text: `Send ${who}'s receipt`, detail: pay ? `${(pay.amount / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' })} received ${fmtDate(pay.date)}` : undefined, priority: 2, step: { kind: 'send-receipt', message: receipt.message }, progress: 'Step 2 of 2' };
+  }
+
   // Moving out
   if (lease.end && lease.end <= addDays(today, 60)) {
     const outDone = state.notices.some((n) => n.leaseId === lease.id && formById(n.formId)?.situation === 'inspection' && n.details?.moveType === 'Move-out');
@@ -92,11 +99,6 @@ function tenantCard(state: AppState, lease: Lease, today: ISODate): JourneyCard 
   const match = tray.find((t) => t.kind === 'match' && t.suggestion?.leaseId === lease.id);
   if (match && match.kind === 'match' && match.suggestion) {
     return { ...base, stepKey: `confirm-${match.txn.id}`, stage: 'paying', text: `${(match.txn.amount / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' })} from ${match.txn.payer}. Is it ${who}'s rent?`, priority: 1, step: { kind: 'confirm-payment', txn: match.txn, leaseId: lease.id, period: match.suggestion.period }, progress: 'Step 1 of 2' };
-  }
-  const receipt = tray.find((t) => t.kind === 'message' && t.message.leaseId === lease.id && t.message.kind === 'receipt');
-  if (receipt && receipt.kind === 'message') {
-    const pay = state.payments.find((p) => p.id === state.receipts.find((r) => r.id === receipt.message.receiptId)?.paymentId);
-    return { ...base, stepKey: `receipt-${receipt.message.id}`, stage: 'paying', text: `Send ${who}'s receipt`, detail: pay ? `${(pay.amount / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' })} received ${fmtDate(pay.date)}` : undefined, priority: 2, step: { kind: 'send-receipt', message: receipt.message }, progress: 'Step 2 of 2' };
   }
   const reminder = tray.find((t) => t.kind === 'reminder' && t.lease.id === lease.id);
   const owing = arrears(state, lease, today);

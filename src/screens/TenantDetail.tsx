@@ -9,7 +9,7 @@ import { leaseBalance, leaseLedger, leasePlace } from '../lib/finance';
 import { tenantPeople, withPeople } from '../lib/people';
 import { fmt } from '../lib/money';
 import { Letterhead, ReceiptLetter, methodLabel, ordinal } from '../components/domain';
-import { PaymentForm } from '../components/forms';
+import { PaymentForm, MarkRentPaid } from '../components/forms';
 import { LateRentDrawer, RaiseRent } from './Rentals';
 import { SituationPicker } from '../components/FormWizard';
 import { Drawer, Empty, Field, Stamp, embedded } from '../components/ui';
@@ -166,7 +166,7 @@ export function TenantDetail() {
         </aside>
       </div>
 
-      {pay && lease && <PaymentForm leaseId={lease.id} onClose={() => setPay(false)} />}
+      {pay && lease && <MarkRentPaid leaseId={lease.id} onClose={() => setPay(false)} />}
       {correct && <PaymentForm correct={correct} onClose={() => setCorrect(null)} />}
       {receipt && (
         <Drawer title={`Receipt #${receipt.number}`} onClose={() => setReceipt(null)} wide

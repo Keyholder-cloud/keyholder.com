@@ -8,7 +8,7 @@ import { StoreProvider, useStore } from './data/store';
 import { needsYouCount } from './lib/tray';
 import { Icon } from './components/Icon';
 import { Brand } from './components/Brand';
-import { ExpenseForm, PaymentForm } from './components/forms';
+import { ExpenseForm, MarkRentPaid } from './components/forms';
 import { Onboarding } from './screens/Onboarding';
 import { Today } from './screens/Today';
 import { Portfolio } from './screens/Portfolio';
@@ -183,7 +183,7 @@ function Shell() {
       </nav>
 
       {capture && <ExpenseForm onClose={() => setCapture(false)} />}
-      {pay && <PaymentForm onClose={() => setPay(false)} />}
+      {pay && <MarkRentPaid onClose={() => setPay(false)} />}
       <Tour />
       <div className="toasts" aria-live="polite">{toasts.map((t) => <div className="toast" key={t.id}>{t.text}</div>)}</div>
     </div>

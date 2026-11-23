@@ -19,11 +19,11 @@ export function useMore<T>(items: T[], n = FIRST): [T[], React.ReactNode] {
 }
 
 /** Sends the same rent receipt again (same number, same PDF), or for the first time if it was a draft. */
-export function ResendReceipt({ receiptId, label = 'Resend' }: { receiptId: string; label?: string }) {
+export function ResendReceipt({ receiptId, label = 'Resend', primary }: { receiptId: string; label?: string; primary?: boolean }) {
   const { act } = useStore();
   const [sent, setSent] = useState(false);
   return (
-    <button type="button" className="btn small ghost resend-receipt" disabled={sent} title="Email this receipt to the tenant again (PDF)"
+    <button type="button" className={`btn ${primary ? 'primary' : 'small ghost'} resend-receipt`} disabled={sent} title="Email this receipt to the tenant again (PDF)"
       onClick={(e) => { e.stopPropagation(); act.resendReceipt(receiptId); setSent(true); }}>
       <Icon name={sent ? 'check' : 'send'} size={14} />{sent ? 'Sent' : label}
     </button>
