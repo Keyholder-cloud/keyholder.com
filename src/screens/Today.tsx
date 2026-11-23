@@ -12,7 +12,7 @@ import { RentRows } from '../components/Journey';
 import { trayItems } from '../lib/tray';
 import { BankStatus } from '../components/domain';
 import { SceneEmptyHome } from '../components/Art';
-import { Greeting, MonthReview, YearToDate, NextStep, RentCard } from '../components/HomeCards';
+import { Greeting, YearToDate, NextStep, RentCard } from '../components/HomeCards';
 import type { Lease, Tenant, Unit } from '../data/types';
 import type { LedgerLine } from '../lib/finance';
 
@@ -106,7 +106,6 @@ export function Today() {
         </div>
         <aside className="home-side" aria-label="More for this month">
           <YearToDate />
-          <MonthReview />
         </aside>
       </div>
 

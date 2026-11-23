@@ -9,65 +9,62 @@ import { Icon } from '../components/Icon';
 
 const money = (n: number) => n.toLocaleString('en-CA', { style: 'currency', currency: 'CAD', maximumFractionDigits: n % 1 ? 2 : 0 });
 
-/** A hero picture: this year's profit for one property, the expenses Keyholder caught, an application waiting. */
-function HeroMock() {
+/** One hero slide: what it shows in a few words, the point in one line, then a small picture of it. */
+function Story({ icon, title, point, label, children }: { icon: string; title: string; point: string; label: string; children: React.ReactNode }) {
   return (
-    <div className="kh-mock kh-hero-mock" role="img" aria-label="Keyholder dashboard (sample): this year's profit, the expenses caught from the bank, and one application to review">
-      <div className="kh-mock-bar"><span /><span /><span /><em>Sample data</em></div>
-      <div className="kh-mock-body">
-        <div className="kh-pl">
-          <span className="kh-k">2026 so far · 48 Maple St</span>
-          <strong className="kh-pl-n">{money(10533)}</strong>
-          <span className="kh-pl-sub">profit · rent in {money(31000)} · money out {money(20467)}</span>
-        </div>
-        <div className="kh-k" style={{ marginTop: 14 }}>Expenses caught from your bank</div>
-        <ul className="kh-list">
-          {([['Home Depot', 'Repairs', 86.45], ['Enbridge Gas', 'Utilities', 212.4], ['Snow removal (cash)', 'Maintenance', 60]] as const).map(([v, c, a]) => (
-            <li key={v}><span className="kh-ok"><Icon name="check" size={12} /></span><span>{v}<small>{c}</small></span><b>{money(a)}</b></li>
-          ))}
-        </ul>
-        <div className="kh-app"><span className="kh-av">SO</span><span>Sam Ortiz · Unit C<small>Application ready to review</small></span><span className="kh-btn">Review</span></div>
+    <div className="kh-mock kh-hero-mock kh-story" role="img" aria-label={`${title}: ${point} (sample)`}>
+      <div className="kh-story-h">
+        <span className="kh-story-ic"><Icon name={icon} size={18} /></span>
+        <span><b>{title}</b><small>{point}</small></span>
+        <em>{label}</em>
       </div>
+      <div className="kh-story-b">{children}</div>
     </div>
   );
 }
 
-/** Rent in: a deposit matched as rent, then the receipt sent. */
-function IncomeMock() {
+/** Expenses: costs from the bank, sorted and filed. */
+function ExpensesStory() {
+  const rows: [string, string, number][] = [['Home Depot', 'Repairs', 86.45], ['Enbridge Gas', 'Utilities', 212.4], ['Snow removal (cash)', 'Maintenance', 60]];
   return (
-    <div className="kh-mock kh-hero-mock" role="img" aria-label="Keyholder (sample): a bank deposit matched as rent, and the receipt sent to the tenant">
-      <div className="kh-mock-bar"><span /><span /><span /><em>Sample data</em></div>
-      <div className="kh-mock-body">
-        <span className="kh-k">Rent in · November</span>
-        <ul className="kh-flow">
-          <li><span className="kh-flow-ic"><Icon name="bank" size={16} /></span><span>Deposit found<small>INTERAC E-TRF M CHEN</small></span><b>{money(1650)}</b></li>
-          <li><span className="kh-flow-ic"><Icon name="check" size={16} /></span><span>Marked as rent<small>Maya Chen · Unit A · November</small></span><span className="kh-tag ok">Paid</span></li>
-          <li><span className="kh-flow-ic"><Icon name="receipt" size={16} /></span><span>Receipt No. 1042 sent<small>PDF emailed to Maya</small></span><span className="kh-tag ok">Sent</span></li>
-        </ul>
-        <div className="kh-app"><span className="kh-av">JP</span><span>Jordan Patel · Unit B<small>Rent due Dec 1</small></span><span className="kh-btn">Mark paid</span></div>
-      </div>
-    </div>
+    <Story icon="cash" title="Expenses found for you" point="From your bank, sorted and filed in a tap" label="Sample">
+      <ul className="kh-list">{rows.map(([v, c, a]) => <li key={v}><span className="kh-ok"><Icon name="check" size={12} /></span><span>{v}<small>{c}</small></span><b>{money(a)}</b></li>)}</ul>
+      <div className="kh-total"><span>Filed to 48 Maple St this month</span><b>{money(358.85)}</b></div>
+    </Story>
   );
 }
 
-/** The portfolio at a glance: net worth and each property. */
-function PortfolioMock() {
-  const rows: [string, number, number][] = [['48 Maple St', 10533, 72], ['12 Birch Ave', 6240, 48], ['301–90 King St', 3180, 30]];
+/** Rent: a deposit becomes rent, then a receipt. */
+function RentStory() {
   return (
-    <div className="kh-mock kh-hero-mock" role="img" aria-label="Keyholder portfolio (sample): net worth across three properties, and the profit of each">
-      <div className="kh-mock-bar"><span /><span /><span /><em>Sample data</em></div>
-      <div className="kh-mock-body">
-        <div className="kh-grid3">
-          <div><span className="kh-k">Net worth</span><b>{money(912000)}</b></div><div><span className="kh-k">Properties</span><b>3</b></div><div className="kh-good"><span className="kh-k">Profit 2026</span><b>{money(19953)}</b></div>
-        </div>
-        <div className="kh-k" style={{ marginTop: 14 }}>Profit by property</div>
-        <ul className="kh-bars">{rows.map(([n, v, w]) => <li key={n}><span>{n}</span><i style={{ width: `${w}%` }} /><b>{money(v)}</b></li>)}</ul>
-      </div>
-    </div>
+    <Story icon="receipt" title="Rent in, receipt out" point="Matched to the tenant, the receipt sent for you" label="Sample">
+      <ol className="kh-steps3">
+        <li><span className="kh-flow-ic"><Icon name="bank" size={16} /></span><b>{money(1650)}</b><small>Deposit from M. Chen</small></li>
+        <li><span className="kh-flow-ic"><Icon name="check" size={16} /></span><b>Rent paid</b><small>Unit A · November</small></li>
+        <li><span className="kh-flow-ic ok"><Icon name="send" size={16} /></span><b>Receipt sent</b><small>PDF No. 1042</small></li>
+      </ol>
+      <div className="kh-total"><span>Rent collected in November</span><b>3 of 3 paid</b></div>
+    </Story>
   );
 }
 
-const SLIDES: [string, () => React.ReactNode][] = [['Profit and expenses', HeroMock], ['Rent and receipts', IncomeMock], ['Your portfolio', PortfolioMock]];
+/** The year: profit, and how the money compares with a safe deposit. */
+function YearStory() {
+  return (
+    <Story icon="trend" title="Know where you stand" point="This year's profit, and your return next to a GIC" label="Sample">
+      <div className="kh-year">
+        <div><span className="kh-k">Profit so far</span><strong>{money(10533)}</strong><small>rent {money(31000)} · costs {money(20467)}</small></div>
+      </div>
+      <ul className="kh-bars">
+        <li><span>Your return</span><i style={{ width: '82%' }} /><b>6.1%</b></li>
+        <li><span>GIC</span><i className="soft" style={{ width: '42%' }} /><b>3.2%</b></li>
+      </ul>
+      <div className="kh-total"><span>Ahead of a GIC this year</span><b>+2.9 points</b></div>
+    </Story>
+  );
+}
+
+const SLIDES: [string, () => React.ReactNode][] = [['Expenses found', ExpensesStory], ['Rent and receipts', RentStory], ['Where you stand', YearStory]];
 /** The hero's pictures, one at a time: they move on by themselves (not when the visitor prefers less motion, or is pointing at it). */
 export function HeroSlider() {
   const [i, setI] = useState(0);
