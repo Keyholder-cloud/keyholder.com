@@ -2,7 +2,7 @@ import type { AppState, Message } from '../src/data/types';
 import { fmt } from '../src/lib/money';
 import { fmtPeriod } from '../src/lib/dates';
 import type { Mail, ReceiptAttachment } from './email';
-import { leaseLedger } from '../src/lib/finance';
+import { receiptData } from '../src/lib/receiptData';
 
 // The words in every email Keyholder sends. Written as plain text (the fallback for text-only mail apps); the designed
 // HTML version is made from it when the email is sent (server/emailHtml.ts).
@@ -65,19 +65,9 @@ export function tenantMails(state: AppState, m: Message, accountId: string): Mai
     if (!r || !pay) return [];
     // Sent again (Resend) is the same receipt, word for word: the tenant may have missed it.
     subject = `Rent receipt #${r.number}${pay.period ? ` for ${fmtPeriod(pay.period)}` : ''}`;
-    const method = pay.method === 'etransfer' ? 'e-Transfer' : pay.method ? pay.method[0].toUpperCase() + pay.method.slice(1) : 'Not stated';
-    const room = unit ? (lease?.room ?? (/^[A-Z0-9]{1,3}$/i.test(unit.label) ? `Unit ${unit.label}` : unit.label)) : '';
-    const line = lease && pay.period ? leaseLedger(lease, state.payments, (m.sentAt ?? new Date().toISOString()).slice(0, 10)).find((x) => x.period === pay.period) : undefined;
-    attachment = {
-      kind: 'receipt', filename: `Rent receipt ${r.number}${pay.period ? ` - ${fmtPeriod(pay.period)}` : ''}.pdf`,
-      receipt: {
-        number: r.number, issued: (r.sentAt ?? m.sentAt ?? new Date().toISOString()).slice(0, 10),
-        landlord: { name: owner, email: replyTo, phone: state.profile.phone },
-        tenant: tenant.names.join(' & '), rental: prop ? `${prop.address}${room ? `, ${room}` : ''}` : (room || '—'),
-        period: pay.period ? fmtPeriod(pay.period) : '—', amount: fmt(pay.amount), paidOn: pay.date, method,
-        balance: line && line.paid < line.charge ? fmt(line.charge - line.paid) : undefined, note: r.note,
-      },
-    };
+    const data = receiptData(state, r, (m.sentAt ?? new Date().toISOString()).slice(0, 10));
+    if (!data) return [];
+    attachment = { kind: 'receipt', filename: `Rent receipt ${r.number}${pay.period ? ` - ${fmtPeriod(pay.period)}` : ''}.pdf`, receipt: data };
     text = [
       `Hi ${tenant.names.map((n) => n.split(' ')[0]).join(' & ')},`, '',
       `Thank you. This is your receipt for rent.`, '',

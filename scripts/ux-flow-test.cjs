@@ -895,6 +895,13 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await pg.click('#st-tab-billing'); await pg.waitForSelector('#billing-plan >> text=Your plan'); await pg.waitForSelector('#billing-pay >> text=No card on file');
       await go(pg, 'today'); await pg.waitForSelector('#ytd >> text=Net worth'); if (await pg.$('#ytd-worth')) throw new Error('worth/owed line should be gone');
     });
+    await step(tag, 'H26b Income → View shows the receipt as the tenant gets it (the PDF layout), and Download PDF gives that PDF', async () => {
+      await go(pg, 'income'); await pg.locator('table.ledger button', { hasText: 'View' }).first().click();
+      await pg.waitForSelector('#receipt-view .rcpt-head >> text=RENT RECEIPT'); await pg.waitForSelector('#receipt-view .rcpt-amount >> text=AMOUNT RECEIVED'); await pg.waitForSelector('#receipt-view .rcpt-stamp');
+      const [dl] = await Promise.all([pg.waitForEvent('download'), pg.click('#receipt-pdf')]);
+      const head = require('fs').readFileSync(await dl.path()).subarray(0, 5).toString(); if (head !== '%PDF-') throw new Error('not a PDF: ' + head);
+      await pg.keyboard.press('Escape');
+    });
     await step(tag, 'H27 Resend a rent receipt from Income and from a tenant\'s messages; long lists show 8 lines, then Show more', async () => {
       await go(pg, 'income'); await pg.waitForSelector('.resend-receipt');
       const before = (await state(pg)).messages.length; await pg.locator('.resend-receipt').first().click(); await pg.waitForTimeout(250);
