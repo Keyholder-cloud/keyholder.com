@@ -268,7 +268,7 @@ h1, h2 { font-weight: 700; letter-spacing: -0.015em; font-variant-numeric: linin
 .rent-row { padding-top: 14px; padding-bottom: 14px; }
 
 /* Empty Home */
-.start-hero { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: center; margin-bottom: 16px; }
+.start-hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: center; margin-bottom: 16px; }
 .start-art { border-radius: 20px; background: var(--paper-raised); border: 1px solid var(--rule); overflow: hidden; }
 @media (max-width: 700px) { .start-hero { grid-template-columns: 1fr; } .start-art { max-width: 320px; } }
 

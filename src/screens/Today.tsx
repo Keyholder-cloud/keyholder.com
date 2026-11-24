@@ -11,7 +11,6 @@ import { activeLeases, hasSpace, leaseLedger } from '../lib/finance';
 import { RentRows } from '../components/Journey';
 import { trayItems } from '../lib/tray';
 import { BankStatus } from '../components/domain';
-import { SceneEmptyHome } from '../components/Art';
 import { Greeting, YearToDate, NextStep, RentCard } from '../components/HomeCards';
 import type { Lease, Tenant, Unit } from '../data/types';
 import type { LedgerLine } from '../lib/finance';
@@ -45,7 +44,6 @@ export function Today() {
             <h1 style={{ marginBottom: 8 }}>Welcome{state.profile.name ? `, ${state.profile.name.split(' ')[0]}` : ''}.</h1>
             <p className="page-sub">{next === 0 ? "Let's add your first property. Three steps, and Keyholder starts tracking your rent for you." : next === 1 ? 'Your property is in. Next, add your tenant.' : 'Almost done: choose how rent is tracked.'}</p>
           </div>
-          <div className="start-art" aria-hidden><SceneEmptyHome /></div>
         </div>
         <div className="sheet start-here" data-tour="start-here">
           <div className="start-head"><h2>Start here</h2><span className="small soft">{n} of {steps.length} done</span></div>
