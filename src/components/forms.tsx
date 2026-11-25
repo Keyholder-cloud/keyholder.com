@@ -7,7 +7,7 @@ import { uid, useStore } from '../data/store';
 import { propertyLevel } from '../lib/levels';
 import { addMonths, fmtDate, fmtPeriod, periodOf, periodRange } from '../lib/dates';
 import { activeLeases, byRoom, defaultPeriod, hasSpace, leaseLedger, mortgagePayment, openRooms, rentalPortion } from '../lib/finance';
-import { withPeople } from '../lib/people';
+import { hasLastName, splitName, withPeople } from '../lib/people';
 import { CATEGORIES, CCA_CLASSES, PROVINCES, category, province } from '../lib/jurisdiction';
 import { fmt } from '../lib/money';
 import { Icon } from './Icon';
@@ -591,6 +591,19 @@ export function UnitForm({ propertyId, unit, onClose }: { propertyId: string; un
   );
 }
 
+/** A person's name as two fields, first and last (as at signup). `id`: the first name's input id; the last name's is `id` with "-last". */
+export function NameFields({ id, value, onChange, autoFocus }: { id: string; value: string; onChange: (full: string) => void; autoFocus?: boolean }) {
+  const [first, setFirst] = useState(() => splitName(value)[0]);
+  const [last, setLast] = useState(() => splitName(value)[1]);
+  const put = (f: string, l: string) => { setFirst(f); setLast(l); onChange(`${f.trim()} ${l.trim()}`.trim()); };
+  return (
+    <div className="grid2">
+      <Field label="First name" htmlFor={id}><input id={id} className="input" value={first} onChange={(e) => put(e.target.value, last)} autoComplete="off" autoCapitalize="words" autoFocus={autoFocus} /></Field>
+      <Field label="Last name" htmlFor={`${id}-last`}><input id={`${id}-last`} className="input" value={last} onChange={(e) => put(first, e.target.value)} autoComplete="off" autoCapitalize="words" /></Field>
+    </div>
+  );
+}
+
 // =====================================================================================
 // Tenant + lease (TL-1, TL-2) — includes the email-notice consent the PRD requires
 // =====================================================================================
@@ -625,7 +638,8 @@ export function TenancyForm({ unitId, onClose, propertyId, inline }: { unitId?: 
   const [paidThrough, setPaidThrough] = useState('');
   const months = older ? periodRange(periodOf(start), thisPeriod).reverse() : [];
   const lastPaid = paidThrough && months.includes(paidThrough) ? paidThrough : standing === 'yes' ? (months.includes(lastDue) ? lastDue : months[0]) : '';
-  const valid = unit && people[0].name.trim() && rent && start && (!byRoom(unit) || room) && (!older || !!lastPaid);
+  // Everyone named needs a first and a last name (the first person is required).
+  const valid = unit && hasLastName(people[0].name) && people.every((p) => !p.name.trim() || hasLastName(p.name)) && rent && start && (!byRoom(unit) || room) && (!older || !!lastPaid);
 
   const save = () => {
     if (!unit || !rent) return;
@@ -660,7 +674,7 @@ export function TenancyForm({ unitId, onClose, propertyId, inline }: { unitId?: 
       {people.map((p, i) => (
         <fieldset key={i} className="person-fields">
           <legend>{people.length > 1 ? `Person ${i + 1}` : 'Tenant'}{i > 0 && <button type="button" className="btn small ghost" onClick={() => setPeople(people.filter((_, j) => j !== i))} aria-label={`Remove person ${i + 1}`}><Icon name="close" size={14} />Remove</button>}</legend>
-          <Field label="Full name" htmlFor={`tf-n${i}`}><input id={`tf-n${i}`} className="input" value={p.name} onChange={(e) => setPerson(i, { name: e.target.value })} autoComplete="off" /></Field>
+          <NameFields id={`tf-n${i}`} value={p.name} onChange={(name) => setPerson(i, { name })} />
           <div className="grid2">
             <Field label="Email" htmlFor={`tf-e${i}`}><input id={`tf-e${i}`} type="email" className="input" value={p.email} onChange={(e) => setPerson(i, { email: e.target.value })} /></Field>
             <Field label="Phone" htmlFor={`tf-p${i}`}><input id={`tf-p${i}`} type="tel" className="input" value={p.phone} onChange={(e) => setPerson(i, { phone: e.target.value })} /></Field>

@@ -17,7 +17,8 @@ export interface FormAttachment { formId: string; values: Record<string, PdfValu
 export interface ReceiptAttachment { kind: 'receipt'; receipt: ReceiptPdfData; filename: string }
 type Attachment = FormAttachment | ReceiptAttachment;
 const isReceipt = (a: Attachment): a is ReceiptAttachment => (a as ReceiptAttachment).kind === 'receipt';
-export interface Mail { to: string; toName?: string; replyTo?: string; subject: string; text: string; kind: string; accountId?: string | null; dedupeKey?: string; sendAfter?: Date; attachment?: Attachment }
+/** `cc`: a copy (the landlord, on every email to a tenant). */
+export interface Mail { to: string; toName?: string; replyTo?: string; cc?: string; subject: string; text: string; kind: string; accountId?: string | null; dedupeKey?: string; sendAfter?: Date; attachment?: Attachment }
 
 /** Addresses that must never get real email: sample data and reserved test domains. */
 export const undeliverable = (email: string) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || /@(example\.(com|org|net)|[^@]*\.(test|invalid|example|localhost))$/i.test(email);
@@ -26,16 +27,17 @@ export async function queueMail(q: Q, m: Mail): Promise<string | null> {
   const id = randomUUID();
   const skipped = undeliverable(m.to);
   const rows = await q.query<{ id: string }>(
-    `insert into outbox (id, account_id, kind, to_email, to_name, reply_to, subject, text_body, status, last_error, dedupe_key, send_after, attachment)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
+    `insert into outbox (id, account_id, kind, to_email, to_name, reply_to, subject, text_body, status, last_error, dedupe_key, send_after, attachment, cc)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14)
      on conflict (dedupe_key) do nothing returning id`,
     [id, m.accountId ?? null, m.kind, m.to, m.toName ?? null, m.replyTo ?? null, m.subject.slice(0, 300), m.text, skipped ? 'skipped' : 'queued',
-      skipped ? 'Test or sample address: not sent' : null, m.dedupeKey ?? null, m.sendAfter ?? new Date(), m.attachment ? JSON.stringify(m.attachment) : null],
+      skipped ? 'Test or sample address: not sent' : null, m.dedupeKey ?? null, m.sendAfter ?? new Date(), m.attachment ? JSON.stringify(m.attachment) : null,
+      m.cc && !undeliverable(m.cc) && m.cc.toLowerCase() !== m.to.toLowerCase() ? m.cc : null],
   );
   return rows[0]?.id ?? null;
 }
 
-type Row = { id: string; kind: string; to_email: string; to_name: string | null; reply_to: string | null; subject: string; text_body: string; attempts: number; attachment: Attachment | null };
+type Row = { id: string; kind: string; cc: string | null; to_email: string; to_name: string | null; reply_to: string | null; subject: string; text_body: string; attempts: number; attachment: Attachment | null };
 
 async function deliver(em: Config['email'], m: Row, appUrl: string): Promise<{ providerId?: string }> {
   const html = emailHtml({ text: m.text_body, kind: m.kind, subject: m.subject, appUrl, hasPdf: !!m.attachment });
@@ -46,7 +48,7 @@ async function deliver(em: Config['email'], m: Row, appUrl: string): Promise<{ p
   if (em.provider === 'resend') {
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST', headers: { Authorization: `Bearer ${em.resendKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: em.from, to: [to], subject: m.subject, text: m.text_body, html, reply_to: m.reply_to ?? undefined,
+      body: JSON.stringify({ from: em.from, to: [to], subject: m.subject, text: m.text_body, html, ...(m.cc ? { cc: [m.cc] } : {}), reply_to: m.reply_to ?? undefined,
         ...(pdf ? { attachments: [{ filename: m.attachment!.filename, content: pdf }] } : {}) }),
     });
     if (!r.ok) throw new Error(`Resend ${r.status}: ${(await r.text()).slice(0, 200)}`);
@@ -55,7 +57,7 @@ async function deliver(em: Config['email'], m: Row, appUrl: string): Promise<{ p
   if (em.provider === 'postmark') {
     const r = await fetch('https://api.postmarkapp.com/email', {
       method: 'POST', headers: { 'X-Postmark-Server-Token': em.postmarkToken!, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ From: em.from, To: to, Subject: m.subject, TextBody: m.text_body, HtmlBody: html, ReplyTo: m.reply_to ?? undefined, MessageStream: 'outbound',
+      body: JSON.stringify({ From: em.from, To: to, Subject: m.subject, TextBody: m.text_body, HtmlBody: html, ...(m.cc ? { Cc: m.cc } : {}), ReplyTo: m.reply_to ?? undefined, MessageStream: 'outbound',
         ...(pdf ? { Attachments: [{ Name: m.attachment!.filename, Content: pdf, ContentType: 'application/pdf' }] } : {}) }),
     });
     if (!r.ok) throw new Error(`Postmark ${r.status}: ${(await r.text()).slice(0, 200)}`);
@@ -76,7 +78,7 @@ export async function sendDue(cfg: Config, db: Db, limit = 20, keys?: Keys): Pro
   const rows = await db.query<Row>(
     `update outbox set status = 'sending', attempts = attempts + 1
      where id in (select id from outbox where status = 'queued' and send_after <= now() order by created_at limit $1 for update skip locked)
-     returning id, kind, to_email, to_name, reply_to, subject, text_body, attempts, attachment`, [limit]);
+     returning id, kind, cc, to_email, to_name, reply_to, subject, text_body, attempts, attachment`, [limit]);
   let sent = 0, failed = 0;
   for (const m of rows) {
     try {

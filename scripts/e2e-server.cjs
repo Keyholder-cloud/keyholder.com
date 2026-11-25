@@ -197,7 +197,7 @@ function watch(pg, errors, label) {
         await pg.locator('.prop-strip').first().click(); await pg.waitForTimeout(250);
         await pg.locator('text=Add a unit').first().click(); await pg.fill('#uf-l', 'Main'); await pg.fill('#uf-r', '2000'); await pg.locator('.drawer-foot >> text=Save unit').click(); await pg.waitForSelector('.unit-row:has-text("Main")');
         await pg.locator('text=Add tenant').first().click();
-        await pg.fill('#tf-n0', 'Rita Gomez'); await pg.fill('#tf-e0', `rita.${tag}@tenant-e2e.ca`);
+        await pg.fill('#tf-n0', 'Rita'); await pg.fill('#tf-n0-last', 'Gomez'); await pg.fill('#tf-e0', `rita.${tag}@tenant-e2e.ca`);
         const first = await pg.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; });
         await pg.fill('#tf-s', first); await pg.fill('#tf-r', '2000');
         await pg.click('#tf-save'); await pg.waitForSelector('.unit-row:has-text("Rita Gomez")');

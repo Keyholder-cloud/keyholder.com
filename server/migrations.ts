@@ -328,4 +328,9 @@ create index if not exists data_requests_status on data_requests (status, receiv
 alter table two_step_tickets add column if not exists email_code_at timestamptz;
 alter table two_step_tickets add column if not exists email_sends integer not null default 0;`,
   },
+  {
+    // Emails to tenants copy the landlord (cc).
+    id: '013_outbox_cc',
+    sql: `alter table outbox add column if not exists cc text;`,
+  },
 ];

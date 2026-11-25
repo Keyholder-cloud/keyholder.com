@@ -101,8 +101,9 @@ export function tenantMails(state: AppState, m: Message, accountId: string): Mai
     ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n');
   }
   if (!text.trim()) return [];
-  return people.filter((p) => p.email).map((p) => ({
-    kind: m.kind, to: p.email!, toName: p.name, replyTo, accountId, subject,
+  // The landlord gets a copy of every email to a tenant (once, on the first person's email for a shared lease).
+  return people.filter((p) => p.email).map((p, i) => ({
+    kind: m.kind, to: p.email!, toName: p.name, replyTo, accountId, subject, ...(i === 0 && replyTo ? { cc: replyTo } : {}),
     text: `${text}\n\n—\nSent for ${owner} by Keyholder. Reply to this email to reach your landlord.`,
     dedupeKey: `msg:${accountId}:${m.id}:${p.email!.toLowerCase()}`, attachment,
   }));

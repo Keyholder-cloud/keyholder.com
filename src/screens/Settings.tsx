@@ -165,9 +165,9 @@ export function Settings() {
             </span>
           </Pref>
           <Pref id="auto" icon="send" title="Sending">
-            <button className="chip" role="switch" aria-checked={p.autoSend} id="st-auto" title="Off: every message waits for you. Legal notices always do." onClick={() => act.setAutoSend(!p.autoSend)}>
+            <button className="chip" role="switch" aria-checked={p.autoSend} id="st-auto" title={p.autoSend ? 'Tap to approve each message yourself' : 'Tap to send receipts and reminders automatically'} onClick={() => act.setAutoSend(!p.autoSend)}>
               <Icon name={p.autoSend ? 'check' : 'pause'} size={14} />{p.autoSend ? 'Automatic' : 'I approve each one'}</button>
-            <span className="pref-note">Legal notices always wait for you.</span>
+            <span className="pref-note" id="st-auto-note">{p.autoSend ? 'Receipts and reminders go out by themselves. Legal notices still wait for you.' : 'Every receipt and reminder waits for your OK before it is sent.'}</span>
           </Pref>
         </div>
       </section>}

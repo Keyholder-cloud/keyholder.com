@@ -830,9 +830,9 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     const landlord = s.data!.profile.name || u.name;
     const filename = formFilename(f.code, t!.names.join(' & '), n!.servedOn ?? new Date().toISOString().slice(0, 10));
     let queued = 0;
-    for (const p of people) {
+    for (const [i, p] of people.entries()) {
       const id2 = await queueMail(db, {
-        to: p.email, toName: p.name, replyTo: u.email, kind: 'notice', accountId, dedupeKey: `notice:${n!.id}:${p.email.toLowerCase()}`,
+        to: p.email, toName: p.name, replyTo: u.email, ...(i === 0 ? { cc: u.email } : {}), kind: 'notice', accountId, dedupeKey: `notice:${n!.id}:${p.email.toLowerCase()}`,
         subject: `${f.code}: ${f.title}`,
         text: [`Hello ${p.name || t!.names.join(' & ')},`, '',
           `${landlord} has given you a notice: ${f.code}, ${f.title}. It is attached as the Landlord and Tenant Board's form (${OFFICIAL[n!.formId].version}).`,
