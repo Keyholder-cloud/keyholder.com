@@ -16,6 +16,7 @@ import { messageBody } from '../lib/templates';
 import { Letterhead, ReceiptLetter } from '../components/domain';
 import { Drawer, Empty, Seg, Stamp, embedded } from '../components/ui';
 import { Icon } from '../components/Icon';
+import { paidUpRent } from '../lib/finance';
 import { ResendReceipt, useMore } from '../components/More';
 import { SceneTap, SceneWelcome } from '../components/Art';
 
@@ -56,23 +57,26 @@ export function IncomePage() {
 }
 
 /** Rental income log: rent and other money in (bill shares, parking…), each with its receipt. */
-type IncomeRow = { id: string; date: string; kind: 'rent' | IncomeKind; who: string; unit: string; forText: string; amount: number; receipt?: Receipt; incomeId?: string; propertyId?: string };
+type IncomeRow = { id: string; date: string; kind: 'rent' | IncomeKind; who: string; unit: string; forText: string; amount: number; receipt?: Receipt; incomeId?: string; propertyId?: string; paidUp?: { leaseId: string; period: string } };
 function Income() {
-  const { state, act } = useStore();
+  const { state, act, today } = useStore();
   const [open, setOpen] = useState<Receipt | null>(null);
   const [prop, setProp] = useState('all');
   const [type, setType] = useState<'all' | 'rent' | 'other'>('all');
   const others = (state.income ?? []).filter((i) => !i.voided);
-  const years = [...new Set([...state.payments.map((p) => p.date.slice(0, 4)), ...others.map((i) => i.date.slice(0, 4))])].sort().reverse();
-  const [year, setYear] = useState(years[0] ?? '');
   const place = (leaseId?: string, propertyId?: string) => {
     const l = state.leases.find((x) => x.id === leaseId); const u = state.units.find((x) => x.id === l?.unitId); const pr = state.properties.find((x) => x.id === (u?.propertyId ?? propertyId));
     return { who: state.tenants.find((x) => x.id === l?.tenantId)?.names.join(' & ') ?? '—', unit: pr ? `${pr.nickname.split(' ')[0]}${u ? ` · ${l?.room ?? u.label}` : ''}` : '—', propertyId: pr?.id };
   };
   const all: IncomeRow[] = [
     ...state.payments.filter((p) => !p.voided).map((p) => ({ id: p.id, date: p.date, kind: 'rent' as const, forText: fmtPeriod(p.period), amount: p.amount, receipt: state.receipts.find((x) => x.paymentId === p.id && x.status !== 'superseded'), ...place(p.leaseId) })),
+    // Months marked as paid up (paid before Keyholder): rent received on the due date, a receipt on request.
+    ...state.leases.flatMap((l) => paidUpRent(state, l, '1900-01-01', today).map((r) => ({ id: `pu-${l.id}-${r.period}`, date: r.date, kind: 'rent' as const, forText: `${fmtPeriod(r.period)} · marked paid up`, amount: r.amount, paidUp: { leaseId: l.id, period: r.period }, ...place(l.id) }))),
     ...others.map((i) => ({ id: i.id, date: i.date, kind: i.kind, forText: i.label, amount: i.amount, incomeId: i.id, receipt: state.receipts.find((x) => x.incomeId === i.id && x.status !== 'superseded'), ...place(i.leaseId, i.propertyId) })),
   ];
+  const years = [...new Set(all.map((r) => r.date.slice(0, 4)))].sort().reverse();
+  const [pickedYear, setYear] = useState('');
+  const year = years.includes(pickedYear) ? pickedYear : years[0] ?? '';
   const rows = all.filter((r) => r.date.startsWith(year) && (prop === 'all' || r.propertyId === prop) && (type === 'all' || (type === 'rent') === (r.kind === 'rent')))
     .sort((a, b) => b.date.localeCompare(a.date));
   const total = rows.reduce((a, r) => a + r.amount, 0);
@@ -93,6 +97,7 @@ function Income() {
             <td className="date" data-label="Received">{fmtDate(r.date)}</td><td className="st-title" data-label="From">{r.who}</td><td data-label="Unit">{r.unit}</td>
             <td data-label="For">{r.kind !== 'rent' && <span className={`inc-tag ${r.kind}`}>{incomeKindLabel(r.kind)}</span>}{r.forText}</td><td className="num in" data-label="Amount">{fmt(r.amount)}</td>
             <td className="st-actions" data-label="Receipt"><span className="rc-acts">{r.receipt ? <><button className="btn small ghost" title={`Receipt #${r.receipt.number}`} aria-label={`View receipt #${r.receipt.number}`} onClick={() => setOpen(r.receipt!)}><Icon name="receipt" size={16} />View</button><ResendReceipt receiptId={r.receipt.id} label={r.receipt.status === 'draft' ? 'Send' : 'Resend'} /></>
+              : r.paidUp ? <button className="btn small" id={`pu-send-${r.id}`} title="Record this month and send the tenant a receipt" onClick={() => act.sendPaidUpReceipt(r.paidUp!.leaseId, r.paidUp!.period, r.amount, r.date)}><Icon name="send" size={14} />Send receipt</button>
               : r.incomeId ? <span className="small soft">No tenant</span> : '—'}
               {r.incomeId && <button className="btn small ghost icon-only" title="Remove this income" aria-label="Remove this income" onClick={() => { if (window.confirm('Remove this income? Its receipt is cancelled.')) act.voidIncome(r.incomeId!); }}><Icon name="trash" size={14} /></button>}</span></td>
           </tr>

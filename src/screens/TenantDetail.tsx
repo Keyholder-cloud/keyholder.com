@@ -90,7 +90,7 @@ export function TenantDetail() {
                         <td className="st-title" data-label="Period">{fmtPeriod(l.period)}</td>
                         <td className="num" data-label="Charge">{fmt(l.charge)}</td>
                         <td className="small st-actions" data-label="Received">
-                          {l.before && <span className="soft">Paid before Keyholder</span>}
+                          {l.before && <span className="spread" style={{ gap: 6, justifyContent: 'flex-start' }}><span className="soft">Marked paid up</span>{lease && l.due <= today && <button className="btn small ghost" id={`pu-send-${l.period}`} title="Record this month and send the tenant a receipt" onClick={() => act.sendPaidUpReceipt(lease.id, l.period, l.paid - l.payments.reduce((a, p) => a + p.amount, 0), l.due)}>Send receipt</button>}</span>}
                           {l.payments.map((p) => {
                             const r = state.receipts.find((x) => x.paymentId === p.id && x.status !== 'superseded');
                             return (

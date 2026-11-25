@@ -391,6 +391,20 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
       toast(text);
     },
     /** Sends a receipt again (a copy, same number) — or sends it for the first time if it was still a draft. */
+    /** A month marked paid up (paid before Keyholder): record it as a payment on its due date and send the receipt. */
+    sendPaidUpReceipt(leaseId: string, period: string, amount: number, date: string) {
+      let text = '';
+      mut((d) => {
+        const lease = d.leases.find((l) => l.id === leaseId); if (!lease || amount <= 0) return;
+        const pay = recordPayment(d, { leaseId, period, amount, date, method: lease.paymentMethod, source: 'manual', note: 'Paid before Keyholder' });
+        const nowIso = new Date().toISOString();
+        const r = d.receipts.find((x) => x.paymentId === pay.id)!;
+        if (r.status === 'draft') { r.status = 'sent'; r.sentAt = nowIso; }
+        for (const m of d.messages) if (m.kind === 'receipt' && m.receiptId === r.id && m.status === 'draft') { m.status = 'sent'; m.sentAt = nowIso; }
+        text = `Receipt #${r.number} sent to ${tenantName(d, leaseId)}.`;
+      });
+      if (text) toast(text);
+    },
     resendReceipt(receiptId: string) {
       let text = '';
       mut((d) => {

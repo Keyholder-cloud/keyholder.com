@@ -10,7 +10,7 @@ import { bankToSort, readWithdrawal } from '../lib/bankrules';
 import { useStore } from '../data/store';
 import { propertyLevel } from '../lib/levels';
 import { addDays, addPeriods, fmtDate, fmtMonthShort, periodOf } from '../lib/dates';
-import { improvements, improvementsCsv, picture, rentalPortion, taxPack } from '../lib/finance';
+import { improvements, improvementsCsv, paidUpRent, picture, rentalPortion, taxPack } from '../lib/finance';
 import { incomeKindLabel } from '../lib/receiptData';
 import { CATEGORIES, CCA_CLASSES, OTHER_BANKS, POPULAR_BANKS, category } from '../lib/jurisdiction';
 import { banksOn, paidPlan, serverMode } from '../data/api';
@@ -612,10 +612,16 @@ export function TaxPackPage() {
     rows.push(['9936', 'Capital cost allowance', (pack.ccaClaimed / 100).toFixed(2)]);
     rows.push(['', 'Net income', (pack.netIncome / 100).toFixed(2)]);
     rows.push([], ['Rent received'], ['Date', 'Tenant', 'For', 'Amount']);
-    for (const pay of state.payments.filter((x) => !x.voided && leases.some((l) => l.id === x.leaseId) && x.date >= from && x.date <= yearEnd).sort((a, b) => a.date.localeCompare(b.date))) {
+    const rentRows: [string, string, string, number][] = [];
+    for (const pay of state.payments.filter((x) => !x.voided && leases.some((l) => l.id === x.leaseId) && x.date >= from && x.date <= yearEnd)) {
       const t = state.tenants.find((x) => x.id === leases.find((l) => l.id === pay.leaseId)?.tenantId);
-      rows.push([pay.date, t?.names.join(' & ') ?? '', pay.period, (pay.amount / 100).toFixed(2)]);
+      rentRows.push([pay.date, t?.names.join(' & ') ?? '', pay.period, pay.amount]);
     }
+    // Months marked as paid up (paid before Keyholder): rent received on the due date.
+    for (const l of leases) for (const r of paidUpRent(state, l, from, yearEnd)) {
+      rentRows.push([r.date, state.tenants.find((x) => x.id === l.tenantId)?.names.join(' & ') ?? '', `${r.period} (marked paid up)`, r.amount]);
+    }
+    for (const r of rentRows.sort((a, b) => a[0].localeCompare(b[0]))) rows.push([r[0], r[1], r[2], (r[3] / 100).toFixed(2)]);
     const otherIn = (state.income ?? []).filter((i) => !i.voided && i.date >= from && i.date <= yearEnd && ((i.leaseId && leases.some((l) => l.id === i.leaseId)) || i.propertyId === p.id));
     if (otherIn.length) {
       rows.push([], ['Other income (line 8230)'], ['Date', 'From', 'Type', 'For', 'Amount']);
