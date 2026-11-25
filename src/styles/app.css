@@ -803,6 +803,25 @@ a.unit-who:hover strong, .unit-who.as-link:hover strong { text-decoration: under
 .rcpt-sign > div { display: flex; flex-direction: column; gap: 6px; } .rcpt-sign b { font-size: 18px; border-bottom: 1px solid #121726; padding-bottom: 4px; min-width: 220px; }
 .rcpt-stamp { padding: 8px 22px; border: 2px solid #039961; color: #039961; font-weight: 800; font-size: 22px; }
 .rcpt-stamp.old { border-color: #98A2B3; color: #98A2B3; font-size: 16px; }
+.ledger-doc { max-width: none; box-shadow: var(--shadow-card);
+  /* A paper document in either theme: the table inside uses the light colours. */
+  --paper: #F6F7FB; --paper-raised: #FFFFFF; --paper-sunk: #EEF0F6; --ink: #101828; --ink-soft: #475467; --ink-faint: #667085;
+  --rule: #E7E9F0; --rule-strong: #D0D5DD; --pine: #079455; --pine-tint: #DCFAE6; --brass: #B54708; --brass-tint: #FEF0C7;
+  --rust: #D92D20; --rust-tint: #FEE4E2; --ink-blue: #2E5BDB; --ink-blue-tint: #E4ECFF; --stamp-red: #D92D20; --primary: #4F46E5; color-scheme: light; }
+.ledger-doc .ledger { background: transparent; }
+.ledger-doc .ledger th { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #667085; border-bottom: 1.5px solid #121726; }
+.ledger-doc .ledger td { border-color: #E3E6EC; }
+.ledger-doc .rcpt-parties .soft { display: block; }
+.ld-table { font-size: 13.5px; } .ld-table td { vertical-align: middle; padding-top: 9px; padding-bottom: 9px; }
+.ld-table .ld-sub { display: block; font-size: 12px; color: #667085; margin-top: 2px; }
+.ld-table .ld-line { display: block; white-space: nowrap; }
+.ld-table .ld-acts { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
+.ld-table .ld-acts + .ld-acts { margin-top: 4px; }
+.ld-table td.st-title b { white-space: nowrap; } .ld-table .ld-sub .stamp { margin-left: 4px; vertical-align: middle; }
+.ld-table .ld-pay + .ld-pay { display: block; margin-top: 6px; }
+.ld-table .ld-pay .ld-sub { white-space: nowrap; }
+@media (max-width: 640px) { .ld-table .ld-pay .ld-sub { white-space: normal; } }
+@media (max-width: 640px) { .ledger-doc .rcpt-head, .ledger-doc .rcpt-body { padding-left: 16px; padding-right: 16px; } .ledger-doc .rcpt-parties { grid-template-columns: 1fr; } }
 .rcpt-foot { margin: 26px 0 0; font-size: 11px; color: #667085; line-height: 1.5; }
 @media (max-width: 560px) { .rcpt-head, .rcpt-body { padding-left: 16px; padding-right: 16px; } .rcpt-parties { grid-template-columns: 1fr; } .rcpt-amount { flex-direction: column; align-items: flex-start; } .rcpt-amount .r { text-align: left; } .rcpt-amount strong { font-size: 26px; } .rcpt-sign b { min-width: 160px; } }
 

@@ -512,7 +512,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(p, 'today'); await p.waitForSelector('.rent-row');
       if (await p.locator('.rent-row:has-text("Nora") >> text=/late|owe/i').count()) throw new Error('shown as late');
       if (await p.locator('.standing-q').count()) throw new Error('asked again on Home');
-      await go(p, 'rent/tenant/' + l.tenantId); await p.waitForSelector('text=Paid before Keyholder');
+      await go(p, 'rent/tenant/' + l.tenantId); await p.waitForSelector('text=Marked paid up');
       // A tenancy made before this question existed: asked once on Home; "No" with a month keeps later months owing.
       await p.evaluate(() => { const s = JSON.parse(localStorage.getItem('keyholder:v1')); const x = s.leases[0]; delete x.paidThrough; delete x.standingChecked; s.profile.account.created = new Date().toISOString().slice(0, 10); localStorage.setItem('keyholder:v1', JSON.stringify(s)); });
       await p.reload(); await go(p, 'today'); await p.waitForSelector('.standing-q >> text=Is Nora in good standing?');
@@ -925,6 +925,16 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(pg, 'paperwork/taxes'); await pg.waitForSelector('#improvements >> text=Capital improvements'); await pg.waitForSelector('#file-cca'); await pg.waitForSelector('#file-base');
       if (await pg.locator('#imp-download').isEnabled()) { const [dl] = await Promise.all([pg.waitForEvent('download'), pg.click('#imp-download')]); const txt = require('fs').readFileSync(await dl.path(), 'utf8'); if (!/Adjusted cost base/.test(txt)) throw new Error('spreadsheet'); }
       await pg.click('#file-base'); await pg.waitForSelector('#file-base.on'); await pg.click('#file-cca'); await pg.waitForSelector('#file-cca.on');
+    });
+    await step(tag, 'H30 Months marked paid up show on Income with Send receipt; sending records the month and sends its receipt', async () => {
+      await pg.evaluate(() => { const k = 'keyholder:v1'; const s = JSON.parse(localStorage.getItem(k)); const l = s.leases.find((x) => x.id === s.payments[0].leaseId); const ids = new Set([l.id]); s.payments = s.payments.filter((p) => !ids.has(p.leaseId)); l.start = '2026-01-01'; l.paidThrough = '2026-10'; delete l.end; localStorage.setItem(k, JSON.stringify(s)); });
+      await pg.reload(); await pg.waitForTimeout(600);
+      await go(pg, 'income'); const b = pg.locator('button[id^="pu-send-"]'); await b.first().waitFor();
+      const n = await pg.locator('td >> text=marked paid up').count(); if (n < 1) throw new Error('no paid-up rows');
+      const before = (await state(pg)).payments.length; await b.first().click(); await pg.waitForTimeout(300);
+      const st = await state(pg); if (st.payments.length !== before + 1) throw new Error('no payment recorded');
+      const pay = st.payments[st.payments.length - 1]; const r = st.receipts.find((x) => x.paymentId === pay.id); if (!r || r.status !== 'sent') throw new Error('receipt not sent');
+      if ((await pg.locator('button[id^="pu-send-"]').count()) !== (await b.count())) throw new Error('row still offers send');
     });
     await step(tag, 'H27 Resend a rent receipt from Income and from a tenant\'s messages; long lists show 8 lines, then Show more', async () => {
       await go(pg, 'income'); await pg.waitForSelector('.resend-receipt');

@@ -275,6 +275,16 @@ export interface Picture {
   mortgageIsRough: boolean;
 }
 
+/** Rent for the months the landlord said were paid before Keyholder (the lease's paidThrough), on their due dates
+ *  from..to: the part of each month's rent not covered by a recorded payment. It is rent received, for taxes too. */
+export function paidUpRent(state: AppState, lease: Lease, from: ISODate, to: ISODate): { date: ISODate; period: Period; amount: Cents }[] {
+  if (!lease.paidThrough) return [];
+  return leaseLedger(lease, state.payments, to, periodOf(to))
+    .filter((line) => line.before && line.due >= from && line.due <= to)
+    .map((line) => ({ date: line.due, period: line.period, amount: line.paid - line.payments.reduce((a, p) => a + p.amount, 0) }))
+    .filter((r) => r.amount > 0);
+}
+
 /** The day a property's records start: its "records from" date, else its first recorded rent or cost (undefined: nothing yet). */
 export function trackedFrom(state: AppState, prop: Property): ISODate | undefined {
   if (prop.recordsFrom) return prop.recordsFrom;
@@ -309,10 +319,7 @@ export function picture(state: AppState, from: ISODate, to: ISODate, opts: { pro
     if (!l.paidThrough) continue;
     const start = trackedFrom(state, propOfUnit.get(l.unitId)!);
     const startMonth = start ? `${periodOf(start)}-01` : from;
-    for (const line of leaseLedger(l, state.payments, to, periodOf(to))) {
-      if (!line.before || line.due < from || line.due > to || line.due < startMonth) continue;
-      rentCollected += line.paid - line.payments.reduce((a, p) => a + p.amount, 0);
-    }
+    for (const r of paidUpRent(state, l, startMonth > from ? startMonth : from, to)) rentCollected += r.amount;
   }
 
   const otherIncome = (state.income ?? [])
@@ -606,7 +613,9 @@ export function taxPack(state: AppState, prop: Property, year: number, start?: I
   const from = start && start > y0 && start <= to ? start : y0;
   const units = state.units.filter((u) => u.propertyId === prop.id).map((u) => u.id);
   const leaseIds = new Set(state.leases.filter((l) => units.includes(l.unitId)).map((l) => l.id));
-  const grossRents = state.payments.filter((p) => !p.voided && leaseIds.has(p.leaseId) && p.date >= from && p.date <= to).reduce((a, p) => a + p.amount, 0);
+  const grossRents0 = state.payments.filter((p) => !p.voided && leaseIds.has(p.leaseId) && p.date >= from && p.date <= to).reduce((a, p) => a + p.amount, 0);
+  // Months the landlord marked as paid up count as rent received.
+  const grossRents = grossRents0 + state.leases.filter((l) => leaseIds.has(l.id)).flatMap((l) => paidUpRent(state, l, from, to)).reduce((a, r) => a + r.amount, 0);
   const otherIncome = (state.income ?? []).filter((i) => !i.voided && i.date >= from && i.date <= to && ((i.leaseId && leaseIds.has(i.leaseId)) || i.propertyId === prop.id)).reduce((a, i) => a + i.amount, 0);
 
   const exps = state.expenses.filter((e) => e.propertyId === prop.id && e.date >= from && e.date <= to);

@@ -115,6 +115,12 @@ function tenantCard(state: AppState, lease: Lease, today: ISODate): JourneyCard 
     return null;
   }
 
+  // Rent due soon (from the last day of the month before): a friendly reminder, if the owner wants to send one.
+  if (reminder && reminder.kind === 'reminder' && reminder.stage === 'Before due') {
+    const amt = ((reminder.line.charge - reminder.line.paid) / 100).toLocaleString('en-CA', { style: 'currency', currency: 'CAD' });
+    return { ...base, stepKey: `reminder-${reminder.line.period}-upcoming`, stage: 'paying', text: `${who}'s rent is due ${fmtDate(reminder.line.due)}. Send a reminder`, detail: `${amt} due`, priority: 4, step: { kind: 'reminder', lease, line: reminder.line, tone: 'gentle' }, progress: 'Rent due soon' };
+  }
+
   // Rent increases are the owner's choice (Raise rent in a tenant's ⋯ menu); Keyholder does not suggest them.
   return null;
 }

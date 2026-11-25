@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
 import { PLAID_PRIVACY_URL } from './Security';
 import { UploadStatementButton } from '../components/StatementUpload';
-import { currentTaxYear, gapCount, recordsFromIn, yearCheck, type Gap } from '../lib/taxyear';
+import { currentTaxYear, gapCount, gapSummary, recordsFromIn, yearCheck, type Gap } from '../lib/taxyear';
 import { PageSub } from '../components/Guide';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, useLocation, useParams } from 'react-router-dom';
@@ -10,7 +10,7 @@ import { bankToSort, readWithdrawal } from '../lib/bankrules';
 import { useStore } from '../data/store';
 import { propertyLevel } from '../lib/levels';
 import { addDays, addPeriods, fmtDate, fmtMonthShort, periodOf } from '../lib/dates';
-import { improvements, improvementsCsv, picture, rentalPortion, taxPack } from '../lib/finance';
+import { improvements, improvementsCsv, paidUpRent, picture, rentalPortion, taxPack } from '../lib/finance';
 import { incomeKindLabel } from '../lib/receiptData';
 import { CATEGORIES, CCA_CLASSES, OTHER_BANKS, POPULAR_BANKS, category } from '../lib/jurisdiction';
 import { banksOn, paidPlan, serverMode } from '../data/api';
@@ -146,12 +146,13 @@ export function Expenses() {
       <nav className="tax-years" aria-label="Tax years" id="tax-years">{years.map((y) => {
         const gaps = gapCount(state, y, today);
         return (
-          <button key={y} className={`tax-year${y === year ? ' on' : ''}`} aria-pressed={y === year} onClick={() => setYear(y)}>
+          <button key={y} className={`tax-year${y === year ? ' on' : ''}`} aria-pressed={y === year} onClick={() => setYear(y)} title={gaps ? `Missing for ${y}: ${gapSummary(state, y, today)}` : undefined}>
             <span className="ty-y">{y}{y === cur && <span className="ty-cur">Current</span>}</span>
-            <span className={`ty-g${gaps ? ' gap' : ''}`}>{gaps ? <><Icon name="alert" size={12} />{gaps} missing</> : <><Icon name="check" size={12} />Complete</>}</span>
+            <span className={`ty-g${gaps ? ' gap' : ''}`}>{gaps ? <><Icon name="alert" size={12} />{gaps} to add</> : <><Icon name="check" size={12} />Complete</>}</span>
           </button>
         );
       })}</nav>
+      {gapCount(state, year, today) > 0 && <p className="small soft" id="ty-gap-note" style={{ margin: '-6px 0 14px' }}>For your {year} taxes, Keyholder still needs: {gapSummary(state, year, today)}. <Link to="/paperwork/taxes">See the list</Link></p>}
       <BankReview />
       <div className="spread" style={{ marginBottom: 16 }}>
         <div className="btn-row">
@@ -612,10 +613,16 @@ export function TaxPackPage() {
     rows.push(['9936', 'Capital cost allowance', (pack.ccaClaimed / 100).toFixed(2)]);
     rows.push(['', 'Net income', (pack.netIncome / 100).toFixed(2)]);
     rows.push([], ['Rent received'], ['Date', 'Tenant', 'For', 'Amount']);
-    for (const pay of state.payments.filter((x) => !x.voided && leases.some((l) => l.id === x.leaseId) && x.date >= from && x.date <= yearEnd).sort((a, b) => a.date.localeCompare(b.date))) {
+    const rentRows: [string, string, string, number][] = [];
+    for (const pay of state.payments.filter((x) => !x.voided && leases.some((l) => l.id === x.leaseId) && x.date >= from && x.date <= yearEnd)) {
       const t = state.tenants.find((x) => x.id === leases.find((l) => l.id === pay.leaseId)?.tenantId);
-      rows.push([pay.date, t?.names.join(' & ') ?? '', pay.period, (pay.amount / 100).toFixed(2)]);
+      rentRows.push([pay.date, t?.names.join(' & ') ?? '', pay.period, pay.amount]);
     }
+    // Months marked as paid up (paid before Keyholder): rent received on the due date.
+    for (const l of leases) for (const r of paidUpRent(state, l, from, yearEnd)) {
+      rentRows.push([r.date, state.tenants.find((x) => x.id === l.tenantId)?.names.join(' & ') ?? '', `${r.period} (marked paid up)`, r.amount]);
+    }
+    for (const r of rentRows.sort((a, b) => a[0].localeCompare(b[0]))) rows.push([r[0], r[1], r[2], (r[3] / 100).toFixed(2)]);
     const otherIn = (state.income ?? []).filter((i) => !i.voided && i.date >= from && i.date <= yearEnd && ((i.leaseId && leases.some((l) => l.id === i.leaseId)) || i.propertyId === p.id));
     if (otherIn.length) {
       rows.push([], ['Other income (line 8230)'], ['Date', 'From', 'Type', 'For', 'Amount']);

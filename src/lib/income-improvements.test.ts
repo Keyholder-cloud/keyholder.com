@@ -74,4 +74,15 @@ describe('mortgage in Money out', () => {
     expect(pic.rentCollected).toBeGreaterThanOrEqual(lease.rent * 11);
     expect(pic.mortgageInterest + pic.mortgagePrincipal).toBeGreaterThan(0);
   });
+  it('paid-up months count as rent received on the Taxes page', () => {
+    const s = base();
+    const prop = s.properties.find((p) => s.mortgages.some((m) => m.propertyId === p.id))!;
+    const units = new Set(s.units.filter((u) => u.propertyId === prop.id).map((u) => u.id));
+    const ls = s.leases.filter((l) => units.has(l.unitId));
+    const ids = new Set(ls.map((l) => l.id));
+    s.payments = s.payments.filter((p) => !ids.has(p.leaseId));
+    for (const l of ls) { l.start = '2026-01-01'; delete l.end; l.paidThrough = '2026-10'; }
+    const pack = taxPack(s, prop, 2026);
+    expect(pack.grossRents).toBe(ls.reduce((a, l) => a + l.rent * 10, 0));
+  });
 });

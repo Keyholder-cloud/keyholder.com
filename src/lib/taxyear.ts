@@ -28,7 +28,8 @@ export const currentTaxYear = (today: ISODate) => (today.slice(5) <= '04-30' ? N
 /** The first day kept for taxes in `year`: the property's records-from date, else January 1. */
 export function recordsFromIn(p: Property, year: number): ISODate | null {
   const y0 = `${year}-01-01`, y1 = `${year}-12-31`;
-  const f = p.recordsFrom && p.recordsFrom > y0 ? p.recordsFrom : y0;
+  // Nothing to keep before the property was bought.
+  const f = [y0, p.recordsFrom, p.purchaseDate].filter((x): x is ISODate => !!x).sort().pop()!;
   return f > y1 ? null : f;
 }
 
@@ -83,7 +84,8 @@ export function yearCheck(state: AppState, p: Property, year: number, today: ISO
         add({ id: `rent-${l.id}-${m}`, kind: 'rent', month: m, text: `${name}: rent from ${t?.names[0] ?? 'a tenant'} (Unit ${u?.label ?? ''}${l.room ? `, ${l.room}` : ''}) not marked paid`, to: `/rent/tenant/${l.tenantId}` });
       }
     }
-    if (ended && mortgages.some((mg) => mg.startDate.slice(0, 7) <= m) && !done.has(m) && !interest.has(m)) {
+    // A month with no statement is one thing to add (its statement shows the mortgage payment), not two.
+    if (ended && covered.has(m) && mortgages.some((mg) => mg.startDate.slice(0, 7) <= m) && !done.has(m) && !interest.has(m)) {
       add({ id: `mtg-${m}`, kind: 'mortgage', month: m, text: `${name}: no mortgage payment recorded`, to: `/rent/property/${p.id}/mortgage` });
     }
   }
@@ -104,3 +106,13 @@ export function yearChecks(state: AppState, year: number, today: ISODate) {
 /** Gaps across all properties for a year (for a badge). */
 export const gapCount = (state: AppState, year: number, today: ISODate) => yearChecks(state, year, today).reduce((n, x) => n + x.c.gaps.length, 0);
 
+
+/** What is missing for a year, in words: "10 bank statements, 2 rent payments, property tax, insurance". */
+export function gapSummary(state: AppState, year: number, today: ISODate): string {
+  const n: Record<GapKind, number> = { statement: 0, rent: 0, mortgage: 0, 'property-tax': 0, insurance: 0 };
+  for (const { c } of yearChecks(state, year, today)) for (const g of c.gaps) n[g.kind] += 1;
+  const many = (k: GapKind, one: string, more: string) => (n[k] ? `${n[k]} ${n[k] === 1 ? one : more}` : '');
+  return [many('statement', 'bank statement', 'bank statements'), many('rent', 'month of rent not marked paid', 'months of rent not marked paid'),
+    many('mortgage', 'mortgage payment', 'mortgage payments'), many('property-tax', 'property tax bill', 'property tax bills'), many('insurance', 'insurance bill', 'insurance bills')]
+    .filter(Boolean).join(', ');
+}

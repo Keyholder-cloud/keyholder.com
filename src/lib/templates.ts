@@ -1,6 +1,6 @@
 import type { AppState, Lease, Message, Tone } from '../data/types';
 import { fmtDate, fmtPeriod } from './dates';
-import { leaseBalance } from './finance';
+import { leaseBalance, leaseLedger } from './finance';
 import { fmt } from './money';
 
 // Reminder and receipt wording (AR-2). Merge fields: {first}, {amount}, {due}, {unit}, {balance}, {instructions}, {owner}.
@@ -69,8 +69,23 @@ export function fill(template: string, fields: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (_, k) => fields[k] ?? `{${k}}`);
 }
 
+const UPCOMING = {
+  subject: 'Reminder: rent for {period} is due {due}',
+  body: `Hi {first},
+
+Just a friendly reminder that rent of {amount} for unit {unit} is due on {due}. If it's already on its way, thank you — please ignore this note.
+
+{instructions}
+
+Thanks,
+{owner}`,
+};
+
 export function reminderDraft(state: AppState, lease: Lease, period: string, tone: Tone, today: string) {
   const f = mergeFields(state, lease, period, today);
+  // Before the due date, the reminder says it is due (not that it was).
+  const line = leaseLedger(lease, state.payments, today, period).find((l) => l.period === period);
+  if (line && line.due > today) return { subject: fill(UPCOMING.subject, f), body: fill(UPCOMING.body, f) };
   return { subject: fill(REMINDER[tone].subject, f), body: fill(REMINDER[tone].body, f) };
 }
 
