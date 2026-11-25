@@ -92,8 +92,8 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
     await step(tag, 'A4 Add a tenant: two people on one lease, each with an email (lease from today)', async () => {
       // The property's "Add tenant" tab: the form on the page, for its vacant unit.
       await pg.locator('.tabs a:has-text("Tenants")').first().click(); await pg.click('#tenants-add'); await pg.waitForSelector('#vacant-units');
-      await pg.fill('#tf-n0', 'Rita Gomez'); await pg.fill('#tf-e0', 'rita@example.com');
-      await pg.locator('.tenancy-inline >> text=Add another person').click(); await pg.fill('#tf-n1', 'Luis Gomez'); await pg.fill('#tf-e1', 'luis@example.com');
+      await pg.fill('#tf-n0', 'Rita'); await pg.fill('#tf-n0-last', 'Gomez'); await pg.fill('#tf-e0', 'rita@example.com');
+      await pg.locator('.tenancy-inline >> text=Add another person').click(); await pg.fill('#tf-n1', 'Luis'); await pg.fill('#tf-n1-last', 'Gomez'); await pg.fill('#tf-e1', 'luis@example.com');
       const today = await pg.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; });
       await pg.fill('#tf-s', today); await pg.fill('#tf-r', '2000');
       await pg.click('#tf-save'); await pg.waitForTimeout(300);
@@ -503,7 +503,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await p.fill('#pp-nick', 'Elm house'); await p.fill('#pp-addr', '5 Elm St'); await p.locator('.drawer-foot >> text=Save property').click(); await p.waitForSelector('text=Elm house');
       await p.locator('.prop-strip').first().click(); await p.waitForTimeout(250);
       await p.locator('text=Add a unit').first().click(); await p.fill('#uf-l', 'Main'); await p.fill('#uf-r', '1800'); await p.locator('.drawer-foot >> text=Save unit').click(); await p.waitForSelector('.unit-row:has-text("Main")');
-      await p.locator('text=Add tenant').first().click(); await p.fill('#tf-n0', 'Nora Bell'); await p.fill('#tf-s', '2024-03-01'); await p.fill('#tf-r', '1800');
+      await p.locator('text=Add tenant').first().click(); await p.fill('#tf-n0', 'Nora'); await p.fill('#tf-n0-last', 'Bell'); await p.fill('#tf-s', '2024-03-01'); await p.fill('#tf-r', '1800');
       await p.waitForSelector('#tf-standing >> text=Are they in good standing?');
       if (!(await p.inputValue('#tf-paid'))) throw new Error('no last month chosen for "Yes"');
       await p.click('#tf-save'); await p.waitForSelector('.unit-row:has-text("Nora")');

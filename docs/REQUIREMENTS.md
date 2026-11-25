@@ -548,3 +548,6 @@ Status: ☐ to do · ◐ in progress · ☑ done
   (one line under the summary); Taxes has Capital improvements: class picker, spreadsheet download, and three ways to
   file (claim CCA, cost base only, send to accountant), as options to discuss, not advice. You kept: same box as the
   others, only the number red or green.
+- Owner (Nov 25): Settings → Sending: the note matches the choice (Automatic vs I approve each one). Tenants have a
+  first and a last name (Add tenant and Edit contact), both required, like landlords at signup. Every email to a tenant
+  (receipts, reminders, messages, notices) copies the landlord (cc), once per email batch for a shared lease.

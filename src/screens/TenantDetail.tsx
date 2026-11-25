@@ -6,10 +6,10 @@ import type { Payment, Person, Receipt } from '../data/types';
 import { useStore } from '../data/store';
 import { fmtDate, fmtPeriod, fmtTime, periodOf } from '../lib/dates';
 import { leaseBalance, leaseLedger, leasePlace } from '../lib/finance';
-import { tenantPeople, withPeople } from '../lib/people';
+import { hasLastName, tenantPeople, withPeople } from '../lib/people';
 import { fmt } from '../lib/money';
 import { Letterhead, ReceiptLetter, methodLabel, ordinal } from '../components/domain';
-import { PaymentForm, MarkRentPaid } from '../components/forms';
+import { MarkRentPaid, NameFields, PaymentForm } from '../components/forms';
 import { LateRentDrawer, RaiseRent } from './Rentals';
 import { SituationPicker } from '../components/FormWizard';
 import { Drawer, Empty, Field, Stamp, embedded } from '../components/ui';
@@ -218,11 +218,11 @@ export function TenantDetail() {
       onClose();
     };
     return (
-      <Drawer title={ps.length > 1 ? 'People on the lease' : 'Contact details'} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!ps[0]?.name.trim()} onClick={save}>Save</button></>}>
+      <Drawer title={ps.length > 1 ? 'People on the lease' : 'Contact details'} onClose={onClose} footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!hasLastName(ps[0]?.name ?? '') || ps.some((p) => !!p.name.trim() && !hasLastName(p.name))} onClick={save}>Save</button></>}>
         {ps.map((p, i) => (
           <fieldset key={i} className="person-fields">
             <legend>{ps.length > 1 ? `Person ${i + 1}` : 'Tenant'}{i > 0 && <button type="button" className="btn small ghost" onClick={() => setPs(ps.filter((_, j) => j !== i))} aria-label={`Remove person ${i + 1}`}><Icon name="close" size={14} />Remove</button>}</legend>
-            <Field label="Full name" htmlFor={`cd-n${i}`}><input id={`cd-n${i}`} className="input" value={p.name} onChange={(e) => set(i, { name: e.target.value })} /></Field>
+            <NameFields id={`cd-n${i}`} value={p.name} onChange={(name) => set(i, { name })} />
             <div className="grid2">
               <Field label="Email" htmlFor={`cd-e${i}`}><input id={`cd-e${i}`} className="input" type="email" value={p.email} onChange={(e) => set(i, { email: e.target.value })} /></Field>
               <Field label="Phone" htmlFor={`cd-p${i}`}><input id={`cd-p${i}`} className="input" type="tel" value={p.phone} onChange={(e) => set(i, { phone: e.target.value })} /></Field>

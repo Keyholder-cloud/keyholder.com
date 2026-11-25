@@ -3,6 +3,14 @@ import type { Applicant, ApplicantPerson, Person, Tenant } from '../data/types';
 // Several people can share one lease (a couple, or roommates) or one application. Each person has their
 // own contact details; `names`, `email` and `phone` on the record stay in step (first person's contact).
 
+/** A full name as first and last name: the last word is the last name ("Mary Ann Lee" → "Mary Ann" + "Lee"). */
+export const splitName = (full: string): [string, string] => {
+  const w = full.trim().split(/\s+/).filter(Boolean);
+  return w.length > 1 ? [w.slice(0, -1).join(' '), w[w.length - 1]] : [w[0] ?? '', ''];
+};
+/** True when a name has both a first and a last name. */
+export const hasLastName = (full: string) => full.trim().split(/\s+/).filter(Boolean).length > 1;
+
 /** Everyone on a lease, with their contact details. Older records only kept the first person's. */
 export function tenantPeople(t: Tenant): Person[] {
   if (t.people?.length) return t.people;

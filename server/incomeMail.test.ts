@@ -15,4 +15,15 @@ describe('receipt email for other income', () => {
     expect(mails[0].text).toContain('For: Bill share: Enbridge Gas, October (your share)');
     expect(mails[0].attachment).toMatchObject({ kind: 'receipt', filename: 'Payment receipt 2001.pdf' });
   });
+
+  it('every email to a tenant copies the landlord (once, for a shared lease)', () => {
+    const s = seedState(undefined, '2026-11-08');
+    s.profile.email = 'landlord@landlord-e2e.ca';
+    const lease = s.leases.find((l) => l.id === 'l-jordan') ?? s.leases[0];
+    const t = s.tenants.find((x) => x.id === lease.tenantId)!;
+    t.people = [{ name: 'Jordan Patel', email: 'jordan@tenant-e2e.ca', phone: '' }, { name: 'Priya Patel', email: 'priya@tenant-e2e.ca', phone: '' }];
+    const m = { id: 'm-y', kind: 'reminder' as const, tenantId: t.id, leaseId: lease.id, period: '2026-11', subject: 'Rent for November', body: 'Hi, a friendly reminder.', status: 'sent' as const, edited: false, createdAt: '2026-11-05T10:00:00Z', sentAt: '2026-11-05T10:00:00Z' };
+    const mails = tenantMails(s, m, 'acct-1');
+    expect(mails.map((x) => x.cc)).toEqual(['landlord@landlord-e2e.ca', undefined]);
+  });
 });
