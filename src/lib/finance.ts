@@ -284,6 +284,8 @@ export function trackedFrom(state: AppState, prop: Property): ISODate | undefine
     ...state.payments.filter((p) => !p.voided && leases.has(p.leaseId)).map((p) => p.date),
     ...state.expenses.filter((e) => e.propertyId === prop.id).map((e) => e.date),
     ...(state.income ?? []).filter((i) => !i.voided && (i.propertyId === prop.id || (!!i.leaseId && leases.has(i.leaseId)))).map((i) => i.date),
+    // A lease the landlord said is paid up (paidThrough): its first paid-up month counts as records.
+    ...state.leases.filter((l) => leases.has(l.id) && !!l.paidThrough && periodOf(l.start) <= l.paidThrough!).map((l) => `${periodOf(l.start)}-01`),
   ].sort();
   return dates[0];
 }
@@ -297,9 +299,21 @@ export function picture(state: AppState, from: ISODate, to: ISODate, opts: { pro
   const leases = state.leases.filter((l) => unitIds.has(l.unitId));
   const leaseIds = new Set(leases.map((l) => l.id));
 
-  const rentCollected = state.payments
+  let rentCollected = state.payments
     .filter((p) => !p.voided && leaseIds.has(p.leaseId) && p.date >= from && p.date <= to)
     .reduce((a, p) => a + p.amount, 0);
+  // Months the landlord said were paid before Keyholder (the lease's paidThrough) count as rent collected on their
+  // due date, from when the property's records start (the same months the mortgage counts for).
+  const propOfUnit = new Map(units.map((u) => [u.id, props.find((p) => p.id === u.propertyId)!]));
+  for (const l of leases) {
+    if (!l.paidThrough) continue;
+    const start = trackedFrom(state, propOfUnit.get(l.unitId)!);
+    const startMonth = start ? `${periodOf(start)}-01` : from;
+    for (const line of leaseLedger(l, state.payments, to, periodOf(to))) {
+      if (!line.before || line.due < from || line.due > to || line.due < startMonth) continue;
+      rentCollected += line.paid - line.payments.reduce((a, p) => a + p.amount, 0);
+    }
+  }
 
   const otherIncome = (state.income ?? [])
     .filter((i) => !i.voided && i.date >= from && i.date <= to && ((i.leaseId && leaseIds.has(i.leaseId)) || (!!i.propertyId && propIds.has(i.propertyId)) || (!i.leaseId && !i.propertyId && !opts.propertyId)))

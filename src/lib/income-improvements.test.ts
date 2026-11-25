@@ -57,4 +57,21 @@ describe('mortgage in Money out', () => {
     const full = picture(base(), '2026-11-01', today, { propertyId: prop.id });
     expect(nov.mortgageInterest + nov.mortgagePrincipal).toBe(full.mortgageInterest + full.mortgagePrincipal);
   });
+  it('paid-up months count as money in, with the mortgage over the same months', () => {
+    const s = base();
+    const prop = s.properties.find((p) => s.mortgages.some((m) => m.propertyId === p.id))!;
+    const units = new Set(s.units.filter((u) => u.propertyId === prop.id).map((u) => u.id));
+    const ls = s.leases.filter((l) => units.has(l.unitId));
+    const ids = new Set(ls.map((l) => l.id));
+    s.payments = s.payments.filter((p) => !ids.has(p.leaseId));
+    s.expenses = s.expenses.filter((e) => e.propertyId !== prop.id);
+    s.income = [];
+    delete prop.recordsFrom;
+    // The landlord said: everyone is paid up through November.
+    const lease = ls.find((l) => !l.end)!;
+    lease.start = '2026-01-01'; lease.paidThrough = '2026-11';
+    const pic = picture(s, '2026-01-01', today, { propertyId: prop.id });
+    expect(pic.rentCollected).toBeGreaterThanOrEqual(lease.rent * 11);
+    expect(pic.mortgageInterest + pic.mortgagePrincipal).toBeGreaterThan(0);
+  });
 });
