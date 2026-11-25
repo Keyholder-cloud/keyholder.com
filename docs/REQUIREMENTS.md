@@ -551,3 +551,6 @@ Status: ☐ to do · ◐ in progress · ☑ done
 - Owner (Nov 25): Settings → Sending: the note matches the choice (Automatic vs I approve each one). Tenants have a
   first and a last name (Add tenant and Edit contact), both required, like landlords at signup. Every email to a tenant
   (receipts, reminders, messages, notices) copies the landlord (cc), once per email batch for a shared lease.
+- Owner (Nov 25): mortgage payments count in Money out (Home summary, Cash flow) only from the month a property's
+  records start (its "records from" date, else its first recorded rent or cost); nothing recorded yet: none. Taxes still
+  uses the full year's mortgage interest.

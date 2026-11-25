@@ -37,3 +37,24 @@ describe('other income and improvements', () => {
     expect(csv).toMatch(/Adjusted cost base/);
   });
 });
+
+describe('mortgage in Money out', () => {
+  it('counts only from when the property has records (nothing recorded: none)', () => {
+    const s = base();
+    const prop = s.properties.find((p) => s.mortgages.some((m) => m.propertyId === p.id))!;
+    const units = new Set(s.units.filter((u) => u.propertyId === prop.id).map((u) => u.id));
+    const leases = new Set(s.leases.filter((l) => units.has(l.unitId)).map((l) => l.id));
+    // A new account: the property and its mortgage, nothing recorded yet.
+    s.payments = s.payments.filter((p) => !leases.has(p.leaseId));
+    s.expenses = s.expenses.filter((e) => e.propertyId !== prop.id);
+    s.income = [];
+    delete prop.recordsFrom;
+    const empty = picture(s, '2026-01-01', today, { propertyId: prop.id });
+    expect(empty.mortgageInterest + empty.mortgagePrincipal).toBe(0);
+    // First record in November: only November's mortgage payment counts.
+    s.expenses.push({ ...base().expenses.find((e) => e.propertyId === prop.id)!, id: 'nov', date: '2026-11-02' });
+    const nov = picture(s, '2026-01-01', today, { propertyId: prop.id });
+    const full = picture(base(), '2026-11-01', today, { propertyId: prop.id });
+    expect(nov.mortgageInterest + nov.mortgagePrincipal).toBe(full.mortgageInterest + full.mortgagePrincipal);
+  });
+});

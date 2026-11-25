@@ -275,6 +275,19 @@ export interface Picture {
   mortgageIsRough: boolean;
 }
 
+/** The day a property's records start: its "records from" date, else its first recorded rent or cost (undefined: nothing yet). */
+export function trackedFrom(state: AppState, prop: Property): ISODate | undefined {
+  if (prop.recordsFrom) return prop.recordsFrom;
+  const units = new Set(state.units.filter((u) => u.propertyId === prop.id).map((u) => u.id));
+  const leases = new Set(state.leases.filter((l) => units.has(l.unitId)).map((l) => l.id));
+  const dates = [
+    ...state.payments.filter((p) => !p.voided && leases.has(p.leaseId)).map((p) => p.date),
+    ...state.expenses.filter((e) => e.propertyId === prop.id).map((e) => e.date),
+    ...(state.income ?? []).filter((i) => !i.voided && (i.propertyId === prop.id || (!!i.leaseId && leases.has(i.leaseId)))).map((i) => i.date),
+  ].sort();
+  return dates[0];
+}
+
 export function picture(state: AppState, from: ISODate, to: ISODate, opts: { propertyId?: string } = {}): Picture {
   // A property archived (sold) during the period still counts for it: its rent and costs up to that day are real.
   const props = state.properties.filter((p) => (!p.archived || (!!p.archivedOn && p.archivedOn >= from)) && (!opts.propertyId || p.id === opts.propertyId));
@@ -322,17 +335,25 @@ export function picture(state: AppState, from: ISODate, to: ISODate, opts: { pro
 
   // Mortgage: the full record when there is one (Gold), else the rough monthly payment (Silver), else nothing.
   let mortgageInterest = 0, mortgagePrincipal = 0, hasMortgageData = false, mortgageIsRough = false;
-  const months = Math.max(0, periodRange(periodOf(from), periodOf(to)).length);
   for (const prop of props) {
     const m = state.mortgages.find((x) => x.propertyId === prop.id);
+    // Mortgage payments count from when this property's records start: its "records from" date, else the first rent
+    // or cost recorded for it. Nothing recorded yet: no mortgage in Money out (it would show a loss that isn't real).
+    const start = trackedFrom(state, prop);
+    if ((m || prop.approxMortgagePayment) && !start) { hasMortgageData = true; continue; }
+    // From the start of that month (the month's mortgage payment counts once the month has records).
+    const startMonth = start ? `${periodOf(start)}-01` : from;
+    const mFrom = startMonth > from ? startMonth : from;
+    if (mFrom > to) { if (m || prop.approxMortgagePayment) hasMortgageData = true; continue; }
     if (m) {
       hasMortgageData = true;
-      const paid = mortgagePaidBetween(m, from, to);
+      const paid = mortgagePaidBetween(m, mFrom, to);
       mortgageInterest += Math.round((paid.interest * prop.rentalSharePct) / 100);
       mortgagePrincipal += Math.round((paid.principal * prop.rentalSharePct) / 100);
     } else if (prop.approxMortgagePayment) {
       hasMortgageData = true; mortgageIsRough = true;
-      mortgageInterest += Math.round((prop.approxMortgagePayment * months * prop.rentalSharePct) / 100);
+      const mMonths = Math.max(0, periodRange(periodOf(mFrom), periodOf(to)).length);
+      mortgageInterest += Math.round((prop.approxMortgagePayment * mMonths * prop.rentalSharePct) / 100);
     }
   }
 
