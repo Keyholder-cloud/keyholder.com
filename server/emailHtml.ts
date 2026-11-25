@@ -33,7 +33,7 @@ export function emailHtml({ text, kind, subject, appUrl, hasPdf }: { text: strin
   let sentFor = '';
   const tenantFoot = body.match(/\n+—\nSent for (.+?) by Keyholder\. Reply to this email to reach your landlord\.$/);
   if (tenantFoot) { sentFor = tenantFoot[1]; body = body.slice(0, tenantFoot.index).trim(); }
-  body = body.replace(/\n+— Keyholder\nRental automation for Canadian landlords$/, '').trim();
+  body = body.replace(/\n+— Keyholder · Rental Management$/, '').trim();
   const system = SYSTEM.has(kind);
   const from = system ? '' : sentFor;
   const code = kind === 'two-step-code' ? body.match(/\b(\d{6})\b/)?.[1] : undefined;
@@ -71,9 +71,8 @@ export function emailHtml({ text, kind, subject, appUrl, hasPdf }: { text: strin
   if (hasPdf && !/attached/i.test(body)) out.push(`<p style="margin:18px 0 0;padding:10px 14px;border-radius:10px;background:#F0FDF4;color:#067647;font-size:14px">&#128206; The PDF is attached to this email.</p>`);
 
   const logo = `${appUrl.replace(/\/$/, '')}/email-logo.png`;
-  const foot = system
-    ? `Keyholder · rental tools for Canadian landlords`
-    : `Sent for ${esc(sentFor || 'your landlord')} with Keyholder. Reply to this email to reach your landlord.`;
+  // Every email ends the same way: the small logo and "Keyholder · Rental Management".
+  const foot = 'Keyholder · Rental Management';
   const pre = esc(body.replace(URL_RE, '').replace(/\s+/g, ' ').slice(0, 120));
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${esc(subject)}</title></head>

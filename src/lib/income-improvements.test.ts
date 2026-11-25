@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { seedState } from '../data/seed';
 import type { Expense } from '../data/types';
-import { improvements, improvementsCsv, picture, taxPack } from './finance';
+import { improvements, improvementsCsv, leaseLedger, picture, taxPack } from './finance';
 
 const today = '2026-11-08';
 const base = () => seedState(undefined, today);
@@ -39,23 +39,22 @@ describe('other income and improvements', () => {
 });
 
 describe('mortgage in Money out', () => {
-  it('counts only from when the property has records (nothing recorded: none)', () => {
+  it('counts every month owned, from the purchase date, rented or vacant', () => {
     const s = base();
     const prop = s.properties.find((p) => s.mortgages.some((m) => m.propertyId === p.id))!;
     const units = new Set(s.units.filter((u) => u.propertyId === prop.id).map((u) => u.id));
     const leases = new Set(s.leases.filter((l) => units.has(l.unitId)).map((l) => l.id));
-    // A new account: the property and its mortgage, nothing recorded yet.
+    // Nothing recorded and no tenants (vacant): the mortgage is still paid.
     s.payments = s.payments.filter((p) => !leases.has(p.leaseId));
+    s.leases = s.leases.filter((l) => !leases.has(l.id));
     s.expenses = s.expenses.filter((e) => e.propertyId !== prop.id);
     s.income = [];
     delete prop.recordsFrom;
-    const empty = picture(s, '2026-01-01', today, { propertyId: prop.id });
-    expect(empty.mortgageInterest + empty.mortgagePrincipal).toBe(0);
-    // First record in November: only November's mortgage payment counts.
-    s.expenses.push({ ...base().expenses.find((e) => e.propertyId === prop.id)!, id: 'nov', date: '2026-11-02' });
-    const nov = picture(s, '2026-01-01', today, { propertyId: prop.id });
-    const full = picture(base(), '2026-11-01', today, { propertyId: prop.id });
-    expect(nov.mortgageInterest + nov.mortgagePrincipal).toBe(full.mortgageInterest + full.mortgagePrincipal);
+    prop.purchaseDate = '2026-02-01';
+    const fromFeb = picture(s, '2026-01-01', today, { propertyId: prop.id });
+    const feb = picture(base(), '2026-02-01', today, { propertyId: prop.id });
+    expect(fromFeb.mortgageInterest + fromFeb.mortgagePrincipal).toBeGreaterThan(0);
+    expect(fromFeb.mortgageInterest + fromFeb.mortgagePrincipal).toBe(feb.mortgageInterest + feb.mortgagePrincipal);
   });
   it('paid-up months count as money in, with the mortgage over the same months', () => {
     const s = base();
@@ -84,5 +83,13 @@ describe('mortgage in Money out', () => {
     for (const l of ls) { l.start = '2026-01-01'; delete l.end; l.paidThrough = '2026-10'; }
     const pack = taxPack(s, prop, 2026);
     expect(pack.grossRents).toBe(ls.reduce((a, l) => a + l.rent * 10, 0));
+  });
+  it('prorates the first month by the move-in day', () => {
+    const s = base();
+    const lease = s.leases.find((l) => !l.end && l.dueDay === 1)!;
+    lease.start = '2026-11-25'; lease.rent = 300000; delete lease.paidThrough;
+    const line = leaseLedger(lease, [], '2026-11-30').find((l) => l.period === '2026-11')!;
+    expect(line.charge).toBe(60000); // 6 of 30 days
+    expect(line.due).toBe('2026-11-25');
   });
 });

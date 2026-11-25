@@ -85,6 +85,17 @@ export function leasePeriods(lease: Lease, through: Period): Period[] {
   return periodRange(periodOf(lease.start), last);
 }
 
+/** Rent due on the 1st and a move-in later in the month: the first month is prorated by day (25th of a
+ *  30-day month: 6 of 30 days). None when the lease starts on its due day. */
+export function firstMonthProrated(lease: Lease): { period: Period; charge: Cents; days: number; inMonth: number } | null {
+  const day = Number(lease.start.slice(8, 10));
+  if (lease.dueDay !== 1 || day <= 1) return null;
+  const [y, m] = lease.start.split('-').map(Number);
+  const inMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const days = inMonth - day + 1;
+  return { period: periodOf(lease.start), charge: Math.round((lease.rent * days) / inMonth), days, inMonth };
+}
+
 export function chargeState(charge: Cents, paid: Cents, due: ISODate, today: ISODate): { state: ChargeState; daysLate: number } {
   if (paid >= charge) return { state: 'paid', daysLate: 0 };
   const d = daysBetween(due, today);
@@ -99,15 +110,18 @@ export function leaseLedger(lease: Lease, payments: Payment[], today: ISODate, t
   const end = through ?? periodOf(today);
   let balance = 0;
   return leasePeriods(lease, end).map((period) => {
-    const due = dueDate(period, lease.dueDay);
+    const first = firstMonthProrated(lease);
+    const charge = first && period === first.period ? first.charge : lease.rent;
+    // A tenant moving in mid-month pays from the move-in day, due the day they move in.
+    const due = first && period === first.period ? lease.start : dueDate(period, lease.dueDay);
     const ps = live.filter((p) => p.period === period).sort((a, b) => a.date.localeCompare(b.date));
     const recorded = ps.reduce((a, p) => a + p.amount, 0);
     // Up to paidThrough the tenant was in good standing before Keyholder: those months count as paid.
-    const before = !!lease.paidThrough && period <= lease.paidThrough && recorded < lease.rent;
-    const paid = before ? lease.rent : recorded;
-    balance += lease.rent - paid;
-    const { state, daysLate } = chargeState(lease.rent, paid, due, today);
-    return { period, due, charge: lease.rent, paid, payments: ps, state, daysLate, balance, ...(before ? { before } : {}) };
+    const before = !!lease.paidThrough && period <= lease.paidThrough && recorded < charge;
+    const paid = before ? charge : recorded;
+    balance += charge - paid;
+    const { state, daysLate } = chargeState(charge, paid, due, today);
+    return { period, due, charge, paid, payments: ps, state, daysLate, balance, ...(before ? { before } : {}) };
   });
 }
 
@@ -313,13 +327,12 @@ export function picture(state: AppState, from: ISODate, to: ISODate, opts: { pro
     .filter((p) => !p.voided && leaseIds.has(p.leaseId) && p.date >= from && p.date <= to)
     .reduce((a, p) => a + p.amount, 0);
   // Months the landlord said were paid before Keyholder (the lease's paidThrough) count as rent collected on their
-  // due date, from when the property's records start (the same months the mortgage counts for).
+  // due date (from the purchase date when it is known).
   const propOfUnit = new Map(units.map((u) => [u.id, props.find((p) => p.id === u.propertyId)!]));
   for (const l of leases) {
     if (!l.paidThrough) continue;
-    const start = trackedFrom(state, propOfUnit.get(l.unitId)!);
-    const startMonth = start ? `${periodOf(start)}-01` : from;
-    for (const r of paidUpRent(state, l, startMonth > from ? startMonth : from, to)) rentCollected += r.amount;
+    const bought = propOfUnit.get(l.unitId)?.purchaseDate;
+    for (const r of paidUpRent(state, l, bought && bought > from ? bought : from, to)) rentCollected += r.amount;
   }
 
   const otherIncome = (state.income ?? [])
@@ -342,6 +355,8 @@ export function picture(state: AppState, from: ISODate, to: ISODate, opts: { pro
     for (const p of periodRange(periodOf(from), periodOf(to))) {
       const d = dueDate(p, 1);
       const covered = state.leases.some((l) => l.unitId === u.id && periodOf(l.start) <= p && (!l.end || periodOf(l.end) >= p));
+      const bought = props.find((x) => x.id === u.propertyId)?.purchaseDate;
+      if (bought && p < periodOf(bought)) continue; // not owned yet
       if (!covered && d >= from && d <= to && u.status !== 'occupied') vacancyLoss += u.rent;
     }
   }
@@ -355,26 +370,27 @@ export function picture(state: AppState, from: ISODate, to: ISODate, opts: { pro
   }
 
   // Mortgage: the full record when there is one (Gold), else the rough monthly payment (Silver), else nothing.
+  // It is paid every month the property is owned, rented or vacant: from the purchase date (else the mortgage's own
+  // start). A rough payment with no purchase date counts from the property's first record (none recorded: none).
   let mortgageInterest = 0, mortgagePrincipal = 0, hasMortgageData = false, mortgageIsRough = false;
   for (const prop of props) {
     const m = state.mortgages.find((x) => x.propertyId === prop.id);
-    // Mortgage payments count from when this property's records start: its "records from" date, else the first rent
-    // or cost recorded for it. Nothing recorded yet: no mortgage in Money out (it would show a loss that isn't real).
-    const start = trackedFrom(state, prop);
-    if ((m || prop.approxMortgagePayment) && !start) { hasMortgageData = true; continue; }
-    // From the start of that month (the month's mortgage payment counts once the month has records).
-    const startMonth = start ? `${periodOf(start)}-01` : from;
-    const mFrom = startMonth > from ? startMonth : from;
-    if (mFrom > to) { if (m || prop.approxMortgagePayment) hasMortgageData = true; continue; }
+    if (!m && !prop.approxMortgagePayment) continue;
+    hasMortgageData = true;
+    const owned = prop.purchaseDate ?? (m ? undefined : trackedFrom(state, prop));
+    if (!m && !owned) continue;
+    const ownedFrom = owned ? `${periodOf(owned)}-01` : from;
+    const mFrom = ownedFrom > from ? ownedFrom : from;
+    const mTo = prop.archived && prop.archivedOn && prop.archivedOn < to ? prop.archivedOn : to;
+    if (mFrom > mTo) continue;
     if (m) {
-      hasMortgageData = true;
-      const paid = mortgagePaidBetween(m, mFrom, to);
+      const paid = mortgagePaidBetween(m, mFrom, mTo);
       mortgageInterest += Math.round((paid.interest * prop.rentalSharePct) / 100);
       mortgagePrincipal += Math.round((paid.principal * prop.rentalSharePct) / 100);
-    } else if (prop.approxMortgagePayment) {
-      hasMortgageData = true; mortgageIsRough = true;
-      const mMonths = Math.max(0, periodRange(periodOf(mFrom), periodOf(to)).length);
-      mortgageInterest += Math.round((prop.approxMortgagePayment * mMonths * prop.rentalSharePct) / 100);
+    } else {
+      mortgageIsRough = true;
+      const mMonths = Math.max(0, periodRange(periodOf(mFrom), periodOf(mTo)).length);
+      mortgageInterest += Math.round((prop.approxMortgagePayment! * mMonths * prop.rentalSharePct) / 100);
     }
   }
 

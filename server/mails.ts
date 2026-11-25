@@ -7,7 +7,7 @@ import { receiptData } from '../src/lib/receiptData';
 // The words in every email Keyholder sends. Written as plain text (the fallback for text-only mail apps); the designed
 // HTML version is made from it when the email is sent (server/emailHtml.ts).
 
-const sign = '\n\n— Keyholder\nRental automation for Canadian landlords';
+const sign = '\n\n— Keyholder · Rental Management';
 
 export const welcomeMail = (to: string, name: string, verifyUrl: string): Mail => ({
   kind: 'welcome', to, toName: name, subject: 'Welcome to Keyholder',
