@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
 import { PLAID_PRIVACY_URL } from './Security';
 import { UploadStatementButton } from '../components/StatementUpload';
-import { currentTaxYear, gapCount, recordsFromIn, yearCheck, type Gap } from '../lib/taxyear';
+import { currentTaxYear, gapCount, gapSummary, recordsFromIn, yearCheck, type Gap } from '../lib/taxyear';
 import { PageSub } from '../components/Guide';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, useLocation, useParams } from 'react-router-dom';
@@ -146,12 +146,13 @@ export function Expenses() {
       <nav className="tax-years" aria-label="Tax years" id="tax-years">{years.map((y) => {
         const gaps = gapCount(state, y, today);
         return (
-          <button key={y} className={`tax-year${y === year ? ' on' : ''}`} aria-pressed={y === year} onClick={() => setYear(y)}>
+          <button key={y} className={`tax-year${y === year ? ' on' : ''}`} aria-pressed={y === year} onClick={() => setYear(y)} title={gaps ? `Missing for ${y}: ${gapSummary(state, y, today)}` : undefined}>
             <span className="ty-y">{y}{y === cur && <span className="ty-cur">Current</span>}</span>
-            <span className={`ty-g${gaps ? ' gap' : ''}`}>{gaps ? <><Icon name="alert" size={12} />{gaps} missing</> : <><Icon name="check" size={12} />Complete</>}</span>
+            <span className={`ty-g${gaps ? ' gap' : ''}`}>{gaps ? <><Icon name="alert" size={12} />{gaps} to add</> : <><Icon name="check" size={12} />Complete</>}</span>
           </button>
         );
       })}</nav>
+      {gapCount(state, year, today) > 0 && <p className="small soft" id="ty-gap-note" style={{ margin: '-6px 0 14px' }}>For your {year} taxes, Keyholder still needs: {gapSummary(state, year, today)}. <Link to="/paperwork/taxes">See the list</Link></p>}
       <BankReview />
       <div className="spread" style={{ marginBottom: 16 }}>
         <div className="btn-row">

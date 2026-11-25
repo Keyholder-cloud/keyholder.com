@@ -512,7 +512,7 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       await go(p, 'today'); await p.waitForSelector('.rent-row');
       if (await p.locator('.rent-row:has-text("Nora") >> text=/late|owe/i').count()) throw new Error('shown as late');
       if (await p.locator('.standing-q').count()) throw new Error('asked again on Home');
-      await go(p, 'rent/tenant/' + l.tenantId); await p.waitForSelector('text=Paid before Keyholder');
+      await go(p, 'rent/tenant/' + l.tenantId); await p.waitForSelector('text=Marked paid up');
       // A tenancy made before this question existed: asked once on Home; "No" with a month keeps later months owing.
       await p.evaluate(() => { const s = JSON.parse(localStorage.getItem('keyholder:v1')); const x = s.leases[0]; delete x.paidThrough; delete x.standingChecked; s.profile.account.created = new Date().toISOString().slice(0, 10); localStorage.setItem('keyholder:v1', JSON.stringify(s)); });
       await p.reload(); await go(p, 'today'); await p.waitForSelector('.standing-q >> text=Is Nora in good standing?');

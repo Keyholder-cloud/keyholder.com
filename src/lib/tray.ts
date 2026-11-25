@@ -1,5 +1,5 @@
 import type { AppState, BankTxn, Lease, Message, Tone } from '../data/types';
-import { daysBetween } from './dates';
+import { addDays, daysBetween, periodOf } from './dates';
 import { currentLeases, leaseLedger, type LedgerLine } from './finance';
 import { suggestMatch, type Suggestion } from './matching';
 import { journeyCards } from './journey';
@@ -39,6 +39,14 @@ export function trayItems(state: AppState, today: string): TrayItem[] {
       );
       if (already) continue;
       items.push({ kind: 'reminder', id: `rem-${lease.id}-${line.period}-${st.tone}`, lease, line, ...st });
+    }
+    // Before it is due: from the last day of the month before, a friendly reminder for rent not yet paid.
+    const next = periodOf(addDays(today, 1));
+    for (const line of leaseLedger(lease, state.payments, today, next)) {
+      if (line.state !== 'upcoming' && line.state !== 'due') continue;
+      if (today < addDays(`${line.period}-01`, -1)) continue;
+      if (state.messages.some((m) => m.kind === 'reminder' && m.leaseId === lease.id && m.period === line.period)) continue;
+      items.push({ kind: 'reminder', id: `rem-${lease.id}-${line.period}-upcoming`, lease, line, tone: 'gentle', stage: 'Before due' });
     }
   }
 

@@ -80,37 +80,53 @@ export function TenantDetail() {
           <section className="section">
             <h2 className="section-title">Ledger</h2>
             {lines.length === 0 ? <div className="sheet"><Empty title="The lease hasn't started yet." /></div> : (
-              <div className="sheet tight table-scroll">
-                <table className="ledger stack">
-                  <thead><tr><th>Due</th><th>Period</th><th className="num">Charge</th><th>Received</th><th className="num">Paid</th><th className="num">Balance</th><th>State</th></tr></thead>
+              <div className="rcpt ledger-doc print-me" id="tenant-ledger">
+                <div className="rcpt-head">
+                  <div><strong>RENT LEDGER</strong><span>Rent charged and received</span></div>
+                  <div className="r"><strong>{t.names.join(' & ')}</strong><span>As of {fmtDate(today)}</span></div>
+                </div>
+                <div className="rcpt-body">
+                <div className="rcpt-parties">
+                  <div><span className="rcpt-k">LANDLORD</span><b>{state.profile.name || state.profile.account?.name || 'Landlord'}</b></div>
+                  <div><span className="rcpt-k">RENTAL</span><b>{prop ? `${prop.nickname}${unit ? ` · ${lease?.room ?? `Unit ${unit.label}`}` : ''}` : '—'}</b>{lease && <span className="soft">{fmt(lease.rent)} a month, due the {ordinal(lease.dueDay)}</span>}</div>
+                </div>
+                <div className="table-scroll">
+                <table className="ledger stack ld-table">
+                  <thead><tr><th>Month</th><th>Received</th><th className="num">Balance</th><th>Receipt</th></tr></thead>
                   <tbody>
-                    {linesShown.map((l) => (
+                    {linesShown.map((l) => {
+                      const upFront = l.before ? l.paid - l.payments.reduce((a, p) => a + p.amount, 0) : 0;
+                      return (
                       <tr key={l.period}>
-                        <td className="date" data-label="Due">{fmtDate(l.due)}</td>
-                        <td className="st-title" data-label="Period">{fmtPeriod(l.period)}</td>
-                        <td className="num" data-label="Charge">{fmt(l.charge)}</td>
-                        <td className="small st-actions" data-label="Received">
-                          {l.before && <span className="spread" style={{ gap: 6, justifyContent: 'flex-start' }}><span className="soft">Marked paid up</span>{lease && l.due <= today && <button className="btn small ghost" id={`pu-send-${l.period}`} title="Record this month and send the tenant a receipt" onClick={() => act.sendPaidUpReceipt(lease.id, l.period, l.paid - l.payments.reduce((a, p) => a + p.amount, 0), l.due)}>Send receipt</button>}</span>}
+                        <td className="st-title" data-label="Month"><b>{fmtPeriod(l.period)}</b><span className="ld-sub">Due {fmtDate(l.due).replace(/, \d{4}$/, '')} <Stamp kind={l.state}>{l.state === 'late' ? `Late ${l.daysLate}d` : l.state}</Stamp></span></td>
+                        <td className="small" data-label="Received">
+                          {l.before && <><span className="ld-line">Marked paid up</span><span className="ld-sub">{fmt(upFront)} · before Keyholder</span></>}
+                          {l.payments.map((p) => <span key={p.id} className="ld-pay"><span className="ld-line">{fmtDate(p.date)}</span><span className="ld-sub">{fmt(p.amount)} · {methodLabel(p.method)}{p.source !== 'manual' ? ` · ${p.source === 'bank' ? 'bank' : 'email'}` : ''}</span></span>)}
+                          {!l.before && !l.payments.length && <span className="soft">—</span>}
+                        </td>
+                        <td className={`num ${l.balance > 0 ? 'urgent' : ''}`} data-label="Balance">{fmt(l.balance)}</td>
+                        <td className="st-actions" data-label="Receipt">
+                          {l.before && lease && l.due <= today && upFront > 0 && <span className="ld-acts"><button className="btn small ghost" id={`pu-send-${l.period}`} title="Record this month and send the tenant a receipt" onClick={() => act.sendPaidUpReceipt(lease.id, l.period, upFront, l.due)}><Icon name="send" size={14} />Send receipt</button></span>}
                           {l.payments.map((p) => {
                             const r = state.receipts.find((x) => x.paymentId === p.id && x.status !== 'superseded');
                             return (
-                              <div key={p.id} className="spread" style={{ gap: 6, justifyContent: 'flex-start' }}>
-                                <span className="mono">{fmtDate(p.date)}</span><span className="soft">{methodLabel(p.method)}{p.source !== 'manual' ? ` · ${p.source === 'bank' ? 'bank' : 'email'}` : ''}</span>
-                                {r && <button className="btn small ghost" onClick={() => setReceipt(r)}>#{r.number}{r.status === 'draft' ? ' (draft)' : ''}</button>}
+                              <span key={p.id} className="ld-acts">
+                                {r && <button className="btn small ghost" title="View receipt" onClick={() => setReceipt(r)}>#{r.number}{r.status === 'draft' ? ' (draft)' : ''}</button>}
                                 {r && <ResendReceipt receiptId={r.id} label={r.status === 'draft' ? 'Send' : 'Resend'} />}
-                                <button className="btn small ghost" onClick={() => setCorrect(p)} aria-label="Correct payment"><Icon name="edit" size={14} /></button>
-                              </div>
+                                <button className="btn small ghost icon-only" onClick={() => setCorrect(p)} aria-label="Correct payment" title="Correct payment"><Icon name="edit" size={14} /></button>
+                              </span>
                             );
                           })}
                         </td>
-                        <td className="num" data-label="Paid">{l.paid ? fmt(l.paid) : '—'}</td>
-                        <td className={`num ${l.balance > 0 ? 'urgent' : ''}`} data-label="Balance">{fmt(l.balance)}</td>
-                        <td data-label="State"><Stamp kind={l.state}>{l.state === 'late' ? `Late ${l.daysLate}d` : l.state}</Stamp></td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
                 {linesMore}
+                </div>
+                <p className="rcpt-foot">Balance as of {fmtDate(today)}: <strong>{bal > 0 ? `${fmt(bal)} owing` : bal < 0 ? `${fmt(-bal)} in credit` : 'paid up'}</strong>.<br />Prepared for {state.profile.name || state.profile.account?.name || 'the landlord'} by Keyholder · keyholder.cloud</p>
+                </div>
               </div>
             )}
             {voided.length > 0 && <p className="tiny soft" style={{ marginTop: 8 }}>{voided.length} voided entr{voided.length === 1 ? 'y' : 'ies'} kept in the audit trail.</p>}
