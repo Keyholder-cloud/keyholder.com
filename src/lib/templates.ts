@@ -53,10 +53,12 @@ export function mergeFields(state: AppState, lease: Lease, period: string, today
   const tenant = state.tenants.find((t) => t.id === lease.tenantId);
   const unit = state.units.find((u) => u.id === lease.unitId);
   const first = tenant ? tenant.names.map((n) => n.split(' ')[0]).join(' and ') : 'there';
+  // The month's own charge and due date (a first month moved into mid-month is prorated).
+  const line = period ? leaseLedger(lease, state.payments, today, period).find((l) => l.period === period) : undefined;
   return {
     first,
-    amount: fmt(lease.rent),
-    due: fmtDate(`${period}-${String(lease.dueDay).padStart(2, '0')}`),
+    amount: fmt(line?.charge ?? lease.rent),
+    due: fmtDate(line?.due ?? `${period}-${String(lease.dueDay).padStart(2, '0')}`),
     unit: unit?.label ?? '',
     balance: fmt(leaseBalance(lease, state.payments, today)),
     period: fmtPeriod(period),

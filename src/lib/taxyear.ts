@@ -103,14 +103,25 @@ export function yearChecks(state: AppState, year: number, today: ISODate) {
   return state.properties.filter((p) => !p.archived && recordsFromIn(p, year)).map((p) => ({ p, c: yearCheck(state, p, year, today) }));
 }
 
+/** Gaps across all properties for a year: a bank statement covers the whole account, so each month's statement
+ *  counts once however many properties need it. */
+function yearGaps(state: AppState, year: number, today: ISODate): Gap[] {
+  const seen = new Set<string>();
+  return yearChecks(state, year, today).flatMap((x) => x.c.gaps).filter((g) => {
+    if (g.kind !== 'statement') return true;
+    if (seen.has(g.month!)) return false;
+    seen.add(g.month!); return true;
+  });
+}
+
 /** Gaps across all properties for a year (for a badge). */
-export const gapCount = (state: AppState, year: number, today: ISODate) => yearChecks(state, year, today).reduce((n, x) => n + x.c.gaps.length, 0);
+export const gapCount = (state: AppState, year: number, today: ISODate) => yearGaps(state, year, today).length;
 
 
 /** What is missing for a year, in words: "10 bank statements, 2 rent payments, property tax, insurance". */
 export function gapSummary(state: AppState, year: number, today: ISODate): string {
   const n: Record<GapKind, number> = { statement: 0, rent: 0, mortgage: 0, 'property-tax': 0, insurance: 0 };
-  for (const { c } of yearChecks(state, year, today)) for (const g of c.gaps) n[g.kind] += 1;
+  for (const g of yearGaps(state, year, today)) n[g.kind] += 1;
   const many = (k: GapKind, one: string, more: string) => (n[k] ? `${n[k]} ${n[k] === 1 ? one : more}` : '');
   return [many('statement', 'bank statement', 'bank statements'), many('rent', 'month of rent not marked paid', 'months of rent not marked paid'),
     many('mortgage', 'mortgage payment', 'mortgage payments'), many('property-tax', 'property tax bill', 'property tax bills'), many('insurance', 'insurance bill', 'insurance bills')]
