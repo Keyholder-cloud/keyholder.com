@@ -371,7 +371,6 @@ export function ThePicture() {
             {row('Rent collected', pic.rentCollected)}
             {pic.otherIncome > 0 && row('Other income', pic.otherIncome, { note: 'Bill shares, parking, laundry and more' })}
             {pic.arrearsLoss > 0 && row('Rent still owing', pic.arrearsLoss, { note: 'Not counted above until it arrives' })}
-            {pic.vacancyLoss > 0 && row('Lost to vacancy', pic.vacancyLoss)}
             {row('Running costs', pic.opex, { neg: true, note: 'Repairs, utilities, property tax, insurance' })}
             {row('Left before the mortgage', pic.noi, { strong: true })}
             {pic.hasMortgageData && !pic.mortgageIsRough && row('Mortgage interest', pic.mortgageInterest, { neg: true, note: 'Deductible' })}

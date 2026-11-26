@@ -272,7 +272,6 @@ export interface Picture {
   otherIncome: Cents;
   rentExpected: Cents;
   arrearsLoss: Cents;
-  vacancyLoss: Cents;
   opex: Cents;
   noi: Cents;
   mortgageInterest: Cents;
@@ -349,18 +348,6 @@ export function picture(state: AppState, from: ISODate, to: ISODate, opts: { pro
   }
   const arrearsLoss = Math.max(0, rentExpected - paidForThose);
 
-  // Vacancy: months inside the window where a unit had no lease covering it.
-  let vacancyLoss = 0;
-  for (const u of units) {
-    for (const p of periodRange(periodOf(from), periodOf(to))) {
-      const d = dueDate(p, 1);
-      const covered = state.leases.some((l) => l.unitId === u.id && periodOf(l.start) <= p && (!l.end || periodOf(l.end) >= p));
-      const bought = props.find((x) => x.id === u.propertyId)?.purchaseDate;
-      if (bought && p < periodOf(bought)) continue; // not owned yet
-      if (!covered && d >= from && d <= to && u.status !== 'occupied') vacancyLoss += u.rent;
-    }
-  }
-
   let opex = 0, capital = 0;
   for (const e of state.expenses) {
     if (!propIds.has(e.propertyId) || e.date < from || e.date > to) continue;
@@ -397,7 +384,7 @@ export function picture(state: AppState, from: ISODate, to: ISODate, opts: { pro
   const noi = rentCollected + otherIncome - opex;
   const kept = noi - mortgageInterest - mortgagePrincipal;
   return {
-    from, to, rentCollected, otherIncome, rentExpected, arrearsLoss, vacancyLoss, opex, noi,
+    from, to, rentCollected, otherIncome, rentExpected, arrearsLoss, opex, noi,
     mortgageInterest, mortgagePrincipal, capital, kept, hasMortgageData, mortgageIsRough,
     keptPer1000: rentCollected > 0 ? Math.round((kept / rentCollected) * 1000) : 0,
     expenseRatio: rentCollected > 0 ? (opex / rentCollected) * 100 : 0,
