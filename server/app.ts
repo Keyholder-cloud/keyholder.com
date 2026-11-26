@@ -1168,8 +1168,33 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
   }
   const sendPage = (reply: FastifyReply) => reply.header('Cache-Control', 'no-cache').type('text/html; charset=utf-8').send(page);
   if (page) { app.get('/', async (_req, reply) => sendPage(reply)); app.get('/index.html', async (_req, reply) => sendPage(reply)); }
+  // An application link (/apply/<listing>) is shared with tenants: its preview (WhatsApp, texts, email) shows the
+  // rental and a "Rental application" picture, never the landlord website's title or picture.
+  const attr = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const applyPage = async (slug: string) => {
+    const f = /^[a-z0-9-]{3,80}$/.test(slug) ? await listingBySlug(slug).catch(() => null) : null;
+    const title = f ? `Apply for Unit ${f.unit.label} · ${f.prop.address}` : 'Rental application';
+    const desc = f
+      ? `Rental application for ${f.prop.address}${f.prop.city ? `, ${f.prop.city}` : ''}: ${fmtMoney(f.listing.askingRent)} a month${f.listing.available ? `, available ${new Date(`${f.listing.available}T12:00:00`).toLocaleDateString('en-CA', { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}. Apply online in a few minutes.`
+      : 'Apply online in a few minutes.';
+    const img = `${cfg.appUrl.replace(/\/$/, '')}/apply-og.jpg`;
+    const url = `${cfg.appUrl.replace(/\/$/, '')}/apply/${slug}`;
+    return page!
+      .replace(/<title>[^<]*<\/title>/, `<title>${attr(title)}</title>`)
+      .replace(/(<meta name="description" content=")[^"]*/, `$1${attr(desc)}`)
+      .replace(/(<meta property="og:url" content=")[^"]*/, `$1${attr(url)}`)
+      .replace(/(<meta property="og:title" content=")[^"]*/, `$1${attr(title)}`)
+      .replace(/(<meta property="og:description" content=")[^"]*/, `$1${attr(desc)}`)
+      .replace(/(<meta property="og:image(?::secure_url)?" content=")[^"]*/g, `$1${attr(img)}`)
+      .replace(/(<meta property="og:image:alt" content=")[^"]*/, '$1Rental application')
+      .replace(/(<meta name="twitter:image" content=")[^"]*/, `$1${attr(img)}`)
+      .replace(/(<meta name="twitter:title" content=")[^"]*/, `$1${attr(title)}`)
+      .replace(/(<meta name="twitter:description" content=")[^"]*/, `$1${attr(desc)}`);
+  };
   app.setNotFoundHandler(async (req, reply) => {
     if (req.url.startsWith('/api/') || req.method !== 'GET' || !page) return reply.code(404).send({ error: 'Not found.' });
+    const m = req.url.match(/^\/apply\/([^/?#]+)/);
+    if (m) return reply.header('Cache-Control', 'no-cache').type('text/html; charset=utf-8').send(await applyPage(decodeURIComponent(m[1]).toLowerCase()));
     return sendPage(reply);
   });
 

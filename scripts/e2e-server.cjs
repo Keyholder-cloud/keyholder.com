@@ -694,6 +694,9 @@ function watch(pg, errors, label) {
         if (put !== 200) throw new Error('save ' + put);
         // The link on Find a tenant is this site's own address.
         await pg.reload(); await go(pg, `rent/property/${d.properties[0].id}/find`); await pg.waitForSelector(`text=${BASE}apply/${slug}`);
+        // Its link preview (WhatsApp, texts) shows the rental, never the landlord website.
+        const html = await (await fetch(`${BASE}apply/${slug}`)).text();
+        if (!/<meta property="og:title" content="Apply for Unit Z · /.test(html) || !/og:image" content="[^"]*\/apply-og\.jpg"/.test(html) || /Manage your rental/i.test(html)) throw new Error('preview: ' + (html.match(/<meta property="og:[^>]*>/g) || []).join(' ').slice(0, 300));
         const ctx = await b.newContext({ viewport: { width: 390, height: 844 } }); const p = await ctx.newPage(); watch(p, errors, 'apply');
         await p.goto(`${BASE}apply/${slug}`); await p.waitForSelector('text=Apply for Unit Z');
         await p.fill('#ap-n0', 'Sam Applicant'); await p.fill('#ap-e0', `sam.${tag}@tenant-e2e.ca`); await p.fill('#ap-p0', '416-555-0101');
