@@ -946,6 +946,21 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       const m = (await state(pg)).mortgages[0];
       if ((m.changes || []).length !== 2 || !m.changes.some((c) => c.taxWithPayment === 45000) || !m.changes.some((c) => c.payment === 245000 && c.ratePct === 4.25)) throw new Error(JSON.stringify(m.changes));
     });
+    await step(tag, 'H32 Visit notice: Home unit ⋯ → Notify of a visit opens it for that unit; short notice asks why; sent to everyone in the unit, the landlord copied once', async () => {
+      await go(pg, 'today'); await pg.waitForSelector('.rent-row');
+      const row = pg.locator('.rent-row').first();
+      await row.locator('button.dots').click(); await pg.locator('text=Notify of a visit').first().click();
+      await pg.waitForSelector('#vn-unit'); if (!(await pg.locator('#vn-to').count())) throw new Error('no tenants listed');
+      if (!(await pg.locator('#vn-send').isDisabled())) throw new Error('sent with no date');
+      const tomorrow = await pg.evaluate(() => { const d = new Date(Date.now() + 3 * 3600_000); const z = (n) => String(n).padStart(2, '0'); return { date: `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`, time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }; });
+      await pg.fill('#vn-date', tomorrow.date); await pg.fill('#vn-time', tomorrow.time);
+      await pg.waitForSelector('#vn-urg'); if (!(await pg.locator('#vn-send').isDisabled())) throw new Error('short notice sent without a reason');
+      await pg.locator('#vn-urg >> text=Urgent repair').click(); await pg.selectOption('#vn-kind', 'Maintenance or repair'); await pg.fill('#vn-notes', 'Leak under the sink.');
+      const before = (await state(pg)).messages.length; await pg.click('#vn-send');
+      await pg.waitForSelector('#visit-notices >> text=Urgent · Maintenance or repair');
+      const st = await state(pg); const sent = st.messages.slice(before).filter((m) => m.kind === 'visit');
+      if (!sent.length || !sent[0].subject.startsWith('Urgent: Notice of entry') || sent.slice(1).some((m) => m.ccLandlord !== false)) throw new Error(JSON.stringify(sent).slice(0, 300));
+    });
     await step(tag, 'H27 Resend a rent receipt from Income and from a tenant\'s messages; long lists show 8 lines, then Show more', async () => {
       await go(pg, 'income'); await pg.waitForSelector('.resend-receipt');
       const before = (await state(pg)).messages.length; await pg.locator('.resend-receipt').first().click(); await pg.waitForTimeout(250);

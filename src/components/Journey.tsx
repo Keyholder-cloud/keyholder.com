@@ -16,7 +16,7 @@ import { FormWizard } from './FormWizard';
 import { LevelUpForm, ScoreRing } from './levels';
 import { MarkRentPaid } from './forms';
 import { Icon } from './Icon';
-import { FloatMenu } from './FloatMenu';
+import { FloatMenu, type MenuItem } from './FloatMenu';
 import { MatchDrawer } from '../screens/Tray';
 import { LateRentDrawer } from '../screens/Rentals';
 
@@ -24,10 +24,11 @@ import { LateRentDrawer } from '../screens/Rentals';
 // (applied → approved → lease → moved in → paying → renewal → moving out) is tracked behind the scenes.
 
 /** "⋯" menu: hide for a while, or ignore for good. */
-function RowMenu({ k }: { k: string }) {
+function RowMenu({ k, extra = [] }: { k: string; extra?: MenuItem[] }) {
   const { act, today } = useStore();
   const pick = (pref: { hiddenUntil?: string; ignored?: boolean }) => act.setTodoPref(k, pref);
   return <FloatMenu items={[
+    ...extra,
     { label: 'Hide for a day', icon: 'clock', onClick: () => pick({ hiddenUntil: addDays(today, 1) }) },
     { label: 'Hide for a week', icon: 'calendar', onClick: () => pick({ hiddenUntil: addDays(today, 7) }) },
     { label: 'Hide until next month', icon: 'calendar', onClick: () => pick({ hiddenUntil: `${periodOf(addMonths(today, 1))}-01` }) },
@@ -152,6 +153,7 @@ function UnitLine({ unit }: { unit: Unit }) {
 /** `room`: a room of a unit rented by the room, shown underneath the unit's line. */
 function RentLine({ unit, lease, card, free, room }: { unit: Unit; lease?: Lease; card: JourneyCard | null; free?: number; room?: boolean }) {
   const { state, act, today } = useStore();
+  const nav = useNavigate();
   const [pay, setPay] = useState(false);
   const [late, setLate] = useState(false);
   const tenant = lease ? state.tenants.find((t) => t.id === lease.tenantId) : undefined;
@@ -169,6 +171,7 @@ function RentLine({ unit, lease, card, free, room }: { unit: Unit; lease?: Lease
   // Paid and nothing left to do (the receipt is sent): the pill says so, with the day it was paid.
   const done = line?.state === 'paid' && !visible && !receiptToSend(state, line);
   const doneReceipt = line?.state === 'paid' ? line.payments.map((p) => state.receipts.find((r) => r.paymentId === p.id && r.status !== 'superseded')).find(Boolean) : undefined;
+  const visitItem: MenuItem = { label: 'Notify of a visit', icon: 'calendar', onClick: () => nav(`/paperwork/notices?visit=${unit.id}`) };
   const meaning = done ? (line.payments.length ? 'Rent for this month is in, and the receipt was sent. Nothing left to do.' : 'Rent for this month counts as paid. Nothing left to do.') : undefined;
   return (
     <li className={`rent-row${room ? ' room-row' : ''}${st.tone === 'late' ? ' late' : ''}`}>
@@ -186,9 +189,9 @@ function RentLine({ unit, lease, card, free, room }: { unit: Unit; lease?: Lease
       <StatusPill tone={st.tone} meaning={meaning}>{st.tone === 'paid' && <Icon name="check" size={16} />}{st.label}</StatusPill>
       <span className="row-act">
         {visible ? <StepButton c={visible} noAdd={room} /> : fallback}
-        {visible && <RowMenu k={prefKey(visible)} />}
-        {/* Paid and the receipt sent: ⋯ → Resend receipt (a PDF copy). */}
-        {!visible && doneReceipt && <FloatMenu label="More for this rent" items={[{ label: 'Resend receipt', icon: 'send', onClick: () => act.resendReceipt(doneReceipt.id) }]} />}
+        {/* ⋯ on every rented unit: notify everyone of a visit; plus hide this step, or resend the receipt. */}
+        {visible ? <RowMenu k={prefKey(visible)} extra={lease ? [visitItem] : []} />
+          : lease && <FloatMenu label="More for this unit" items={[...(doneReceipt ? [{ label: 'Resend receipt', icon: 'send' as const, onClick: () => act.resendReceipt(doneReceipt.id) }] : []), visitItem]} />}
       </span>
       {pay && lease && <MarkRentPaid leaseId={lease.id} onClose={() => setPay(false)} />}
       {late && lease && <LateRentDrawer lease={lease} onClose={() => setLate(false)} />}

@@ -299,7 +299,7 @@ export interface Expense {
   createdAt: string;
 }
 
-export type MessageKind = 'receipt' | 'reminder';
+export type MessageKind = 'receipt' | 'reminder' | 'visit';
 
 export interface Message {
   id: ID;
@@ -313,6 +313,8 @@ export interface Message {
   body: string;
   status: 'draft' | 'sent' | 'cancelled';
   edited: boolean;
+  /** false: no copy to the landlord on this one (a visit notice to several leases copies the landlord once). */
+  ccLandlord?: boolean;
   createdAt: string;
   sentAt?: string;
 }
@@ -520,6 +522,8 @@ export interface AppState {
   listings: Listing[];
   applicants: Applicant[];
   notices: Notice[];
+  /** Notices of a visit (inspection, maintenance…) sent to everyone in a unit. */
+  visits?: VisitNotice[];
   todoPrefs: Record<string, TodoPref>;
   /** Bank and card statements the owner uploaded (their lines are in txns, with statementId). */
   statements?: StatementFile[];
@@ -542,4 +546,20 @@ export interface StatementFile {
   /** 'balanced': the lines add up to the statement's own balances. */
   check: 'balanced' | 'mismatch' | 'unchecked';
   importedAt: string;
+}
+
+/** A notice of entry sent to every tenant in a unit (the landlord copied). */
+export interface VisitNotice {
+  id: ID;
+  unitId: ID;
+  date: ISODate;
+  time: string; // "14:30"
+  kind: string; // Inspection, Maintenance or repair…
+  /** Less than 24 hours' notice: why (Emergency, Urgent repair, The tenant agreed). */
+  urgency?: string;
+  notes?: string;
+  sentAt: string;
+  /** Who it went to (names), and the messages sent. */
+  to: string[];
+  messageIds: ID[];
 }
