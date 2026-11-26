@@ -4,7 +4,8 @@ import type {
 } from './types';
 import { emptyState, seedState, STATE_VERSION, defaultProfile } from './seed';
 import { addDays, dueDate, fmtDate, periodOf, todayISO } from '../lib/dates';
-import { activeLease, currentLeases, leaseLedger, openRooms } from '../lib/finance';
+import { activeLease, activeLeases, currentLeases, leaseLedger, openRooms } from '../lib/finance';
+import { visitMessage } from '../lib/visits';
 import { markedPayment, suggestMatch } from '../lib/matching';
 import { reminderDraft } from '../lib/templates';
 import { fmt } from '../lib/money';
@@ -421,6 +422,26 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
         audit(d, draft ? 'Receipt sent' : 'Receipt sent again', `#${r.number} · ${tenantName(d, lease.id)}`);
       });
       if (text) toast(text);
+    },
+    /** A notice of a visit to everyone in a unit (each lease's tenants), the landlord copied once. */
+    sendVisitNotice(v: { unitId: string; date: string; time: string; kind: string; urgency?: string; notes?: string }) {
+      let n = 0;
+      mut((d) => {
+        const unit = d.units.find((u) => u.id === v.unitId); if (!unit) return;
+        const leases = activeLeases(d, unit.id, today());
+        const now = new Date().toISOString();
+        const ids: string[] = []; const to: string[] = [];
+        leases.forEach((l, i) => {
+          const t = d.tenants.find((x) => x.id === l.tenantId); if (!t) return;
+          const { subject, body } = visitMessage(d, unit, l, v);
+          const id = uid('msg'); ids.push(id); to.push(...t.names);
+          d.messages.push({ id, kind: 'visit', tenantId: t.id, leaseId: l.id, subject, body, status: 'sent', edited: false, createdAt: now, sentAt: now, ...(i > 0 ? { ccLandlord: false } : {}) });
+        });
+        n = to.length;
+        d.visits = [{ id: uid('visit'), ...v, sentAt: now, to, messageIds: ids }, ...(d.visits ?? [])];
+        audit(d, 'Visit notice sent', `${v.kind} on ${v.date} at ${v.time} · ${to.join(', ')}`);
+      });
+      toast(n ? `Notice sent to ${n === 1 ? 'the tenant' : `${n} tenants`}. You are copied.` : 'No tenants in this unit to notify.');
     },
     sendReminder(lease: Lease, period: string, tone: Tone, edit?: { subject: string; body: string }) {
       mut((d) => {

@@ -138,7 +138,7 @@ export function TenantDetail() {
               {msgs.length === 0 ? <p className="soft small">Nothing sent yet. Receipts and reminders appear here.</p> : (
                 <><ul className="rows">{msgsShown.map((m) => (
                   <li key={m.id} className="row"><span className="margin">{fmtDate(m.sentAt!.slice(0, 10))}</span>
-                    <span><span className="title">{m.kind === 'receipt' ? 'Rent receipt' : `${m.tone ?? ''} reminder`}</span><span className="sub" style={{ display: 'block' }}>{m.period ? fmtPeriod(m.period) : ''} · sent {fmtTime(m.sentAt!)}</span></span>
+                    <span><span className="title">{m.kind === 'receipt' ? 'Rent receipt' : m.kind === 'visit' ? m.subject : `${m.tone ?? ''} reminder`}</span><span className="sub" style={{ display: 'block' }}>{m.period ? fmtPeriod(m.period) : ''} · sent {fmtTime(m.sentAt!)}</span></span>
                     <span className="row-act">{m.kind === 'receipt' && m.receiptId && <ResendReceipt receiptId={m.receiptId} />}<Stamp kind="sent">Sent</Stamp></span></li>
                 ))}</ul>{msgsMore}</>
               )}

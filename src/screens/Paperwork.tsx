@@ -1,7 +1,8 @@
 import { BackToMore, PageSub } from '../components/Guide';
 import { OfficialPdfButton } from '../components/OfficialForm';
 import { useState } from 'react';
-import { Link, Navigate, NavLink, useParams } from 'react-router-dom';
+import { Link, Navigate, NavLink, useLocation, useParams } from 'react-router-dom';
+import { VisitNotices } from '../components/VisitNotice';
 import type { IncomeKind, Lease, Message, Province, Receipt } from '../data/types';
 import { AUTHORITY_URL, SITUATIONS, formsFor } from '../lib/forms';
 import { FormWizard, SituationPicker } from '../components/FormWizard';
@@ -22,6 +23,7 @@ import { SceneTap, SceneWelcome } from '../components/Art';
 
 export function Paperwork() {
   const { tab = 'leases' } = useParams();
+  const loc = useLocation();
   const tabs = [{ id: 'leases', label: 'Leases' }, { id: 'notices', label: 'Notices and letters' }, { id: 'forms', label: 'Forms' }, { id: 'taxes', label: 'Taxes' }];
   // Income and expenses have their own pages now; old links still land there.
   if (tab === 'expenses') return <Navigate to="/expenses" replace />;
@@ -34,7 +36,7 @@ export function Paperwork() {
       {cur === 'leases' && <Leases />}
       {cur === 'forms' && <FormsLibrary />}
       {cur === 'taxes' && <><p className="soft" style={{ marginTop: 0 }}>Your year's rent and costs, ready for your tax return (T776).</p><TaxPackPage /></>}
-      {cur === 'notices' && <><NoticesLog /><section className="section"><h2 className="section-title">Receipts and reminders sent</h2><Letters /></section><section className="section"><h2 className="section-title">History of changes</h2><Log /></section></>}
+      {cur === 'notices' && <><VisitNotices openFor={new URLSearchParams(loc.search).get('visit') ?? undefined} key={loc.search} /><NoticesLog /><section className="section"><h2 className="section-title">Receipts and reminders sent</h2><Letters /></section><section className="section"><h2 className="section-title">History of changes</h2><Log /></section></>}
     </div>
   );
 }
