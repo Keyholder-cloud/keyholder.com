@@ -698,10 +698,29 @@ function watch(pg, errors, label) {
         await p.goto(`${BASE}apply/${slug}`); await p.waitForSelector('text=Apply for Unit Z');
         await p.fill('#ap-n0', 'Sam Applicant'); await p.fill('#ap-e0', `sam.${tag}@tenant-e2e.ca`); await p.fill('#ap-p0', '416-555-0101');
         await p.fill('#ap-w0', 'City Hospital'); await p.fill('#ap-i0', '5200'); await p.fill('#ap-addr', '10 King St W, Toronto');
-        if (!(await p.locator('#ap-send').isDisabled())) throw new Error('sent without consent');
-        await p.check('#ap-consent'); await p.click('#ap-send'); await p.waitForSelector('#apply-sent');
+        await p.check('#ap-consent');
+        if (!(await p.locator('#ap-send').isDisabled())) throw new Error('sent without ID and credit score');
+        // Two pieces of ID (photos), the credit score and the soft-check consent are required.
+        await p.waitForSelector('#ap-soft >> text=does not affect your credit score');
+        const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGPwd3tKEmIY1TCqYfhqAABe7noQUrS/JQAAAABJRU5ErkJggg==', 'base64');
+        await p.setInputFiles('#ap-idf0', { name: 'licence.png', mimeType: 'image/png', buffer: png });
+        await p.selectOption('#ap-idt1', 'Passport'); await p.setInputFiles('#ap-idf1', { name: 'passport.png', mimeType: 'image/png', buffer: png });
+        await p.waitForSelector('label[for="ap-idf1"].done');
+        await p.fill('#ap-score', '742'); await p.selectOption('#ap-src', 'Borrowell');
+        if (!(await p.locator('#ap-send').isDisabled())) throw new Error('sent without the soft-check consent');
+        await p.check('#ap-credit'); await p.click('#ap-send'); await p.waitForSelector('#apply-sent');
         const got = await until(async () => (await api(pg, '/api/state')).body.data.applicants.find((a) => a.unitId === `u-ap-${tag}`), 8000, 'the application reached the landlord');
         if (got.names[0] !== 'Sam Applicant' || got.monthlyIncome !== 520000 || got.status !== 'new') throw new Error(JSON.stringify(got).slice(0, 200));
+        if (got.creditScore !== 742 || got.creditSource !== 'Borrowell' || got.ids?.length !== 2 || got.ids[1].type !== 'Passport') throw new Error('ID or score: ' + JSON.stringify(got.ids));
+        // The landlord opens the ID; nobody else can.
+        const file = await pg.evaluate(async (id) => { const r = await fetch(`/api/application-files/${id}`, { headers: { 'X-Keyholder': '1' } }); return { s: r.status, t: r.headers.get('content-type') }; }, got.ids[0].fileId);
+        if (file.s !== 200 || file.t !== 'image/jpeg') throw new Error('landlord view ' + JSON.stringify(file));
+        if ((await p.evaluate(async (id) => (await fetch(`/api/application-files/${id}`, { headers: { 'X-Keyholder': '1' } })).status, got.ids[0].fileId)) === 200) throw new Error('the applicant could open the file');
+        // The PDF goes to the landlord (with the ID) and to the applicant (without it).
+        const mine = await until(async () => (await outbox(`sam.${tag}@tenant-e2e.ca`)).find((m) => m.kind === 'application-copy'), 8000, 'the applicant copy');
+        if (!/\.pdf$/.test(mine.attached_file) || (mine.file_ids ?? []).length) throw new Error('applicant copy: ' + JSON.stringify(mine).slice(0, 200));
+        const theirs = (await outbox('')).find((m) => m.kind === 'application' && m.subject.includes('Unit Z'));
+        if (!theirs || (theirs.file_ids ?? []).length !== 2) throw new Error('landlord copy: ' + JSON.stringify(theirs).slice(0, 200));
         // A wrong link says so.
         await p.goto(`${BASE}apply/not-a-listing`); await p.waitForSelector('text=This listing is closed');
         await ctx.close();

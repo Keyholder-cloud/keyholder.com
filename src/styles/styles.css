@@ -719,6 +719,14 @@ button.chip:hover { border-color: var(--primary); }
 .two-step-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 /* The public application form. */
 .apply-card { width: min(720px, 100%); }
+.apply-id .field { margin-bottom: 8px; }
+.apply-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.apply-drop { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 10px 12px; border: 1.5px dashed var(--rule-strong); border-radius: 10px; cursor: pointer; color: var(--ink-soft); font-size: 14px; }
+.apply-drop:hover { border-color: var(--primary); color: var(--ink); }
+.apply-drop svg { color: var(--primary); flex: none; } .apply-drop span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apply-drop.done { border-style: solid; border-color: var(--pine); color: var(--ink); } .apply-drop.done svg { color: var(--pine); }
+.apply-file:focus-visible + .apply-drop, .apply-drop:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
+.apply-soft { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0 12px; font-size: 14px; } .apply-soft svg { color: var(--pine); flex: none; margin-top: 2px; }
 .apply-facts { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--ink-soft); font-size: 14px; margin: 4px 0 8px; }
 .apply-facts span { display: inline-flex; align-items: center; gap: 6px; }
 .apply-facts svg, .apply-h svg { color: var(--primary); }

@@ -78,6 +78,11 @@ export async function cleanup(db: Db) {
   await db.query(`delete from auth_tokens where expires_at < now() - interval '7 days'`);
   await db.query(`delete from two_step_tickets where expires_at < now() - interval '1 day'`);
   await db.query(`delete from trusted_devices where expires_at < now()`);
+  // An applicant's ID and credit report: deleted with the application, and 90 days after it was declined.
+  await db.query(`delete from application_files f where f.created_at < now() - interval '1 hour' and not exists (
+    select 1 from account_state s, jsonb_array_elements(coalesce(s.data->'applicants', '[]'::jsonb)) a
+    where s.account_id = f.account_id and a->>'id' = f.applicant_id
+      and not (a->>'status' = 'declined' and f.created_at < now() - interval '90 days'))`);
 }
 
 // The Bank of Canada's weekly figure for the big banks' posted 5-year GIC rate (Valet API, free, no key).

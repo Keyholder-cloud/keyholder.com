@@ -693,8 +693,17 @@ function ApplicantDetails({ a, rent }: { a: Applicant; rent: number }) {
         <div>Pets / smoking</div><div>{a.pets ? `Yes${a.notes ? ` (${a.notes})` : ''}` : 'No pets'} · {a.smoking ? 'Smokes' : 'Non-smoking'}</div>
         <div>Other reference</div><div style={{ fontFamily: 'inherit' }}>{a.references}</div>
         <div>Documents</div><div style={{ fontFamily: 'inherit' }}>{a.documents?.join(', ') || 'None yet'}</div>
-        <div>Credit check</div><div>{a.creditConsent ? 'Consent given' : 'No consent'}</div>
+        <div>Credit check</div><div style={{ fontFamily: 'inherit' }}>{a.creditConsent ? (a.ids ? 'Consent to a soft check (does not affect their score)' : 'Consent given') : 'No consent'}</div>
       </div>
+      {(a.ids?.length || a.creditScore) && <>
+        <h3 style={{ margin: '16px 0 6px' }}>ID and credit score</h3>
+        <div className="kv" id={`ap-docs-${a.id}`}>
+          {a.ids?.map((x, i) => <span key={x.fileId} style={{ display: 'contents' }}><div>ID {i + 1}</div><div style={{ fontFamily: 'inherit' }}>{x.type} <FileView id={x.fileId} label={x.type} /></div></span>)}
+          {a.creditScore && <><div>Credit score</div><div>{a.creditScore}{a.creditSource ? ` · ${a.creditSource}` : ''}</div></>}
+          {a.creditReportFileId && <><div>Credit report</div><div><FileView id={a.creditReportFileId} label="Credit report" /></div></>}
+        </div>
+        <p className="tiny soft">Only you can see these. They are deleted with the application (90 days after you decline it).</p>
+      </>}
       <h3 style={{ margin: '20px 0 6px' }}>Your assessment</h3>
       <div className="assess-checks">{checks.map(([k, label]) => (
         <label key={k} className="check"><input type="checkbox" checked={!!as[k]} onChange={(e) => setA({ [k]: e.target.checked })} />{label}</label>
@@ -707,6 +716,24 @@ function ApplicantDetails({ a, rent }: { a: Applicant; rent: number }) {
       <p className="tiny soft">Weigh history, references and income together. Income alone can't be the reason to say no.</p>
     </>
   );
+}
+
+/** Opens an applicant's ID or credit report (kept on the server, for the landlord only). */
+function FileView({ id, label }: { id: string; label: string }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  if (!serverMode()) return null;
+  const open = async () => {
+    const w = window.open('', '_blank'); setBusy(true); setErr('');
+    try {
+      const r = await fetch(`/api/application-files/${id}`, { credentials: 'same-origin', headers: { 'X-Keyholder': '1' } });
+      if (!r.ok) throw new Error(r.status === 404 ? 'Deleted with the application.' : 'Could not open it. Try again.');
+      const url = URL.createObjectURL(await r.blob());
+      if (w) w.location.href = url; else window.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (x) { w?.close(); setErr((x as Error).message); } finally { setBusy(false); }
+  };
+  return <><button type="button" className="btn small ghost" onClick={open} aria-label={`View ${label}`} disabled={busy}><Icon name="search" size={14} />{busy ? 'Opening…' : 'View'}</button>{err && <span className="small acct-error"> {err}</span>}</>;
 }
 
 // =====================================================================================

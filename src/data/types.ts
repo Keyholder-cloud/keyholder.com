@@ -390,6 +390,12 @@ export interface ApplicantPerson extends Person {
 
 export interface Applicant {
   id: ID;
+  /** Two pieces of government photo ID (the files are kept on the server, shown only to the landlord). */
+  ids?: { type: string; fileId: string }[];
+  /** The credit score the applicant gave (from a soft check) and where it is from; a credit report file, if added. */
+  creditScore?: number;
+  creditSource?: string;
+  creditReportFileId?: string;
   unitId: ID;
   names: string[];
   email: string;

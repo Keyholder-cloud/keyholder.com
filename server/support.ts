@@ -247,7 +247,7 @@ export async function deleteAccount(q: Q, accountId: string, by: string) {
   const a = await q.one<{ owner_id: string }>('select owner_id from accounts where id = $1', [accountId]);
   if (!a) return false;
   await q.query('delete from support_tickets where account_id = $1 or user_id = $2', [accountId, a.owner_id]);
-  await q.query(`update outbox set to_email = 'deleted', to_name = null, cc = null, text_body = '', subject = '(deleted)' where account_id = $1`, [accountId]);
+  await q.query(`update outbox set to_email = 'deleted', to_name = null, cc = null, text_body = '', subject = '(deleted)', attachment = null where account_id = $1`, [accountId]);
   await q.query(`update data_requests set email = 'deleted', account_id = null where account_id = $1`, [accountId]);
   await q.query(`update audit_log set detail = '', ip = null where account_id = $1 or actor_id = $2`, [accountId, a.owner_id]);
   await q.query('delete from accounts where id = $1', [accountId]);
