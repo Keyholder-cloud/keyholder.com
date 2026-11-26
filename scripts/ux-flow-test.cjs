@@ -936,6 +936,16 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       const pay = st.payments[st.payments.length - 1]; const r = st.receipts.find((x) => x.paymentId === pay.id); if (!r || r.status !== 'sent') throw new Error('receipt not sent');
       if ((await pg.locator('button[id^="pu-send-"]').count()) !== (await b.count())) throw new Error('row still offers send');
     });
+    await step(tag, 'H31 What you pay: the mortgage and property tax in one card; changes start on a date (tax with the mortgage, new rate and payment)', async () => {
+      const pid = (await state(pg)).mortgages[0].propertyId;
+      await go(pg, `rent/property/${pid}/mortgage`); await pg.waitForSelector('#what-you-pay #pay-mortgage');
+      await pg.click('#pay-tax-change'); await pg.click('#pt-mortgage'); await pg.fill('#pt-each', '450'); await pg.click('#pt-save');
+      await pg.waitForSelector('#pay-tax >> text=paid with your mortgage'); await pg.waitForSelector('#pay-mortgage >> text=property tax collected by');
+      await pg.click('#pay-mortgage-change'); await pg.fill('#mc-rate', '4.25'); await pg.fill('#mc-pay', '2450'); await pg.click('#mc-save');
+      await pg.waitForSelector('#pay-mortgage >> text=$2,450.00');
+      const m = (await state(pg)).mortgages[0];
+      if ((m.changes || []).length !== 2 || !m.changes.some((c) => c.taxWithPayment === 45000) || !m.changes.some((c) => c.payment === 245000 && c.ratePct === 4.25)) throw new Error(JSON.stringify(m.changes));
+    });
     await step(tag, 'H27 Resend a rent receipt from Income and from a tenant\'s messages; long lists show 8 lines, then Show more', async () => {
       await go(pg, 'income'); await pg.waitForSelector('.resend-receipt');
       const before = (await state(pg)).messages.length; await pg.locator('.resend-receipt').first().click(); await pg.waitForTimeout(250);

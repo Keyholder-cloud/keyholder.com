@@ -206,7 +206,8 @@ export function mortgagePayment(principal: Cents, annualPct: number, amortYears:
   return Math.round((principal * i) / (1 - Math.pow(1 + i, -N)));
 }
 
-export interface AmortRow { n: number; date: ISODate; payment: Cents; interest: Cents; principal: Cents; balance: Cents }
+/** One payment: `payment` is interest + principal; `tax` is property tax the lender collected with it (not mortgage). */
+export interface AmortRow { n: number; date: ISODate; payment: Cents; interest: Cents; principal: Cents; balance: Cents; tax: Cents }
 
 function paymentDate(start: ISODate, k: number, freq: MortgageFrequency): ISODate {
   switch (freq) {
@@ -217,26 +218,52 @@ function paymentDate(start: ISODate, k: number, freq: MortgageFrequency): ISODat
   }
 }
 
+/** The mortgage's terms on a date: the first terms with every change from on or before that date applied. */
+export function mortgageTermsOn(m: Mortgage, date: ISODate) {
+  let ratePct = m.ratePct, payment = m.paymentOverride, termEnd = m.termEnd, tax = m.taxWithPayment ?? 0;
+  for (const c of [...(m.changes ?? [])].sort((a, b) => a.from.localeCompare(b.from))) {
+    if (c.from > date) break;
+    if (c.ratePct !== undefined) ratePct = c.ratePct;
+    if (c.payment !== undefined || c.ratePct !== undefined) payment = c.payment; // a new rate without a payment: worked out below
+    if (c.termEnd) termEnd = c.termEnd;
+    if (c.taxWithPayment !== undefined) tax = c.taxWithPayment;
+  }
+  return { ratePct, payment, termEnd, tax };
+}
+
 export function amortization(m: Mortgage): AmortRow[] {
   const n = PERIODS_PER_YEAR[m.frequency];
-  const i = periodicRate(m.ratePct, n);
-  const pay = m.paymentOverride ?? mortgagePayment(m.principal, m.ratePct, m.amortYears, m.frequency);
+  const changes = [...(m.changes ?? [])].sort((a, b) => a.from.localeCompare(b.from));
+  let rate = m.ratePct;
+  let i = periodicRate(rate, n);
+  let pay = m.paymentOverride ?? mortgagePayment(m.principal, m.ratePct, m.amortYears, m.frequency);
+  let tax = m.taxWithPayment ?? 0;
+  let applied = 0;
   const rows: AmortRow[] = [];
   let bal = m.principal;
   const extras = [...(m.prepayments ?? [])].sort((a, b) => a.date.localeCompare(b.date));
   let prevDate = m.startDate;
-  for (let k = 1; bal > 0 && k <= m.amortYears * n + 1; k++) {
+  const total = m.amortYears * n;
+  for (let k = 1; bal > 0 && k <= total + 600; k++) {
     // Extra payments made since the last regular payment go straight to principal.
     const date = paymentDate(m.startDate, k, m.frequency);
     for (const x of extras) if (x.date > prevDate && x.date <= date) bal = Math.max(0, bal - x.amount);
     prevDate = date;
     if (bal <= 0) break;
+    // A change from this date on (renewal, new rate, new tax): the payments from here use it.
+    while (applied < changes.length && changes[applied].from <= date) {
+      const c = changes[applied++];
+      if (c.ratePct !== undefined) { rate = c.ratePct; i = periodicRate(rate, n); }
+      if (c.payment !== undefined) pay = c.payment;
+      else if (c.ratePct !== undefined) pay = mortgagePayment(bal, rate, Math.max(1 / n, (total - k + 1) / n), m.frequency);
+      if (c.taxWithPayment !== undefined) tax = c.taxWithPayment;
+    }
     const interest = Math.round(bal * i);
     let principal = pay - interest;
     if (principal <= 0) break; // payment does not cover interest; schedule never ends
     if (principal > bal) principal = bal;
     bal -= principal;
-    rows.push({ n: k, date, payment: interest + principal, interest, principal, balance: bal });
+    rows.push({ n: k, date, payment: interest + principal, interest, principal, balance: bal, tax });
   }
   return rows;
 }
@@ -252,13 +279,20 @@ export function mortgageBalanceAt(m: Mortgage, date: ISODate, rows = amortizatio
 }
 
 export function mortgagePaidBetween(m: Mortgage, from: ISODate, to: ISODate, rows = amortization(m)) {
-  let interest = 0, principal = 0, count = 0;
+  let interest = 0, principal = 0, count = 0, tax = 0;
   for (const r of rows) {
     if (r.date < from) continue;
     if (r.date > to) break;
-    interest += r.interest; principal += r.principal; count++;
+    interest += r.interest; principal += r.principal; tax += r.tax; count++;
   }
-  return { interest, principal, payment: interest + principal, count };
+  /** `tax`: property tax paid through the mortgage (a running cost, not mortgage). */
+  return { interest, principal, payment: interest + principal, count, tax };
+}
+
+/** Property tax for a year: the lender's share of the payments when it is paid with the mortgage, else the city bill. */
+export function propertyTaxOn(prop: Property, date: ISODate): Cents | undefined {
+  const h = [...(prop.propertyTaxHistory ?? [])].sort((a, b) => a.from.localeCompare(b.from)).filter((x) => x.from <= date).pop();
+  return h ? h.annual : prop.annualPropertyTax;
 }
 
 // =====================================================================================
@@ -374,6 +408,8 @@ export function picture(state: AppState, from: ISODate, to: ISODate, opts: { pro
       const paid = mortgagePaidBetween(m, mFrom, mTo);
       mortgageInterest += Math.round((paid.interest * prop.rentalSharePct) / 100);
       mortgagePrincipal += Math.round((paid.principal * prop.rentalSharePct) / 100);
+      // Property tax the lender collects is a running cost, not mortgage.
+      opex += Math.round((paid.tax * prop.rentalSharePct) / 100);
     } else {
       mortgageIsRough = true;
       const mMonths = Math.max(0, periodRange(periodOf(mFrom), periodOf(mTo)).length);
@@ -638,6 +674,14 @@ export function taxPack(state: AppState, prop: Property, year: number, start?: I
     line.amount += interest;
     line.label = 'Mortgage interest and bank fees';
     byLine.set('8710', line);
+    // Property tax paid with the mortgage (the lender pays the city).
+    const tax = Math.round((mortgagePaidBetween(m, from, to).tax * prop.rentalSharePct) / 100);
+    if (tax > 0) {
+      const t = CATEGORIES.find((c) => c.id === 'property-tax')!;
+      const pl = byLine.get(t.t776) ?? { t776: t.t776, label: t.label, craLabel: t.t776Label, amount: 0, count: 0 };
+      pl.amount += tax; pl.count++;
+      byLine.set(t.t776, pl);
+    }
   }
   const lines = [...byLine.values()].sort((a, b) => a.t776.localeCompare(b.t776));
   const totalExpenses = lines.reduce((a, l) => a + l.amount, 0);
@@ -657,7 +701,7 @@ export function taxPack(state: AppState, prop: Property, year: number, start?: I
   if (noClass.length) preflight.push({ id: 'cca-class', text: `${noClass.length} upgrade${noClass.length > 1 ? 's need' : ' needs'} a depreciation type`, severity: 'fix' });
   const other = exps.filter((e) => e.category === 'other');
   if (other.length) preflight.push({ id: 'other', text: `${other.length} expense${other.length > 1 ? 's are' : ' is'} marked "Something else". Pick a type.`, severity: 'check' });
-  if (!exps.some((e) => e.category === 'property-tax')) preflight.push({ id: 'ptax', text: 'No property tax added this year', severity: 'check' });
+  if (!exps.some((e) => e.category === 'property-tax') && !(m && mortgagePaidBetween(m, from, to).tax > 0)) preflight.push({ id: 'ptax', text: 'No property tax added this year', severity: 'check' });
   if (!exps.some((e) => e.category === 'insurance')) preflight.push({ id: 'ins', text: 'No insurance added this year', severity: 'check' });
   if (m) preflight.push({ id: 'mstatement', text: "Check the interest matches your bank's yearly mortgage statement", severity: 'check' });
   // Unusual amounts: more than 3x the median of their category.

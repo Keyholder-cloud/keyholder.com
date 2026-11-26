@@ -7,12 +7,13 @@ import type { Property } from '../data/types';
 import { propertyLevel, atLeast } from '../lib/levels';
 import { LevelSteps, LevelUpForm, PropertyCard } from '../components/levels';
 import { daysBetween, fmtDate } from '../lib/dates';
-import { adjustedCostBase, amortization, mortgageBalanceAt, mortgagePaidBetween, owedAt, ownEstimate, propertyValue } from '../lib/finance';
+import { adjustedCostBase, amortization, mortgageBalanceAt, mortgagePaidBetween, mortgageTermsOn, owedAt, ownEstimate, PERIODS_PER_YEAR, propertyTaxOn, propertyValue } from '../lib/finance';
 import { LENDER_MAX_LTV, SELLING_COST_PCT, borrowingRoom, gainSincePurchase, returnComparison, roughSale } from '../lib/silver';
 import { fmt, fmt0 } from '../lib/money';
 import { RentRoll } from '../components/domain';
 import { MortgageForm, OwnerEstimateForm, PropertyForm } from '../components/forms';
-import { Empty, Figure } from '../components/ui';
+import { Drawer, Empty, Field, Figure, MoneyInput } from '../components/ui';
+import type { Mortgage } from '../data/types';
 import { Icon } from '../components/Icon';
 import { useMore } from '../components/More';
 
@@ -138,6 +139,7 @@ function ValueTab({ id }: { id: string }) {
 function MortgageTab({ id }: { id: string }) {
   const { state, today } = useStore();
   const [edit, setEdit] = useState<string | 'new' | null>(null);
+  const [renew, setRenew] = useState(false);
   const p = state.properties.find((x) => x.id === id)!;
   const m = state.mortgages.find((x) => x.propertyId === id);
   const rows = useMemo(() => (m ? amortization(m) : []), [m]);
@@ -152,19 +154,22 @@ function MortgageTab({ id }: { id: string }) {
   if (!m) {
     return (
       <>
-        <div className="sheet"><Empty title="No mortgage added." action={<button className="btn primary" onClick={() => setEdit('new')}>Add mortgage</button>}>Paid off? You can skip this.</Empty></div>
+        <WhatYouPay propertyId={id} />
+        <div className="sheet" style={{ marginTop: 16 }}><Empty title="No mortgage added." action={<button className="btn primary" onClick={() => setEdit('new')}>Add mortgage</button>}>Paid off? You can skip this.</Empty></div>
         {edit && <MortgageForm propertyId={id} onClose={() => setEdit(null)} />}
       </>
     );
   }
   const bal = mortgageBalanceAt(m, today, rows);
   const ytd = mortgagePaidBetween(m, `${today.slice(0, 4)}-01-01`, today, rows);
-  const daysToRenew = daysBetween(today, m.termEnd);
+  const termEnd = mortgageTermsOn(m, today).termEnd;
+  const daysToRenew = daysBetween(today, termEnd);
   const next = rows.find((r) => r.date > today);
 
   return (
     <>
-      {daysToRenew >= 0 && daysToRenew <= 120 && <div className="callout brass"><strong>Renews in {daysToRenew} days</strong> ({fmtDate(m.termEnd)}). A good time to compare rates.</div>}
+      {daysToRenew >= 0 && daysToRenew <= 120 && <div className="callout brass spread" id="renew-note"><span><strong>Renews in {daysToRenew} days</strong> ({fmtDate(termEnd)}). A good time to compare rates.</span><button className="btn small" id="renew-update" onClick={() => setRenew(true)}>Update after renewal</button></div>}
+      <WhatYouPay propertyId={id} />
       <div className="figures">
         <div><div className="label">Still owed</div><Figure cents={bal} size="sm" /></div>
         <div><div className="label">Interest this year</div><Figure cents={ytd.interest} size="sm" /></div>
@@ -174,7 +179,7 @@ function MortgageTab({ id }: { id: string }) {
         <div className="spread">
           <div>
             {next && <p style={{ margin: 0 }}><strong>Next payment {fmtDate(next.date)}: {fmt(next.payment)}</strong></p>}
-            <p className="small soft" style={{ margin: 0 }}>{m.lender} · {m.ratePct.toFixed(2)}% · renews {fmtDate(m.termEnd)}</p>
+            <p className="small soft" style={{ margin: 0 }}>{m.lender} · {mortgageTermsOn(m, today).ratePct.toFixed(2)}% · renews {fmtDate(termEnd)}</p>
           </div>
           <button className="btn" onClick={() => setEdit(m.id)}><Icon name="edit" size={16} />Edit</button>
         </div>
@@ -220,7 +225,137 @@ function MortgageTab({ id }: { id: string }) {
         </div>
       </details>
       {edit && <MortgageForm propertyId={id} mortgage={edit === 'new' ? undefined : m} onClose={() => setEdit(null)} />}
+      {renew && <MortgageChangeDrawer m={m} renewal onClose={() => setRenew(false)} />}
     </>
+  );
+}
+
+const FREQ_WORD: Record<Mortgage['frequency'], string> = { monthly: 'month', 'semi-monthly': 'half month', biweekly: 'two weeks', weekly: 'week' };
+
+/**
+ * What you pay for the property, in one place: the mortgage payment (and the property tax in it, when the lender
+ * collects it) and the property tax. Each has a Change button; a change starts on a date, so earlier months keep
+ * what they were.
+ */
+function WhatYouPay({ propertyId }: { propertyId: string }) {
+  const { state, today, act } = useStore();
+  const p = state.properties.find((x) => x.id === propertyId)!;
+  const m = state.mortgages.find((x) => x.propertyId === propertyId);
+  const [open, setOpen] = useState<'mortgage' | 'tax' | null>(null);
+  const rows = useMemo(() => (m ? amortization(m) : []), [m]);
+  const next = rows.find((r) => r.date >= today);
+  const terms = m ? mortgageTermsOn(m, next?.date ?? today) : null;
+  const perYear = m ? PERIODS_PER_YEAR[m.frequency] : 12;
+  const taxEach = terms?.tax ?? 0;
+  const cityTax = propertyTaxOn(p, today);
+  const history = [
+    ...(m?.changes ?? []).map((c) => ({ from: c.from, text: [c.ratePct !== undefined ? `rate ${c.ratePct.toFixed(2)}%` : '', c.payment !== undefined ? `payment ${fmt(c.payment)}` : c.ratePct !== undefined ? 'payment worked out from the rate' : '', c.taxWithPayment !== undefined ? (c.taxWithPayment ? `property tax ${fmt(c.taxWithPayment)} a payment, with the mortgage` : 'property tax no longer with the mortgage') : '', c.termEnd ? `renews ${fmtDate(c.termEnd)}` : ''].filter(Boolean).join(' · '), note: c.note, remove: () => act.removeMortgageChange(m!.id, c.from) })),
+    ...(p.propertyTaxHistory ?? []).filter((h) => h.from > '1900-01-01').map((h) => ({ from: h.from, text: `property tax ${fmt0(h.annual)} a year, paid to the city`, note: undefined, remove: undefined })),
+  ].sort((a, b) => b.from.localeCompare(a.from));
+  return (
+    <div className="sheet pay-card" id="what-you-pay" style={{ marginTop: 16 }}>
+      <h2 style={{ marginBottom: 10 }}>What you pay</h2>
+      {m && next && <div className="pay-row" id="pay-mortgage">
+        <div>
+          <div className="pay-k"><Icon name="bank" size={16} />Mortgage</div>
+          <div className="pay-v"><strong>{fmt(next.payment)}</strong> every {FREQ_WORD[m.frequency]}<span className="soft"> · next {fmtDate(next.date)}</span></div>
+          <div className="small soft">{m.lender} · {terms!.ratePct.toFixed(2)}% · renews {fmtDate(terms!.termEnd)}</div>
+          {taxEach > 0 && <div className="small pay-total">+ {fmt(taxEach)} property tax collected by {m.lender} · <strong>{fmt(next.payment + taxEach)}</strong> leaves your account</div>}
+        </div>
+        <button className="btn small" id="pay-mortgage-change" onClick={() => setOpen('mortgage')}><Icon name="edit" size={14} />Change</button>
+      </div>}
+      <div className="pay-row" id="pay-tax">
+        <div>
+          <div className="pay-k"><Icon name="home" size={16} />Property tax</div>
+          {taxEach > 0
+            ? <><div className="pay-v"><strong>{fmt0(taxEach * perYear)}</strong> a year<span className="soft"> · paid with your mortgage</span></div><div className="small soft">{fmt(taxEach)} in each payment; {m!.lender} pays the city. Counted as property tax, not mortgage.</div></>
+            : cityTax ? <><div className="pay-v"><strong>{fmt0(cityTax)}</strong> a year<span className="soft"> · paid to the city yourself</span></div><div className="small soft">Add each bill under Expenses when you pay it.</div></>
+              : <div className="pay-v soft">Not added yet</div>}
+        </div>
+        <button className="btn small" id="pay-tax-change" onClick={() => setOpen('tax')}><Icon name="edit" size={14} />{taxEach > 0 || cityTax ? 'Change' : 'Add'}</button>
+      </div>
+      {history.length > 0 && <details className="more" style={{ marginTop: 8 }}><summary className="small">Changes ({history.length})</summary>
+        <ul className="pay-history">{history.map((h, i) => <li key={`${h.from}-${i}`}><span className="mono">{fmtDate(h.from)}</span><span>{h.text}{h.note ? ` (${h.note})` : ''}</span>{h.remove && <button className="btn ghost small icon-only" aria-label="Remove this change" title="Remove this change" onClick={() => { if (window.confirm('Remove this change? Payments from that date go back to what they were.')) h.remove!(); }}><Icon name="trash" size={14} /></button>}</li>)}</ul>
+      </details>}
+      {open === 'mortgage' && m && <MortgageChangeDrawer m={m} onClose={() => setOpen(null)} />}
+      {open === 'tax' && <PropertyTaxDrawer propertyId={propertyId} onClose={() => setOpen(null)} />}
+    </div>
+  );
+}
+
+/** A new rate or payment from a date (a renewal, or a variable rate that moved). */
+function MortgageChangeDrawer({ m, renewal, onClose }: { m: Mortgage; renewal?: boolean; onClose: () => void }) {
+  const { act, today } = useStore();
+  const rows = useMemo(() => amortization(m), [m]);
+  const cur = mortgageTermsOn(m, today);
+  const nextDate = rows.find((r) => r.date >= today)?.date ?? today;
+  const [from, setFrom] = useState(renewal ? cur.termEnd : nextDate);
+  const [rate, setRate] = useState(cur.ratePct.toFixed(2));
+  const [payment, setPayment] = useState<number | undefined>(rows.find((r) => r.date >= today)?.payment);
+  const [auto, setAuto] = useState(false);
+  const [termYears, setTermYears] = useState(String(m.termYears ?? 5));
+  const rateN = Number(rate);
+  const ok = !!from && rateN > 0 && rateN < 30 && (auto || (payment ?? 0) > 0);
+  const save = () => {
+    const termEnd = renewal ? `${Number(from.slice(0, 4)) + (Number(termYears) || 5)}${from.slice(4)}` : undefined;
+    act.changeMortgage(m.id, { from, ratePct: rateN, ...(auto ? {} : { payment }), ...(termEnd ? { termEnd } : {}), ...(renewal ? { note: 'renewal' } : {}) });
+    onClose();
+  };
+  return (
+    <Drawer title={renewal ? 'Update after renewal' : 'Change the mortgage payment'} onClose={onClose}
+      footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" id="mc-save" disabled={!ok} onClick={save}>Save</button></>}>
+      <p className="small soft" style={{ marginTop: 0 }}>Payments from this date use the new amounts. Earlier payments stay as they were.</p>
+      <Field label="From" htmlFor="mc-from"><input id="mc-from" type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
+      <div className="grid2">
+        <Field label="Interest rate (%)" htmlFor="mc-rate"><input id="mc-rate" className="input" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value.replace(/[^\d.]/g, ''))} /></Field>
+        {renewal && <Field label="New term (years)" htmlFor="mc-term"><input id="mc-term" className="input" inputMode="numeric" value={termYears} onChange={(e) => setTermYears(e.target.value.replace(/\D/g, ''))} /></Field>}
+      </div>
+      <Field label="New payment (interest and principal, without property tax)" htmlFor="mc-pay" hint="As on your lender's renewal letter or statement.">
+        <MoneyInput id="mc-pay" value={auto ? undefined : payment} onChange={(c) => { setPayment(c); setAuto(false); }} placeholder={auto ? 'Worked out from the rate' : undefined} />
+      </Field>
+      <label className="check"><input type="checkbox" id="mc-auto" checked={auto} onChange={(e) => setAuto(e.target.checked)} />I don't know it yet: work it out from the rate</label>
+    </Drawer>
+  );
+}
+
+/** Property tax: paid with the mortgage (an amount in each payment) or to the city (a yearly amount), from a date. */
+function PropertyTaxDrawer({ propertyId, onClose }: { propertyId: string; onClose: () => void }) {
+  const { state, act, today } = useStore();
+  const p = state.properties.find((x) => x.id === propertyId)!;
+  const m = state.mortgages.find((x) => x.propertyId === propertyId);
+  const rows = useMemo(() => (m ? amortization(m) : []), [m]);
+  const nextDate = rows.find((r) => r.date >= today)?.date ?? `${today.slice(0, 4)}-01-01`;
+  const cur = m ? mortgageTermsOn(m, nextDate).tax : 0;
+  const [how, setHow] = useState<'mortgage' | 'city'>(m && cur > 0 ? 'mortgage' : 'city');
+  const [each, setEach] = useState<number | undefined>(cur || undefined);
+  const [annual, setAnnual] = useState<number | undefined>(propertyTaxOn(p, today));
+  const [from, setFrom] = useState(m && cur > 0 ? nextDate : `${today.slice(0, 4)}-01-01`);
+  const perYear = m ? PERIODS_PER_YEAR[m.frequency] : 12;
+  const ok = !!from && (how === 'mortgage' ? (each ?? 0) > 0 : (annual ?? 0) > 0);
+  const save = () => {
+    if (how === 'mortgage' && m) act.changeMortgage(m.id, { from, taxWithPayment: each! });
+    else {
+      if (m && cur > 0) act.changeMortgage(m.id, { from, taxWithPayment: 0 });
+      act.changePropertyTax(propertyId, annual!, from);
+    }
+    onClose();
+  };
+  return (
+    <Drawer title="Property tax" onClose={onClose}
+      footer={<><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" id="pt-save" disabled={!ok} onClick={save}>Save</button></>}>
+      <Field label="How is it paid?">
+        <div className="seg" role="radiogroup" aria-label="How property tax is paid">
+          <button type="button" role="radio" id="pt-mortgage" aria-checked={how === 'mortgage'} disabled={!m} title={m ? undefined : 'Add the mortgage first'} onClick={() => setHow('mortgage')}>With my mortgage</button>
+          <button type="button" role="radio" id="pt-city" aria-checked={how === 'city'} onClick={() => setHow('city')}>To the city myself</button>
+        </div>
+      </Field>
+      {how === 'mortgage'
+        ? <Field label={`Property tax in each ${m ? FREQ_WORD[m.frequency] : 'month'}'s payment`} htmlFor="pt-each" hint={each ? `${fmt0(each * perYear)} a year. ${m!.lender} pays the city; Keyholder counts it as property tax, not mortgage.` : 'On your mortgage statement, often called "tax account" or "property tax".'}>
+            <MoneyInput id="pt-each" value={each} onChange={setEach} />
+          </Field>
+        : <Field label="Property tax a year" htmlFor="pt-annual" hint="From your city's tax bill. Add each payment under Expenses when you pay it."><MoneyInput id="pt-annual" value={annual} onChange={setAnnual} /></Field>}
+      <Field label="From" htmlFor="pt-from" hint="Earlier payments stay as they were."><input id="pt-from" type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
+    </Drawer>
   );
 }
 

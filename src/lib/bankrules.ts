@@ -28,8 +28,13 @@ export interface Reading {
   why: string;
 }
 
-function mortgagePaymentAmount(m: Mortgage): number {
-  return amortization(m)[0]?.payment ?? 0;
+/** What leaves the bank for a payment around a date: the mortgage payment plus any property tax the lender collects. */
+function mortgagePaymentAmount(m: Mortgage, date?: string): number {
+  const rows = amortization(m);
+  const d = date?.slice(0, 10);
+  const day = (x: string) => new Date(`${x}T12:00:00`).getTime();
+  const r = d ? rows.reduce<typeof rows[number] | undefined>((best, x) => (!best || Math.abs(day(x.date) - day(d)) < Math.abs(day(best.date) - day(d)) ? x : best), undefined) : rows[0];
+  return r ? r.payment + r.tax : 0;
 }
 
 /** Best guess for a withdrawal. Never files anything by itself unless the vendor was confirmed before. */
@@ -38,9 +43,9 @@ export function readWithdrawal(state: AppState, t: BankTxn): Reading {
   const props = state.properties.filter((p) => !p.archived);
   if (MORTGAGE.test(t.payer)) {
     const lenderWord = t.payer.split(/\s+/)[0].toLowerCase();
-    const m = state.mortgages.find((x) => x.lender.toLowerCase().includes(lenderWord)) ?? state.mortgages.find((x) => Math.abs(mortgagePaymentAmount(x) - amount) <= amount * 0.02);
+    const m = state.mortgages.find((x) => x.lender.toLowerCase().includes(lenderWord)) ?? state.mortgages.find((x) => Math.abs(mortgagePaymentAmount(x, t.date) - amount) <= amount * 0.02);
     if (m) {
-      const due = mortgagePaymentAmount(m);
+      const due = mortgagePaymentAmount(m, t.date);
       return { kind: 'mortgage', label: 'Mortgage payment', mortgageId: m.id, propertyId: m.propertyId, matchesSchedule: Math.abs(due - amount) <= 100, why: Math.abs(due - amount) <= 100 ? 'Matches the payment on your mortgage' : `Your mortgage shows ${(due / 100).toFixed(2)}; this is ${(amount / 100).toFixed(2)}` };
     }
     const without = props.filter((p) => !p.mortgageFree && !state.mortgages.some((x) => x.propertyId === p.id));

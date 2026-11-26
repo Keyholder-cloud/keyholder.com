@@ -1,5 +1,5 @@
 import type { AppState, ISODate, Property } from '../data/types';
-import { leaseLedger } from './finance';
+import { leaseLedger, mortgagePaidBetween } from './finance';
 import { addDays, periodOf } from './dates';
 
 // Closing a tax year for a property: from its records-from date (January 1 by default) to the end of the year
@@ -90,7 +90,9 @@ export function yearCheck(state: AppState, p: Property, year: number, today: ISO
     }
   }
   const yearExp = state.expenses.filter((e) => e.propertyId === p.id && e.date.startsWith(String(year)));
-  if (!yearExp.some((e) => e.category === 'property-tax')) add({ id: 'property-tax', kind: 'property-tax', text: `Property tax for ${year} not recorded`, to: '/expenses' });
+  // Property tax paid with the mortgage counts (the lender pays the city).
+  const taxWithMortgage = mortgages.some((mg) => mortgagePaidBetween(mg, `${year}-01-01`, `${year}-12-31`).tax > 0);
+  if (!yearExp.some((e) => e.category === 'property-tax') && !taxWithMortgage) add({ id: 'property-tax', kind: 'property-tax', text: `Property tax for ${year} not recorded`, to: '/expenses' });
   if (!yearExp.some((e) => e.category === 'insurance')) add({ id: 'insurance', kind: 'insurance', text: `Insurance for ${year} not recorded`, to: '/expenses' });
   const prefs = state.todoPrefs ?? {};
   const open = gaps.filter((g) => !prefs[g.key]?.ignored);
