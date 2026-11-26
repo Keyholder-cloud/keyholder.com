@@ -240,7 +240,8 @@ export function RentRows() {
 export function ScoreList() {
   const { state, today } = useStore();
   const nav = useNavigate();
-  const { score, todo, stage, stages } = useMemo(() => keyholderScore(state, today, banksOn(), twoStepFlag()), [state, today]);
+  const { act } = useStore();
+  const { score, todo, hidden, stage, stages } = useMemo(() => keyholderScore(state, today, banksOn(), twoStepFlag()), [state, today]);
   const [all, setAll] = useState(false);
   const now = stages.find((s) => s.n === stage);
   const [form, setForm] = useState<{ to: Level; pid: string } | null>(null);
@@ -275,6 +276,7 @@ export function ScoreList() {
           );
         })}</ul>}
         {todo.length > 3 && <button className="btn ghost small" onClick={() => setAll((x) => !x)}>{all ? 'Show fewer' : `Show all ${todo.length}`}</button>}
+        {hidden.length > 0 && <p className="small soft" id="score-hidden" style={{ margin: '10px 0 0' }}>{hidden.length} step{hidden.length === 1 ? '' : 's'} hidden for now. <button className="btn ghost small" id="score-unhide" onClick={() => hidden.forEach((i) => act.setTodoPref(scoreKey(i), null))}>Show {hidden.length === 1 ? 'it' : 'them'}</button></p>}
       </div>
       {form && p && <LevelUpForm property={p} to={form.to} onClose={() => setForm(null)} />}
     </section>
