@@ -107,7 +107,8 @@ textarea.input { min-height: 120px; resize: vertical; line-height: 1.5; }
 .seg { display: inline-flex; border: 1px solid var(--rule-strong); border-radius: var(--radius); overflow: hidden; flex-wrap: wrap; }
 .seg button { font: inherit; font-size: var(--t-14); border: 0; background: var(--paper-raised); color: var(--ink-soft); padding: 8px 14px; min-height: 40px; cursor: pointer; border-right: 1px solid var(--rule); }
 .seg button:last-child { border-right: 0; }
-.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper-raised); }
+.seg button[aria-pressed="true"], .seg button[aria-checked="true"] { background: var(--ink); color: var(--paper-raised); }
+.seg button:disabled { opacity: .5; cursor: not-allowed; }
 input[type=range] { accent-color: var(--brass); width: 100%; }
 
 /* ---------- Sheets, ledger rows ---------- */
@@ -886,3 +887,14 @@ a.unit-who:hover strong, .unit-who.as-link:hover strong { text-decoration: under
 @media (max-width: 760px) { .file-opts { grid-template-columns: minmax(0, 1fr); } .imp-table .imp-class { min-width: 0; width: 100%; } }
 .rc-acts { display: inline-flex; align-items: center; gap: 2px; flex-wrap: nowrap; white-space: nowrap; }
 .rc-acts .icon-only { padding: 0 8px; }
+
+/* What you pay: the mortgage and property tax, each with Change */
+.pay-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.pay-row:first-of-type { border-top: 0; padding-top: 0; }
+.pay-k { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
+.pay-k svg { color: var(--primary); }
+.pay-v { font-size: 16px; margin: 4px 0 2px; }
+.pay-total { margin-top: 4px; color: var(--ink); }
+.pay-history { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.pay-history li { display: grid; grid-template-columns: 110px 1fr auto; gap: 8px; align-items: center; }
+@media (max-width: 640px) { .pay-history li { grid-template-columns: 1fr auto; } .pay-history li .mono { grid-column: 1 / -1; color: var(--ink-soft); } }

@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type {
-  AppState, Applicant, BankConnection, BankName, BankTxn, ExpenseCategory, Income, Listing, Notice, TodoPref, Comparable, Expense, Lease, Mortgage, Payment, Profile, Property, Tenant, Tone, Unit, Valuation,
+  AppState, Applicant, BankConnection, BankName, BankTxn, ExpenseCategory, Income, Listing, Notice, TodoPref, Comparable, Expense, Lease, Mortgage, MortgageChange, Payment, Profile, Property, Tenant, Tone, Unit, Valuation,
 } from './types';
 import { emptyState, seedState, STATE_VERSION, defaultProfile } from './seed';
-import { addDays, dueDate, periodOf, todayISO } from '../lib/dates';
+import { addDays, dueDate, fmtDate, periodOf, todayISO } from '../lib/dates';
 import { activeLease, currentLeases, leaseLedger, openRooms } from '../lib/finance';
 import { markedPayment, suggestMatch } from '../lib/matching';
 import { reminderDraft } from '../lib/templates';
@@ -779,6 +779,31 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
     markNoticeEmailed(id: string) { mut((d) => { const n = d.notices.find((x) => x.id === id); if (n) { n.emailedAt = new Date().toISOString(); audit(d, `${n.kind} emailed to the tenant`, 'Official form attached'); } }); },
 
     // ---- Phase 3 ----
+    /** A mortgage change from a date (renewal, new rate or payment, new tax amount); earlier payments keep theirs. */
+    changeMortgage(id: string, c: MortgageChange) {
+      mut((d) => {
+        const m = d.mortgages.find((x) => x.id === id); if (!m) return;
+        m.changes = [...(m.changes ?? []).filter((x) => x.from !== c.from), c].sort((a, b) => a.from.localeCompare(b.from));
+        audit(d, 'Mortgage changed', `From ${c.from}${c.ratePct !== undefined ? ` · ${c.ratePct}%` : ''}${c.payment !== undefined ? ` · payment ${fmt(c.payment)}` : ''}${c.taxWithPayment !== undefined ? ` · property tax ${fmt(c.taxWithPayment)} a payment` : ''}`);
+      });
+      toast(`Saved. Payments from ${fmtDate(c.from)} use the new amounts; earlier ones stay as they were.`);
+    },
+    removeMortgageChange(id: string, from: string) {
+      mut((d) => { const m = d.mortgages.find((x) => x.id === id); if (m) { m.changes = (m.changes ?? []).filter((x) => x.from !== from); audit(d, 'Mortgage change removed', `From ${from}`); } });
+    },
+    /** The yearly property tax paid to the city, from a date (earlier years keep the old amount). */
+    changePropertyTax(propertyId: string, annual: number, from: string) {
+      mut((d) => {
+        const p = d.properties.find((x) => x.id === propertyId); if (!p) return;
+        const h = (p.propertyTaxHistory ?? []).filter((x) => x.from !== from);
+        if (!h.length && p.annualPropertyTax && p.annualPropertyTax !== annual) h.push({ from: '1900-01-01', annual: p.annualPropertyTax });
+        h.push({ from, annual });
+        p.propertyTaxHistory = h.sort((a, b) => a.from.localeCompare(b.from));
+        p.annualPropertyTax = p.propertyTaxHistory[p.propertyTaxHistory.length - 1].annual;
+        audit(d, 'Property tax changed', `${p.nickname}: ${fmt(annual)} a year from ${from}`);
+      });
+      toast('Property tax saved.');
+    },
     saveMortgage(m: Mortgage) { mut((d) => { const i = d.mortgages.findIndex((x) => x.id === m.id); if (i >= 0) d.mortgages[i] = m; else d.mortgages.push(m); audit(d, 'Mortgage saved', `${m.lender} ${fmt(m.principal)}`); }); toast('Mortgage saved. Payments are now split into principal and interest.'); },
     removeMortgage(id: string) { mut((d) => { d.mortgages = d.mortgages.filter((m) => m.id !== id); audit(d, 'Mortgage removed'); }); },
   };

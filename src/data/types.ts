@@ -98,6 +98,8 @@ export interface Property {
   improvementsAtPurchase?: Cents;
   landValuePct?: number; // share of price that is land (not depreciable)
   annualPropertyTax?: Cents;
+  /** Past yearly property tax amounts, each from a date (the latest one is annualPropertyTax). */
+  propertyTaxHistory?: { from: ISODate; annual: Cents }[];
   annualInsurance?: Cents;
   claimCCA: boolean;
   /** Owner said there is no mortgage (counts as mortgage details for Gold). */
@@ -366,6 +368,23 @@ export interface Mortgage {
   insurer?: string; // CMHC, Sagen, Canada Guaranty, none
   /** Extra payments that go straight to principal. */
   prepayments?: { date: ISODate; amount: Cents }[];
+  /** Property tax the lender collects with each payment (on top of the mortgage payment). None: paid to the city. */
+  taxWithPayment?: Cents;
+  /**
+   * Changes from a date (a renewal, a new variable rate, a new tax amount): payments from that date use them;
+   * earlier payments keep what they were.
+   */
+  changes?: MortgageChange[];
+}
+export interface MortgageChange {
+  from: ISODate;
+  /** The new mortgage payment (interest and principal). None: worked out from the new rate. */
+  payment?: Cents;
+  ratePct?: number;
+  termEnd?: ISODate;
+  /** The new property tax amount in each payment (0: no longer paid through the mortgage). */
+  taxWithPayment?: Cents;
+  note?: string;
 }
 
 // ---- Finding a tenant (RA-1 – RA-9) ----
