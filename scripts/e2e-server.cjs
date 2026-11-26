@@ -706,9 +706,15 @@ function watch(pg, errors, label) {
         // Two pieces of ID (photos), the credit score and the soft-check consent are required.
         await p.waitForSelector('#ap-soft >> text=does not affect your credit score');
         const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGPwd3tKEmIY1TCqYfhqAABe7noQUrS/JQAAAABJRU5ErkJggg==', 'base64');
-        await p.setInputFiles('#ap-idf0', { name: 'licence.png', mimeType: 'image/png', buffer: png });
+        await p.setInputFiles('#ap-idf0', { name: 'a-very-long-drivers-licence-photo-IMG_20261126_123456.png', mimeType: 'image/png', buffer: png });
         await p.selectOption('#ap-idt1', 'Passport'); await p.setInputFiles('#ap-idf1', { name: 'passport.png', mimeType: 'image/png', buffer: png });
         await p.waitForSelector('label[for="ap-idf1"].done');
+        // Nothing comes out of the form (a long file name is shortened), on a phone and on a computer.
+        const outside = (pp) => pp.evaluate(() => { const c = document.querySelector('.apply-card').getBoundingClientRect(); return { w: c.width, page: document.documentElement.scrollWidth > innerWidth, out: [...document.querySelectorAll('.apply-card *:not(.apply-hp)')].filter((el) => { const r = el.getBoundingClientRect(); return r.width && (r.right > c.right + 1 || r.left < c.left - 1); }).map((el) => el.className).slice(0, 3) }; });
+        const onPhone = await outside(p); if (onPhone.page || onPhone.out.length) throw new Error('phone overflow ' + JSON.stringify(onPhone));
+        await p.setViewportSize({ width: 1440, height: 900 }); await p.waitForTimeout(150);
+        const onDesk = await outside(p); if (onDesk.page || onDesk.out.length || onDesk.w < 700) throw new Error('computer ' + JSON.stringify(onDesk));
+        await p.setViewportSize({ width: 390, height: 844 });
         await p.fill('#ap-score', '742'); await p.selectOption('#ap-src', 'Borrowell');
         if (!(await p.locator('#ap-send').isDisabled())) throw new Error('sent without the soft-check consent');
         await p.check('#ap-credit'); await p.click('#ap-send'); await p.waitForSelector('#apply-sent');
