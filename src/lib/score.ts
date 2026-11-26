@@ -113,8 +113,10 @@ export const scoreKey = (i: ScoreItem) => `score:${i.id}`;
 
 export interface ScoreResult {
   score: number;
-  /** The current stage's open items, biggest gain first. */
+  /** The current stage's open items, biggest gain first (then later stages', so it is never empty while work is left). */
   todo: ScoreItem[];
+  /** Open items the owner hid for a while (⋯ → Hide). */
+  hidden: ScoreItem[];
   /** The first stage not finished (5 when all are). */
   stage: number;
   stages: { n: Stage; title: string; sub: string; pct: number }[];
@@ -135,10 +137,14 @@ export function keyholderScore(state: AppState, today: string, banks = true, two
   const raw = stages.reduce((a, s) => a + s.pct * 25, 0);
   const score = stages.every((s) => s.pct >= 1) ? 100 : Math.min(99, Math.floor(raw));
   const stage = stages.find((s) => s.pct < 1)?.n ?? 5;
-  const hidden = (i: ScoreItem) => { const h = prefs[scoreKey(i)]?.hiddenUntil; return !!h && h > today; };
-  const todo = items.filter((i) => i.stage === stage && i.earned < i.points && !hidden(i)).map((i, n) => ({ i, n }))
-    .sort((a, b) => (b.i.points - b.i.earned) - (a.i.points - a.i.earned) || a.n - b.n).map((x) => x.i);
-  return { score, todo, stage, stages: stages.map((s) => ({ ...s, pct: Math.round(s.pct * 100) })) };
+  const isHidden = (i: ScoreItem) => { const h = prefs[scoreKey(i)]?.hiddenUntil; return !!h && h > today; };
+  const open = items.filter((i) => i.points - i.earned > 0.001);
+  const order = (list: ScoreItem[]) => list.map((i, n) => ({ i, n }))
+    .sort((a, b) => a.i.stage - b.i.stage || (b.i.points - b.i.earned) - (a.i.points - a.i.earned) || a.n - b.n).map((x) => x.i);
+  // The current stage first; when everything left there is hidden, the next stages' steps.
+  let todo = order(open.filter((i) => i.stage === stage && !isHidden(i)));
+  if (!todo.length) todo = order(open.filter((i) => !isHidden(i)));
+  return { score, todo, hidden: order(open.filter(isHidden)), stage, stages: stages.map((s) => ({ ...s, pct: Math.round(s.pct * 100) })) };
 }
 
 export function propertyCompletion(state: AppState, p: Property, today: string): number {

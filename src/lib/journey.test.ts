@@ -51,3 +51,17 @@ describe('tenant journey', () => {
     expect(card.text).toMatch(/No rent is owed/);
   });
 });
+
+describe('setup steps', () => {
+  it('never shows an empty list while steps are left: hidden ones are counted, later stages come next', () => {
+    const s = seedState(undefined, today);
+    const before = keyholderScore(s, today);
+    expect(before.score).toBeLessThan(100);
+    // Hide every open step of the current stage.
+    s.todoPrefs = Object.fromEntries(before.todo.filter((i) => i.stage === before.stage).map((i) => [scoreKey(i), { hiddenUntil: '2099-01-01' }]));
+    const after = keyholderScore(s, today);
+    expect(after.hidden.length).toBeGreaterThan(0);
+    expect(after.todo.length).toBeGreaterThan(0);
+    expect(after.todo.every((i) => i.stage > before.stage)).toBe(true);
+  });
+});
