@@ -12,6 +12,9 @@ import { emptyState } from '../src/data/seed';
 import type { Config } from './config';
 import type { Db } from './db';
 import { queueMail, recordError, sendDue } from './email';
+import type { ApplicationPdfData } from './applicationPdf';
+import { fmt as fmtMoney } from '../src/lib/money';
+import { ID_TYPES, CREDIT_SOURCES } from '../src/lib/applyDocs';
 import { newTicketAdminMail, resetMail, ticketAckMail, twoStepCodeMail, welcomeMail } from './mails';
 import { burnPasswordCheck, newToken, normEmail, passwordProblem, sha256, verifyPassword, hashPassword } from './security';
 import { backupHash, checkCode, looksLikeBackup, newBackupCodes, newSecret, otpauthUri } from './totp';
@@ -983,6 +986,15 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     return { unit: unit.label, rooms: unit.rentedBy === 'room', address: prop.address, city: prop.city, province: prop.province, rent: listing.askingRent, available: listing.available, notes: listing.notes ?? '', landlord, bedrooms: unit.bedrooms ?? null };
   });
   const money = z.number().int().min(0).max(100_000_00);
+  // A photo (JPEG or PNG) or a PDF, sent as base64; checked by its first bytes, not only by what the browser says.
+  const UploadFile = z.object({ name: z.string().trim().max(160), mime: z.enum(['image/jpeg', 'image/png', 'application/pdf']), data: z.string().max(7_000_000) });
+  const fileBytes = (f: z.infer<typeof UploadFile>) => {
+    const b = Buffer.from(f.data, 'base64');
+    const ok = f.mime === 'application/pdf' ? b.subarray(0, 4).toString('latin1') === '%PDF'
+      : f.mime === 'image/png' ? b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 : b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+    if (!ok || b.length < 100 || b.length > 5 * 1024 * 1024) fail(400, `${f.name || 'A file'}: use a photo (JPEG or PNG) or a PDF, up to 5 MB.`);
+    return b;
+  };
   const short = (n: number) => z.string().trim().max(n);
   const Application = z.object({
     people: z.array(z.object({ name: short(120).min(2), email: z.string().trim().email().max(200).or(z.literal('')), phone: short(40), employer: short(120), jobTitle: short(80).optional(), monthlyIncome: money })).min(1).max(6),
@@ -991,19 +1003,28 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     employedYears: z.number().min(0).max(60).optional(), employerContact: short(160).optional(), otherIncome: money.optional(), otherIncomeSource: short(120).optional(),
     leaseTerm: short(60).optional(), vehicles: z.number().int().min(0).max(10).optional(), pets: z.boolean(), petsWhat: short(120).optional(), smoking: z.boolean().optional(),
     emergencyContact: short(200).optional(), references: short(500).optional(), notes: short(1000).optional(),
-    consentReferences: z.literal(true), creditConsent: z.boolean().optional(), website: z.string().max(0).optional(),
+    consentReferences: z.literal(true), creditConsent: z.literal(true), website: z.string().max(0).optional(),
+    // Two different pieces of government photo ID and the credit score (from a soft check), all required.
+    ids: z.array(z.object({ type: z.enum(ID_TYPES), file: UploadFile })).length(2).refine((x) => x[0].type !== x[1].type || x[0].type === 'Other government ID', 'Add two different kinds of ID.'),
+    credit: z.object({ score: z.number().int().min(300).max(900), source: z.enum(CREDIT_SOURCES), report: UploadFile.optional() }),
   });
-  app.post('/api/apply/:slug', { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } }, async (req, reply) => {
+  app.post('/api/apply/:slug', { bodyLimit: 20 * 1024 * 1024, config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } }, async (req, reply) => {
     const { slug } = Slug.parse(req.params);
     const b = Application.parse(req.body);
     if (!b.people[0].email) fail(400, 'Add an email so the landlord can reach you.');
+    const idBytes = b.ids.map((x) => fileBytes(x.file));
+    const reportBytes = b.credit.report ? fileBytes(b.credit.report) : null;
     const f = await listingBySlug(slug); if (!f) fail(404, 'This listing is closed or the link is not right. Ask the landlord for a new link.');
     const d = structuredClone(f!.state.data!) as AppState;
     const id = randomUUID();
     const today = new Date().toISOString().slice(0, 10);
     const people = b.people.map((p) => ({ name: p.name, email: p.email, phone: p.phone, employer: p.employer, jobTitle: p.jobTitle, monthlyIncome: p.monthlyIncome }));
+    const applicantId = `ap-${id.slice(0, 12)}`;
+    const idFiles = b.ids.map(() => randomUUID());
+    const reportFile = reportBytes ? randomUUID() : null;
     d.applicants.push({
-      id: `ap-${id.slice(0, 12)}`, unitId: f!.unit.id, names: people.map((p) => p.name), email: people[0].email, phone: people[0].phone, submitted: today, moveIn: b.moveIn,
+      ids: b.ids.map((x, i) => ({ type: x.type, fileId: idFiles[i] })), creditScore: b.credit.score, creditSource: b.credit.source, ...(reportFile ? { creditReportFileId: reportFile } : {}),
+      id: applicantId, unitId: f!.unit.id, names: people.map((p) => p.name), email: people[0].email, phone: people[0].phone, submitted: today, moveIn: b.moveIn,
       currentAddress: b.currentAddress, yearsAtAddress: b.yearsAtAddress, employer: people.map((p) => p.employer).filter(Boolean).join('; '),
       monthlyIncome: people.reduce((a, p) => a + p.monthlyIncome, 0), references: b.references ?? '', pets: b.pets,
       notes: [b.petsWhat ? `Pets: ${b.petsWhat}` : '', b.notes ?? ''].filter(Boolean).join(' · '), status: 'new',
@@ -1013,11 +1034,47 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     });
     d.audit.unshift({ id: randomUUID(), at: new Date().toISOString(), action: 'Application received', detail: `${people.map((p) => p.name).join(' & ')} for Unit ${f!.unit.label}, ${f!.prop.nickname}` });
     await writeState(db, f!.accountId, f!.state.revision, d, 'Application form');
+    const save = (fid: string, kind: string, label: string, mime: string, data: Buffer) =>
+      db.query('insert into application_files (id, account_id, applicant_id, kind, label, mime, data) values ($1, $2, $3, $4, $5, $6, $7)', [fid, f!.accountId, applicantId, kind, label, mime, data]);
+    for (const [i, x] of b.ids.entries()) await save(idFiles[i], `id${i + 1}`, x.type, x.file.mime, idBytes[i]);
+    if (reportFile && reportBytes) await save(reportFile, 'credit', 'Credit report', b.credit.report!.mime, reportBytes);
+
+    // The completed application as a PDF: to the landlord (with the ID) and to the applicant (without it).
+    const names = people.map((p) => p.name).join(' & ');
+    const yes = (v?: boolean) => (v ? 'Yes' : 'No');
+    const pdf: ApplicationPdfData = {
+      submitted: today, landlord: d.profile.name || 'The landlord', rental: `Unit ${f!.unit.label} · ${f!.prop.address}${f!.prop.city ? `, ${f!.prop.city}` : ''}`,
+      rent: `${fmtMoney(f!.listing.askingRent)} a month`,
+      people: people.map((p) => ({ name: p.name, email: p.email, phone: p.phone, employer: p.employer, jobTitle: p.jobTitle, income: fmtMoney(p.monthlyIncome) })),
+      sections: [
+        { title: 'Where they live now', rows: [['Address', b.currentAddress], ['Years there', String(b.yearsAtAddress)], ['Rent paid now', b.currentRent ? fmtMoney(b.currentRent) : '-'],
+          ['Current landlord', [b.landlordName, b.landlordPhone].filter(Boolean).join(', ') || '-'], ['Why moving', b.reasonLeaving ?? '-']] },
+        { title: 'The tenancy', rows: [['Move-in date', b.moveIn], ['People living there', String(b.occupants)], ['Vehicles', String(b.vehicles ?? 0)], ['Years at their job', b.employedYears != null ? String(b.employedYears) : '-'],
+          ['Pets', b.pets ? `Yes${b.petsWhat ? `: ${b.petsWhat}` : ''}` : 'No'], ['Smoking', yes(b.smoking)], ['References', b.references ?? '-'], ['Notes', b.notes ?? '-']] },
+      ],
+      ids: b.ids.map((x) => x.type), creditScore: b.credit.score, creditSource: b.credit.source,
+    };
+    const filename = `Rental application - ${names.replace(/[^\w &.-]/g, '')}.pdf`.slice(0, 120);
     if (f!.ownerEmail) {
       await queueMail(db, { accountId: f!.accountId, kind: 'application', to: f!.ownerEmail, subject: `New application for Unit ${f!.unit.label}, ${f!.prop.nickname}`,
-        text: `${people.map((p) => p.name).join(' & ')} applied for Unit ${f!.unit.label} at ${f!.prop.address}.\n\nReview it in Keyholder: ${cfg.appUrl}/#/rent/property/${f!.prop.id}/find\n`, dedupeKey: `application-${id}` }).catch(() => null);
+        text: `${names} applied for Unit ${f!.unit.label} at ${f!.prop.address}.\n\nThe full application is attached as a PDF, with their two pieces of ID${reportFile ? ' and credit report' : ''}. Credit score: ${b.credit.score} (${b.credit.source}).\n\nReview it in Keyholder: ${cfg.appUrl}/#/rent/property/${f!.prop.id}/find\n`,
+        dedupeKey: `application-${id}`, attachment: { kind: 'application', data: pdf, fileIds: [...idFiles, ...(reportFile ? [reportFile] : [])], filename } }).catch(() => null);
     }
+    await queueMail(db, { accountId: f!.accountId, kind: 'application-copy', to: people[0].email, toName: people[0].name, ...(f!.ownerEmail ? { replyTo: f!.ownerEmail } : {}),
+      subject: `Your application for Unit ${f!.unit.label}, ${f!.prop.address}`,
+      text: `Hi ${people[0].name.split(' ')[0]},\n\nThank you for applying for Unit ${f!.unit.label} at ${f!.prop.address}. A copy of your application is attached as a PDF for your records. ${f!.landlord} will contact you by email or phone.\n\nYour ID is not included in this copy; it was sent only to the landlord.\n\n—\nSent for ${d.profile.name || 'your landlord'} by Keyholder. Reply to this email to reach your landlord.`,
+      dedupeKey: `application-copy-${id}`, attachment: { kind: 'application', data: pdf, fileIds: [], filename } }).catch(() => null);
     return reply.code(201).send({ ok: true });
+  });
+
+  // An applicant's ID or credit report, for the landlord who received the application.
+  app.get('/api/application-files/:id', async (req, reply) => {
+    const { accountId } = await ownerAccount(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const f = await db.one<{ mime: string; label: string; data: Buffer }>('select mime, label, data from application_files where id = $1 and account_id = $2', [id, accountId]);
+    if (!f) fail(404, 'This file was deleted with the application.');
+    reply.header('Content-Type', f!.mime).header('Cache-Control', 'private, no-store').header('Content-Disposition', `inline; filename="${f!.label.replace(/[^\w .-]/g, '')}.${f!.mime === 'application/pdf' ? 'pdf' : f!.mime === 'image/png' ? 'png' : 'jpg'}"`);
+    return reply.send(f!.data);
   });
 
   // ---------------- Start fresh for real bank data (super user only) ----------------
@@ -1089,7 +1146,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     });
     app.get('/api/dev/outbox', async (req) => {
       const to = String((req.query as { to?: string }).to ?? '');
-      return db.query(`select kind, to_email, subject, text_body, status, created_at, attachment->>'formId' as attached_form, attachment->>'filename' as attached_file from outbox where ($1 = '' or lower(to_email) = lower($1)) order by created_at desc limit 50`, [to]);
+      return db.query(`select kind, to_email, subject, text_body, status, created_at, attachment->>'formId' as attached_form, attachment->>'filename' as attached_file, attachment->'fileIds' as file_ids from outbox where ($1 = '' or lower(to_email) = lower($1)) order by created_at desc limit 50`, [to]);
     });
   }
 

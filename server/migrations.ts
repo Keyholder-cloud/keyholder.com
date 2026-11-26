@@ -333,4 +333,20 @@ alter table two_step_tickets add column if not exists email_sends integer not nu
     id: '013_outbox_cc',
     sql: `alter table outbox add column if not exists cc text;`,
   },
+  {
+    // An applicant's two pieces of ID and credit report: kept apart from the account's data (never in its history),
+    // shown only to the landlord, deleted with the application.
+    id: '014_application_files',
+    sql: `create table if not exists application_files (
+  id uuid primary key,
+  account_id uuid not null references accounts(id) on delete cascade,
+  applicant_id text not null,
+  kind text not null,
+  label text not null,
+  mime text not null,
+  data bytea not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists application_files_applicant on application_files (account_id, applicant_id);`,
+  },
 ];

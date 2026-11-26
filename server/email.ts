@@ -5,6 +5,7 @@ import type { Keys } from './keys';
 import type { PdfValue } from '../src/lib/ltbForms';
 import { fillOfficial } from './officialForms';
 import { receiptPdf, type ReceiptPdfData } from './receiptPdf';
+import { applicationPdf, type ApplicationPdfData } from './applicationPdf';
 import { emailHtml } from './emailHtml';
 
 // Email goes through an outbox table: whatever creates an email only writes a row (inside its own
@@ -15,8 +16,22 @@ import { emailHtml } from './emailHtml';
 export interface FormAttachment { formId: string; values: Record<string, PdfValue>; filename: string }
 /** A rent receipt PDF, made when the email is sent (server/receiptPdf.ts). */
 export interface ReceiptAttachment { kind: 'receipt'; receipt: ReceiptPdfData; filename: string }
-type Attachment = FormAttachment | ReceiptAttachment;
+/** A rental application PDF; `fileIds`: the ID and credit report added at the end (the landlord's copy only). */
+export interface ApplicationAttachment { kind: 'application'; data: ApplicationPdfData; fileIds: string[]; filename: string }
+type Attachment = FormAttachment | ReceiptAttachment | ApplicationAttachment;
 const isReceipt = (a: Attachment): a is ReceiptAttachment => (a as ReceiptAttachment).kind === 'receipt';
+const isApplication = (a: Attachment): a is ApplicationAttachment => (a as ApplicationAttachment).kind === 'application';
+
+async function makePdf(a: Attachment, db: Q): Promise<Uint8Array> {
+  if (isReceipt(a)) return receiptPdf(a.receipt);
+  if (isApplication(a)) {
+    const files = a.fileIds.length
+      ? await db.query<{ id: string; label: string; mime: string; data: Buffer }>('select id, label, mime, data from application_files where id = any($1::uuid[])', [a.fileIds]) : [];
+    const ordered = a.fileIds.map((id) => files.find((f) => f.id === id)).filter((f): f is NonNullable<typeof f> => !!f);
+    return applicationPdf(a.data, ordered.map((f) => ({ label: f.label, mime: f.mime, data: new Uint8Array(f.data) })));
+  }
+  return fillOfficial(a.formId, a.values);
+}
 /** `cc`: a copy (the landlord, on every email to a tenant). */
 export interface Mail { to: string; toName?: string; replyTo?: string; cc?: string; subject: string; text: string; kind: string; accountId?: string | null; dedupeKey?: string; sendAfter?: Date; attachment?: Attachment }
 
@@ -39,12 +54,12 @@ export async function queueMail(q: Q, m: Mail): Promise<string | null> {
 
 type Row = { id: string; kind: string; cc: string | null; to_email: string; to_name: string | null; reply_to: string | null; subject: string; text_body: string; attempts: number; attachment: Attachment | null };
 
-async function deliver(em: Config['email'], m: Row, appUrl: string): Promise<{ providerId?: string }> {
+async function deliver(em: Config['email'], m: Row, appUrl: string, db: Q): Promise<{ providerId?: string }> {
   const html = emailHtml({ text: m.text_body, kind: m.kind, subject: m.subject, appUrl, hasPdf: !!m.attachment });
   const to = m.to_name ? `${m.to_name.replace(/[<>"]/g, '')} <${m.to_email}>` : m.to_email;
   // An official form or a rent receipt goes as a PDF attachment, made now from the details kept with the email.
   const pdf = m.attachment && em.provider !== 'log'
-    ? Buffer.from(isReceipt(m.attachment) ? await receiptPdf(m.attachment.receipt) : await fillOfficial(m.attachment.formId, m.attachment.values)).toString('base64') : null;
+    ? Buffer.from(await makePdf(m.attachment, db)).toString('base64') : null;
   if (em.provider === 'resend') {
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST', headers: { Authorization: `Bearer ${em.resendKey}`, 'Content-Type': 'application/json' },
@@ -82,7 +97,7 @@ export async function sendDue(cfg: Config, db: Db, limit = 20, keys?: Keys): Pro
   let sent = 0, failed = 0;
   for (const m of rows) {
     try {
-      const r = await deliver(em, m, cfg.appUrl);
+      const r = await deliver(em, m, cfg.appUrl, db);
       await db.query(`update outbox set status = $2, provider = $3, provider_id = $4, sent_at = now(), last_error = null where id = $1`,
         [m.id, em.provider === 'log' ? 'logged' : 'sent', em.provider, r.providerId ?? null]);
       sent++;
