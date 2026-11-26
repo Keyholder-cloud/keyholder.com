@@ -74,6 +74,8 @@ export function ApplyPage({ slug }: { slug: string }) {
   const [err, setErr] = useState('');
   const [sent, setSent] = useState(false);
   useEffect(() => { api<Listing>('GET', `/api/apply/${encodeURIComponent(slug)}`).then((x) => { setL(x); setF((v) => ({ ...v, moveIn: x.available })); }, (e) => setMissing((e as Error).message)); }, [slug]);
+  // The tab shows the rental, not the landlord website.
+  useEffect(() => { document.title = l ? `Apply for Unit ${l.unit} · ${l.address}` : 'Rental application'; }, [l]);
   const set = (x: Partial<typeof f>) => { setF((v) => ({ ...v, ...x })); setErr(''); };
   const setP = (i: number, x: Partial<P>) => { setPeople((ps) => ps.map((p, j) => (j === i ? { ...p, ...x } : p))); setErr(''); };
   const ok = people[0].name.trim().length > 1 && /\S+@\S+\.\S+/.test(people[0].email) && f.currentAddress.trim().length > 2 && !!f.moveIn && f.consentReferences && f.creditConsent && idsOk && creditOk;
