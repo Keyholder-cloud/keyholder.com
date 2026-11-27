@@ -50,7 +50,9 @@ export async function fillOfficial(formId: string, values: Record<string, PdfVal
       const text = (max ? v.slice(0, max) : v).replace(/\r/g, '');
       f.setText(text);
       // A readable size: the forms' own setting makes multi-line boxes grow their text to fill the box.
-      if (f.isMultiline()) f.setFontSize(10);
+      const size = OFFICIAL[formId].fontSize;
+      if (size) f.setFontSize(f.isMultiline() ? Math.min(size, 10) : size);
+      else if (f.isMultiline()) f.setFontSize(10);
       else if (text.length > 40) f.setFontSize(9);
     } else if (f instanceof PDFCheckBox && v === true) f.check();
     else if (f instanceof PDFRadioGroup && typeof v === 'object') f.select(v.radio);

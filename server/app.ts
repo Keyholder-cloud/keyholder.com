@@ -14,6 +14,7 @@ import type { Db } from './db';
 import { queueMail, recordError, sendDue } from './email';
 import type { ApplicationPdfData } from './applicationPdf';
 import { fmt as fmtMoney } from '../src/lib/money';
+import { tenantPeople } from '../src/lib/people';
 import { ID_TYPES, CREDIT_SOURCES } from '../src/lib/applyDocs';
 import { newTicketAdminMail, resetMail, ticketAckMail, twoStepCodeMail, welcomeMail } from './mails';
 import { burnPasswordCheck, newToken, normEmail, passwordProblem, sha256, verifyPassword, hashPassword } from './security';
@@ -826,18 +827,26 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     const n = s.data?.notices?.find((x) => x.id === id);
     if (!n || !n.official || !hasOfficialForm(n.formId)) fail(404, 'That notice is not saved yet, or has no official form.');
     const t = s.data!.tenants.find((x) => x.id === n!.tenantId);
-    if (!t?.emailConsent) fail(400, 'The tenant has not agreed to notices by email. Deliver it by hand or by mail.');
-    const people = (t!.people?.length ? t!.people : [{ name: t!.names[0] ?? '', email: t!.email, phone: t!.phone }]).filter((p) => p.email);
-    if (!people.length) fail(400, 'Add the tenant\'s email address first.');
     const f = formById(n!.formId)!;
+    const lease = f.kind === 'agreement';
+    // A lease is the tenant's copy to sign (the law says they get one), not a notice: it goes by email to everyone on it.
+    if (!lease && !t?.emailConsent) fail(400, 'The tenant has not agreed to notices by email. Deliver it by hand or by mail.');
+    const people = (t ? tenantPeople(t) : []).filter((p) => p.email);
+    if (!people.length) fail(400, 'Add the tenant\'s email address first.');
     const landlord = s.data!.profile.name || u.name;
     const filename = formFilename(f.code, t!.names.join(' & '), n!.servedOn ?? new Date().toISOString().slice(0, 10));
+    const l = s.data!.leases.find((x) => x.id === n!.leaseId); const un = s.data!.units.find((x) => x.id === l?.unitId); const pr = s.data!.properties.find((x) => x.id === un?.propertyId);
+    const place = pr ? `${/^[A-Z0-9]{1,3}$/i.test(un?.label ?? '') ? `Unit ${un!.label}, ` : un ? `${un.label}, ` : ''}${pr.address}` : 'your rental';
     let queued = 0;
     for (const [i, p] of people.entries()) {
       const id2 = await queueMail(db, {
         to: p.email, toName: p.name, replyTo: u.email, ...(i === 0 ? { cc: u.email } : {}), kind: 'notice', accountId, dedupeKey: `notice:${n!.id}:${p.email.toLowerCase()}`,
-        subject: `${f.code}: ${f.title}`,
-        text: [`Hello ${p.name || t!.names.join(' & ')},`, '',
+        subject: lease ? `Your lease to sign: ${place}` : `${f.code}: ${f.title}`,
+        text: lease ? [`Hello ${p.name || t!.names.join(' & ')},`, '',
+          `${landlord} has sent you your lease for ${place}: Ontario's Residential Tenancy Agreement (Standard Form of Lease, ${OFFICIAL[n!.formId].version}). It is attached as a PDF.`, '',
+          `Please read it. You and ${landlord} both sign and date page 7: sign it and send a signed copy back by replying to this email (or as you agree with your landlord). Keep a copy for yourself.`, '',
+          'For information about your rights, see the General Information pages of the lease, or contact the Landlord and Tenant Board: tribunalsontario.ca/ltb, 1-888-332-3234.', '',
+          `Reply to this email to reach ${landlord}.`].join('\n') : [`Hello ${p.name || t!.names.join(' & ')},`, '',
           `${landlord} has given you a notice: ${f.code}, ${f.title}. It is attached as the Landlord and Tenant Board's form (${OFFICIAL[n!.formId].version}).`,
           n!.terminationDate ? `The date in the notice: ${n!.terminationDate}.` : '', '',
           'Please read it carefully. For information about your rights, contact the Landlord and Tenant Board: tribunalsontario.ca/ltb, 1-888-332-3234.', '',
@@ -846,8 +855,24 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
       });
       if (id2) queued++;
     }
-    await audit(db, { actor: u.email, actorId: u.id, accountId, scope: 'app', action: 'Notice emailed', detail: `${f.code} to ${people.length} tenant${people.length > 1 ? 's' : ''}`, ip: ip(req) });
+    await audit(db, { actor: u.email, actorId: u.id, accountId, scope: 'app', action: lease ? 'Lease emailed to sign' : 'Notice emailed', detail: `${f.code} to ${people.length} tenant${people.length > 1 ? 's' : ''}`, ip: ip(req) });
     return { queued, to: people.map((p) => p.email) };
+  });
+  // A copy of an official form (a lease or a notice) to the landlord's own email.
+  app.post('/api/notices/:id/copy', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
+    const { u, accountId } = await ownerAccount(req);
+    const { id } = z.object({ id: z.string().max(80) }).parse(req.params);
+    const s = await readState(db, accountId);
+    const n = s.data?.notices?.find((x) => x.id === id);
+    if (!n || !n.official || !hasOfficialForm(n.formId)) fail(404, 'That form is not saved yet, or has no PDF.');
+    const t = s.data!.tenants.find((x) => x.id === n!.tenantId);
+    const f = formById(n!.formId)!;
+    const who = t?.names.join(' & ') ?? 'the tenant';
+    const filename = formFilename(f.code, who, n!.servedOn ?? new Date().toISOString().slice(0, 10));
+    await queueMail(db, { to: u.email, toName: u.name, kind: 'notice-copy', accountId, subject: `Your copy: ${f.code} for ${who}`,
+      text: [`Here is your copy of ${f.code}, ${f.title}, for ${who}${n!.servedOn ? ` (${n!.servedOn})` : ''}. It is attached as a PDF.`, '', 'Open Keyholder: ' + `${cfg.appUrl}/#/paperwork/notices`].join('\n'),
+      attachment: { formId: n!.formId, values: n!.official!.values, filename } });
+    return { to: u.email };
   });
 
   // ---------------- Billing: cancel Landlord (back to free Starter, at once) ----------------
@@ -1060,7 +1085,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
         text: `${names} applied for Unit ${f!.unit.label} at ${f!.prop.address}.\n\nThe full application is attached as a PDF, with their two pieces of ID${reportFile ? ' and credit report' : ''}. Credit score: ${b.credit.score} (${b.credit.source}).\n\nReview it in Keyholder: ${cfg.appUrl}/#/rent/property/${f!.prop.id}/find\n`,
         dedupeKey: `application-${id}`, attachment: { kind: 'application', data: pdf, fileIds: [...idFiles, ...(reportFile ? [reportFile] : [])], filename } }).catch(() => null);
     }
-    await queueMail(db, { accountId: f!.accountId, kind: 'application-copy', to: people[0].email, toName: people[0].name, ...(f!.ownerEmail ? { replyTo: f!.ownerEmail } : {}),
+    await queueMail(db, { accountId: f!.accountId, kind: 'application-copy', to: people[0].email, toName: people[0].name, ...(f!.ownerEmail ? { replyTo: f!.ownerEmail, cc: f!.ownerEmail } : {}),
       subject: `Your application for Unit ${f!.unit.label}, ${f!.prop.address}`,
       text: `Hi ${people[0].name.split(' ')[0]},\n\nThank you for applying for Unit ${f!.unit.label} at ${f!.prop.address}. A copy of your application is attached as a PDF for your records. ${f!.landlord} will contact you by email or phone.\n\nYour ID is not included in this copy; it was sent only to the landlord.\n\n—\nSent for ${d.profile.name || 'your landlord'} by Keyholder. Reply to this email to reach your landlord.`,
       dedupeKey: `application-copy-${id}`, attachment: { kind: 'application', data: pdf, fileIds: [], filename } }).catch(() => null);

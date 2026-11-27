@@ -216,7 +216,10 @@ function watch(pg, errors, label) {
       await step(tag, 'E5 Mark rent paid and send the receipt: the tenant gets it by email', async () => {
         const st = (await api(pg, '/api/state')).body.data;
         const row = () => pg.locator('.rent-row', { hasText: 'Rita' });
-        await go(pg, 'today'); await row().locator('text=Prepare lease').click(); await pg.waitForTimeout(200); await approve(pg);
+        await go(pg, 'today'); await row().locator('text=Prepare lease').click(); await pg.waitForTimeout(200);
+        // The lease (Ontario's Standard Form of Lease) needs the landlord's address for notices.
+        if (await pg.locator('#fw-mail').count() && !(await pg.inputValue('#fw-mail'))) await pg.fill('#fw-mail', '12 King St E, Belleville, ON K8N 1A1');
+        await approve(pg);
         await row().locator('.row-act button.btn', { hasText: /^Inspection$/ }).click(); await pg.waitForTimeout(200); await approve(pg);
         await go(pg, 'rent/tenant/' + st.tenants[0].id); await pg.click('.page-head >> text=Confirm rent'); await pg.locator('.drawer-foot >> text=Mark paid').click(); await pg.waitForTimeout(300);
         await go(pg, 'today'); await pg.locator('.rent-row', { hasText: 'Rita' }).locator('text=Send receipt').click();
@@ -756,6 +759,34 @@ function watch(pg, errors, label) {
         for (const who of ['ana', 'ben', 'cleo']) await until(async () => (await outbox(`${who}.${tag}@tenant-e2e.ca`)).find((m) => m.kind === 'visit'), 10000, `the notice to ${who}`);
         const ccs = (await outbox('')).filter((m) => m.kind === 'visit' && m.to_email.includes(`.${tag}@`) && m.cc).length;
         if (ccs !== 1) throw new Error('landlord copied ' + ccs + ' times');
+      });
+      await step(tag, 'E37 Lease: Ontario\'s Standard Form of Lease (2229E) filled in, fixed term or month-to-month, previewed, emailed to every tenant with the landlord copied, marked signed, and a copy emailed to the landlord', async () => {
+        const d = (await api(pg, '/api/state')).body.data;
+        const lease = d.leases.find((l) => d.tenants.find((t) => t.id === l.tenantId)?.names[0] === 'Rita Gomez');
+        await go(pg, `rent/tenant/${lease.tenantId}`); await pg.locator('button:has-text("Forms and notices")').click();
+        await pg.locator('.choice:has-text("New lease")').click(); await pg.locator('.choice:has-text("2229E")').first().click().catch(() => {});
+        await pg.waitForSelector('#lease-details');
+        await pg.locator('#lease-details .seg >> text=Fixed term').click(); await pg.fill('#fw-term-end', '2027-11-30');
+        if (!(await pg.inputValue('#fw-mail'))) await pg.fill('#fw-mail', '12 King St E, Belleville, ON K8N 1A1');
+        // Preview: the official form, filled in, as a PDF
+        const [tab, res] = await Promise.all([pg.waitForEvent('popup'), pg.waitForResponse((r) => r.url().endsWith('/api/forms/on-lease/pdf')), pg.click('#fw-open-form')]);
+        if (res.status() !== 200 || res.headers()['content-type'] !== 'application/pdf') throw new Error('preview ' + res.status());
+        await tab.close().catch(() => {});
+        await pg.waitForSelector('#fw-lease-send >> text=with a copy to you');
+        await pg.waitForTimeout(200); if (!(await pg.locator('.slide-confirm').count())) throw new Error('checks failed: ' + (await pg.locator('.checks li.bad').allTextContents()).join(' | '));
+        await approve(pg);
+        const n = await until(async () => (await api(pg, '/api/state')).body.data.notices.find((x) => x.formId === 'on-lease' && x.official && x.emailedAt && x.details?.termEnd === '2027-11-30' && x.details?.termType === 'fixed'), 15000, 'the lease saved and emailed');
+        if (n.status !== 'sent' || n.details.termType !== 'fixed' || n.official.version !== '2229E (2020/12)') throw new Error(JSON.stringify({ s: n.status, t: n.details.termType }));
+        const P = 'form1[0].page1[0].body[0].';
+        if (n.official.values[`${P}section4[0].question2[0].choice1[0]`] !== true || n.official.values[`${P}section4[0].question2[0].date[0]`] !== '2027/11/30') throw new Error('term not on the form');
+        const m = (await outbox(`rita.${tag}@tenant-e2e.ca`)).find((x) => x.kind === 'notice' && x.attached_form === 'on-lease' && x.cc);
+        if (!m || !m.cc || !/^Your lease to sign/.test(m.subject) || !/^2229E - Rita Gomez/.test(m.attached_file)) throw new Error('email ' + JSON.stringify(m));
+        // Marked signed once the tenant signs; a copy to the landlord on request
+        await go(pg, 'paperwork/notices'); await pg.locator(`#lease-signed-${n.id}`).click();
+        const since = new Date(Date.now() - 2000).toISOString();
+        await until(async () => (await api(pg, '/api/state')).body.data.notices.find((x) => x.id === n.id && x.status === 'signed' && x.tenantSignedOn), 8000, 'marked signed');
+        await pg.locator('.row:has-text("2229E") .official-copy').first().click();
+        await until(async () => (await outbox('')).find((x) => x.kind === 'notice-copy' && x.attached_form === 'on-lease' && new Date(x.created_at).toISOString() > since), 8000, 'the landlord copy');
       });
       await step(tag, 'E18 No preview on the live site: admin / admin is refused', async () => {
         const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); const p = await ctx.newPage();

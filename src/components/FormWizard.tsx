@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { Lease, Notice } from '../data/types';
 import { useStore } from '../data/store';
-import { addDays, fmtDate, fmtPeriod } from '../lib/dates';
+import { addDays, addMonths, fmtDate, fmtPeriod } from '../lib/dates';
+import { tenantPeople } from '../lib/people';
 import { AUTHORITY_URL, SITUATIONS, formById, formsFor, type FormDef, type Situation } from '../lib/forms';
 import { province } from '../lib/jurisdiction';
 import { fmt } from '../lib/money';
@@ -31,7 +32,8 @@ export function FormWizard({ lease, formId, onClose }: { lease: Lease; formId: s
   const on = prop.province === 'ON';
   const live = serverMode();
   const official = hasOfficialForm(fid) ? OFFICIAL[fid] : null;
-  const [method, setMethod] = useState<Notice['serveMethod']>(form.kind === 'notice' ? (tenant.emailConsent ? 'email' : 'hand') : 'signed');
+  const isLease = formId === 'on-lease';
+  const [method, setMethod] = useState<Notice['serveMethod']>(form.kind === 'notice' ? (tenant.emailConsent ? 'email' : 'hand') : isLease ? (tenantPeople(tenant).some((p) => p.email) ? 'email' : 'hand') : 'signed');
   const [servedOn, setServedOn] = useState(today);
   const [servedBy, setServedBy] = useState(state.profile.name);
   const [busy, setBusy] = useState(false);
@@ -44,6 +46,14 @@ export function FormWizard({ lease, formId, onClose }: { lease: Lease; formId: s
     exempt: formId === 'on-n2' ? 'yes' : 'no',
     mailing: state.profile.mailingAddress ?? '',
     n5Reason: 'damage', n5Second: 'no', n12Reason: 'own', relation: 'self', caregiver: 'no',
+    // The lease (Ontario's Standard Form of Lease): what the landlord's records already say, ready to change.
+    termType: lease.end ? 'fixed' : 'monthly', termEnd: lease.end ?? addDays(addMonths(lease.start, 12), -1),
+    condo: 'no', parkingDesc: lease.parking ? '1 parking space' : '', parkingRent: '',
+    electricity: /hydro|electric/i.test(lease.utilities) && /tenant/i.test(lease.utilities) ? 'tenant' : 'landlord',
+    heat: /heat|gas/i.test(lease.utilities) && /tenant/i.test(lease.utilities) ? 'tenant' : 'landlord',
+    water: /water/i.test(lease.utilities) && /tenant/i.test(lease.utilities) ? 'tenant' : 'landlord',
+    gas: 'no', ac: 'no', storage: 'no', laundry: 'no', guestParking: 'no', utilNote: '',
+    keyDeposit: '', keyNote: '', smoking: 'none', smokingRules: '', insurance: 'required', emailNotices: tenant.emailConsent ? 'yes' : 'no', nsf: '',
   }));
   const set = (k: string, v: string) => setD((x) => ({ ...x, [k]: v }));
   const a = arrears(state, lease, today);
@@ -52,6 +62,11 @@ export function FormWizard({ lease, formId, onClose }: { lease: Lease; formId: s
     // What the official form itself asks for (filled on the live site).
     if (official && live) {
       if (fid === 'on-n1' || fid === 'on-n2') c.push({ ok: !!d.mailing.trim(), text: d.mailing.trim() ? 'Your mailing address is on the notice' : 'Add your mailing address (the notice shows it)' });
+      if (fid === 'on-lease') {
+        c.push({ ok: !!d.mailing.trim(), text: d.mailing.trim() ? 'Your address for notices is on the lease' : 'Add your address for notices (section 3 of the lease)' });
+        c.push({ ok: true, warn: !prop.postalCode, text: prop.postalCode ? "The rental unit's postal code is on the lease" : "The rental unit's postal code is blank on the lease (add it under Rentals → the property → Edit details)" });
+        c.push({ ok: d.termType !== 'fixed' || !!d.termEnd, text: d.termType === 'fixed' && !d.termEnd ? 'Add the date the fixed term ends' : 'The term is set' });
+      }
       if (fid === 'on-n4' || fid === 'on-n5' || fid === 'on-n12') c.push({ ok: !!prop.postalCode, text: prop.postalCode ? "The rental unit's postal code is on the notice" : "Add the property's postal code (Rentals → the property → Edit details)" });
     }
     return c;
@@ -125,8 +140,49 @@ export function FormWizard({ lease, formId, onClose }: { lease: Lease; formId: s
           <Seg label="Above the guideline" value={d.aboveGuideline ?? ''} onChange={(v) => set('aboveGuideline', v)} options={[{ id: 'order', label: 'Was approved by an LTB order' }, { id: 'applied', label: 'Needs approval: I applied to the LTB' }]} />
         </Field>
       )}
-      {(fid === 'on-n1' || fid === 'on-n2') && (
-        <Field label="Your mailing address" htmlFor="fw-mail" hint="The notice shows where the tenant can write to you. Saved for next time."><input id="fw-mail" className="input" value={d.mailing} onChange={(e) => set('mailing', e.target.value)} placeholder="12 King St E, Belleville, ON K8N 1A1" /></Field>
+      {isLease && on && (
+        <div className="lease-q" id="lease-details">
+          <Field label="Type of tenancy">
+            <Seg label="Type of tenancy" value={d.termType} onChange={(v) => set('termType', v)} options={[{ id: 'monthly', label: 'Month-to-month' }, { id: 'fixed', label: 'Fixed term' }]} />
+          </Field>
+          {d.termType === 'fixed' && <Field label="Fixed term ends on" htmlFor="fw-term-end" hint="After that, the tenancy carries on month to month unless you both sign a new lease or give proper notice."><input id="fw-term-end" type="date" className="input" min={lease.start} value={d.termEnd} onChange={(e) => set('termEnd', e.target.value)} /></Field>}
+          <div className="grid2">
+            <Field label="Parking (spaces and where)" htmlFor="fw-park"><input id="fw-park" className="input" value={d.parkingDesc} onChange={(e) => set('parkingDesc', e.target.value)} placeholder="e.g. 1 outdoor space, driveway" /></Field>
+            <Field label="Parking rent a month (if extra)" htmlFor="fw-park-rent"><input id="fw-park-rent" className="input" inputMode="decimal" value={d.parkingRent} onChange={(e) => set('parkingRent', e.target.value.replace(/[^\d.]/g, ''))} placeholder="0.00" /></Field>
+          </div>
+          <Field label="Who pays the utilities">
+            <div className="lease-util">{(['electricity', 'heat', 'water'] as const).map((k) => (
+              <div key={k}><span className="small">{k[0].toUpperCase() + k.slice(1)}</span><Seg label={k} value={d[k]} onChange={(v) => set(k, v)} options={[{ id: 'landlord', label: 'You' }, { id: 'tenant', label: 'Tenant' }]} /></div>
+            ))}</div>
+          </Field>
+          <Field label="Included in the rent">
+            <div className="lease-util">{([['gas', 'Gas'], ['ac', 'Air conditioning'], ['storage', 'Extra storage'], ['laundry', 'Laundry'], ['guestParking', 'Guest parking']] as const).map(([k, label]) => (
+              <div key={k}><span className="small">{label}</span><Seg label={label} value={d[k]} onChange={(v) => set(k, v)} options={k === 'laundry' || k === 'guestParking' ? [{ id: 'no', label: 'No' }, { id: 'free', label: 'Free' }, { id: 'pay', label: 'Pay per use' }] : [{ id: 'no', label: 'No' }, { id: 'yes', label: 'Yes' }]} /></div>
+            ))}</div>
+          </Field>
+          <div className="grid2">
+            <Field label="Tenant insurance">
+              <Seg label="Tenant insurance" value={d.insurance} onChange={(v) => set('insurance', v)} options={[{ id: 'required', label: 'Liability required' }, { id: 'none', label: 'Not required' }]} />
+            </Field>
+            <Field label="Smoking rules">
+              <Seg label="Smoking rules" value={d.smoking} onChange={(v) => set('smoking', v)} options={[{ id: 'none', label: 'None extra' }, { id: 'rules', label: 'Add rules' }]} />
+            </Field>
+          </div>
+          {d.smoking === 'rules' && <Field label="Smoking rules" htmlFor="fw-smoke"><input id="fw-smoke" className="input" value={d.smokingRules} onChange={(e) => set('smokingRules', e.target.value)} placeholder="e.g. No smoking anywhere in the unit or on the balcony" /></Field>}
+          <div className="grid2">
+            <Field label="Key deposit (refundable, optional)" htmlFor="fw-key"><input id="fw-key" className="input" inputMode="decimal" value={d.keyDeposit} onChange={(e) => set('keyDeposit', e.target.value.replace(/[^\d.]/g, ''))} placeholder="0.00" /></Field>
+            <Field label="Condominium unit?">
+              <Seg label="Condominium" value={d.condo} onChange={(v) => set('condo', v)} options={[{ id: 'no', label: 'No' }, { id: 'yes', label: 'Yes' }]} />
+            </Field>
+          </div>
+          <Field label="Notices and documents by email (section 3)">
+            <Seg label="Notices by email" value={d.emailNotices} onChange={(v) => set('emailNotices', v)} options={[{ id: 'yes', label: 'Both agree' }, { id: 'no', label: 'No' }]} />
+          </Field>
+          <p className="small soft">Rent {fmt(lease.rent)} on day {lease.dueDay} from {fmtDate(lease.start)}, deposit {fmt(lease.lmrDeposit)}: from the tenancy. Change them on the tenant's page.</p>
+        </div>
+      )}
+      {(fid === 'on-n1' || fid === 'on-n2' || isLease) && (
+        <Field label={isLease ? 'Your address for notices and documents' : 'Your mailing address'} htmlFor="fw-mail" hint={isLease ? 'Section 3 of the lease: where the tenant gives you notices. Saved for next time.' : 'The notice shows where the tenant can write to you. Saved for next time.'}><input id="fw-mail" className="input" value={d.mailing} onChange={(e) => set('mailing', e.target.value)} placeholder="12 King St E, Belleville, ON K8N 1A1" /></Field>
       )}
 
       {fid === 'on-n5' ? (
@@ -212,7 +268,7 @@ export function FormWizard({ lease, formId, onClose }: { lease: Lease; formId: s
             {live ? (
               <>
                 <p className="small" style={{ margin: '8px 0' }}>The Landlord and Tenant Board's own form ({official.version}), filled in with these details and signed with your name. {official.tenantPages}</p>
-                <button className="btn" id="fw-open-form" onClick={openForm} disabled={busy}><Icon name="paper" size={16} />{busy ? 'Opening…' : 'Open the filled form (PDF)'}</button>
+                <button className="btn" id="fw-open-form" onClick={openForm} disabled={busy}><Icon name="paper" size={16} />{busy ? 'Opening…' : isLease ? 'Preview the lease (PDF)' : 'Open the filled form (PDF)'}</button>
               </>
             ) : <p className="tiny" style={{ color: '#55605B' }}>On your live account, this is the Landlord and Tenant Board's own form ({official.version}), filled in and ready to print or email.</p>}
           </div>
@@ -243,10 +299,18 @@ export function FormWizard({ lease, formId, onClose }: { lease: Lease; formId: s
           <p className="small soft">Recorded as your proof of service.</p>
         </>
       )}
-      {(form.kind === 'agreement' || form.kind === 'report') && <p className="small soft" style={{ marginTop: 16 }}>Approving records these details with the lease. Keyholder does not send it to the tenant or sign it: print or send the lease yourself, and both of you sign it.</p>}
+      {isLease && official && live ? (
+        <>
+          <h3 style={{ margin: '20px 0 8px' }}>Send it to sign</h3>
+          <Seg label="How the tenant gets it" value={method} onChange={setMethod} options={[{ id: 'email', label: 'Email it to the tenant' }, { id: 'hand', label: "I'll give it in person" }]} />
+          <p className="small soft" id="fw-lease-send">{method === 'email'
+            ? `Keyholder emails the lease (PDF) to ${tenantPeople(tenant).map((p) => p.email).filter(Boolean).join(', ') || 'the tenant'}, with a copy to you. You and each tenant sign page 7 (on paper, or electronically if you both agree); then mark it signed.`
+            : 'Print the lease (View lease above), sign page 7 with the tenant, and give them a copy within 21 days. Then mark it signed.'}</p>
+        </>
+      ) : (form.kind === 'agreement' || form.kind === 'report') && <p className="small soft" style={{ marginTop: 16 }}>Approving records these details with the lease. Keyholder does not send it to the tenant or sign it: print or send the lease yourself, and both of you sign it.</p>}
 
       <p className="small soft" style={{ marginTop: 16 }}><Icon name="info" size={14} /> A legal document: read it{official && live ? ' (open the form above)' : ''} before you approve{official ? `. Approving signs it as ${state.profile.name || 'you'}` : ''}.</p>
-      {ok ? <SlideToConfirm label={form.kind === 'application' ? 'Slide to prepare the application' : form.kind === 'notice' ? 'Slide to approve and record' : 'Slide to approve'} onConfirm={() => void approve()} />
+      {ok ? <SlideToConfirm label={form.kind === 'application' ? 'Slide to prepare the application' : form.kind === 'notice' ? 'Slide to approve and record' : isLease && official && live ? (method === 'email' ? 'Slide to approve and email it' : 'Slide to approve and save') : 'Slide to approve'} onConfirm={() => void approve()} />
         : <p className="urgent small">Fix the items above before approving.</p>}
     </Drawer>
   );

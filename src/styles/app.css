@@ -898,3 +898,9 @@ a.unit-who:hover strong, .unit-who.as-link:hover strong { text-decoration: under
 .pay-history { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
 .pay-history li { display: grid; grid-template-columns: 110px 1fr auto; gap: 8px; align-items: center; }
 @media (max-width: 640px) { .pay-history li { grid-template-columns: 1fr auto; } .pay-history li .mono { grid-column: 1 / -1; color: var(--ink-soft); } }
+
+/* The lease's questions (Ontario's Standard Form of Lease) */
+.lease-q { border: 1px solid var(--rule); border-radius: 12px; padding: 14px 16px 4px; margin: 12px 0; }
+.lease-util { display: grid; gap: 8px; }
+.lease-util > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.lease-util > div > .small { min-width: 120px; }

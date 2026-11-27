@@ -104,3 +104,27 @@ describe("Ontario's official forms, filled in", () => {
     expect(n12[`${S}Reasons[0].Reason1[0].Reason1A[0].Reason1_A3[0]`]).toBe(true); // "My child"
   });
 });
+
+describe('Ontario Standard Form of Lease (2229E)', () => {
+  it('fills the parties, unit, term (fixed or monthly), rent, utilities, deposit and signature names', async () => {
+    const lease = { ...late, start: '2026-12-01', dueDay: 1, lmrDeposit: late.rent };
+    const base = { formId: 'on-lease', state, lease, servedOn: today, today };
+    const monthly = ltbValues({ ...base, details: { ...details, termType: 'monthly', heat: 'landlord', electricity: 'tenant', water: 'landlord', insurance: 'required', emailNotices: 'yes' } });
+    const { out } = await readBack(await fillOfficial('on-lease', monthly));
+    const P = 'form1[0].page1[0].body[0].';
+    expect(out[`${P}section1[0].landlord[0].instructorInfo[0].instructorName[0].instrName[0]`]).toBe('Alex Morgan');
+    expect(out[`${P}section4[0].question1[0].date[0]`]).toBe('2026/12/01');
+    expect(out[`${P}section4[0].question2[0].choice2[0]`]).toBe(true);
+    expect(out[`${P}section4[0].question2[0].choice1[0]`]).toBe(false);
+    expect(out[`${P}section5[0].Table1[0].Row1[0].cost[0]`]).toBe(ltbMoney(lease.rent));
+    expect(out[`${P}section6[0].utilities[0].tenant[0]`]).toBe(true);
+    expect(out[`${P}section8[0].question2[0].deposit[0]`]).toBe(ltbMoney(lease.rent));
+    expect(out[`${P}section17[0].landlords[0].signature1[0].name[0]`]).toBe('Alex Morgan');
+    const fixed = ltbValues({ ...base, details: { ...details, termType: 'fixed', termEnd: '2027-11-30' } });
+    const r2 = await readBack(await fillOfficial('on-lease', fixed));
+    expect(r2.out[`${P}section4[0].question2[0].choice1[0]`]).toBe(true);
+    expect(r2.out[`${P}section4[0].question2[0].date[0]`]).toBe('2027/11/30');
+    expect(r2.doc.getPageCount()).toBe(14);
+    expect(OFFICIAL['on-lease'].version).toBe('2229E (2020/12)');
+  });
+});

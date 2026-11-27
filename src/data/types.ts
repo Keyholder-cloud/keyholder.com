@@ -463,7 +463,7 @@ export interface Applicant {
 export interface TodoPref { hiddenUntil?: ISODate; ignored?: boolean }
 
 // ---- Forms and notices (any province) ----
-export type NoticeStatus = 'served' | 'voided-by-payment' | 'filed' | 'signed';
+export type NoticeStatus = 'served' | 'voided-by-payment' | 'filed' | 'signed' | 'sent';
 
 export interface Notice {
   id: ID;
@@ -488,6 +488,8 @@ export interface Notice {
   official?: { version: string; values: Record<string, string | true | { radio: string }> };
   /** When the official form was emailed to the tenant(s). */
   emailedAt?: string;
+  /** A lease: the day the tenant signed it and gave it back (status 'signed'); until then it is 'sent'. */
+  tenantSignedOn?: ISODate;
 }
 
 export interface AuditEntry {

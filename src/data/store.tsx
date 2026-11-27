@@ -790,11 +790,17 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
     /** Records an approved notice, form or agreement. Returns its id. */
     serveNotice(n: Omit<Notice, 'id' | 'createdAt' | 'status'>): string {
       const f = formById(n.formId);
-      const status: Notice['status'] = f?.kind === 'application' ? 'filed' : f?.kind === 'notice' ? 'served' : 'signed';
+      // A lease on the official form goes to the tenant to sign ('sent'); it is 'signed' once they sign it.
+      const status: Notice['status'] = f?.kind === 'application' ? 'filed' : f?.kind === 'notice' ? 'served' : f?.kind === 'agreement' && n.official ? 'sent' : 'signed';
       const id = uid('n');
       mut((d) => { d.notices.push({ ...n, id, createdAt: new Date().toISOString(), status }); audit(d, `${n.kind} ${status}`, `${f?.title ?? ''}${n.terminationDate ? ` · ${n.terminationDate}` : ''}${n.official ? ` · official form ${n.official.version}` : ''}`); });
-      toast(status === 'filed' ? `${n.kind} prepared with the ledger, notice and proof of service.` : status === 'served' ? `${n.kind} approved and recorded with proof of service.` : `${n.kind} details recorded with the lease. Nothing was sent to the tenant; print it or send it yourself to sign.`);
+      toast(status === 'filed' ? `${n.kind} prepared with the ledger, notice and proof of service.` : status === 'served' ? `${n.kind} approved and recorded with proof of service.` : status === 'sent' ? `${n.kind} saved. Once you and the tenant have signed page 7, mark it signed.` : `${n.kind} details recorded with the lease. Nothing was sent to the tenant; print it or send it yourself to sign.`);
       return id;
+    },
+    /** The tenant signed the lease and gave it back. */
+    markLeaseSigned(id: string, on: string) {
+      mut((d) => { const n = d.notices.find((x) => x.id === id); if (n) { n.status = 'signed'; n.tenantSignedOn = on; audit(d, `${n.kind} signed by the tenant`, on); } });
+      toast('Marked signed by the tenant. Keep the signed copy.');
     },
     /** The official form of a served notice went to the tenants by email. */
     markNoticeEmailed(id: string) { mut((d) => { const n = d.notices.find((x) => x.id === id); if (n) { n.emailedAt = new Date().toISOString(); audit(d, `${n.kind} emailed to the tenant`, 'Official form attached'); } }); },

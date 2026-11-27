@@ -10,6 +10,12 @@ Tribunals Ontario's own forms, from https://tribunalsontario.ca/ltb/forms/ (down
 | N5.pdf | Notice to End your Tenancy for Interfering with Others, Damage or Overcrowding | N5 (2026/09) |
 | N12.pdf | Notice to End your Tenancy Because the Landlord, a Purchaser or a Family Member Requires the Rental Unit | N12 (2026/10) |
 | N11.pdf | Agreement to End the Tenancy | v. 01/04/2022 |
+| 2229E.pdf | Residential Tenancy Agreement (Standard Form of Lease) | 2229E (2020/12) |
+
+2229E.pdf is the Ontario government's own lease, from the Central Forms Repository
+(https://forms.mgcs.gov.on.ca, the "static" version, downloaded 2026-11-27). Only its on-screen buttons (Add a tenant,
+Print, Save, Clear), which work only in Adobe Reader and would print on the page, were removed; every page and field is
+as published.
 
 The published files open with an empty password and allow filling in their fields. Each was opened once with that
 password and saved without it, so the server can fill the fields (`server/officialForms.ts`). Nothing else changes:
