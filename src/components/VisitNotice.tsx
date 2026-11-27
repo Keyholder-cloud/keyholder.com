@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../data/store';
 import { activeLeases } from '../lib/finance';
 import { tenantPeople } from '../lib/people';
@@ -11,7 +11,16 @@ import { Icon } from './Icon';
 export function VisitNoticeDrawer({ unitId, onClose }: { unitId?: string; onClose: () => void }) {
   const { state, act, today } = useStore();
   const units = state.units.filter((u) => state.properties.some((p) => p.id === u.propertyId && !p.archived) && activeLeases(state, u.id, today).length > 0);
-  const [uid, setUid] = useState(unitId && units.some((u) => u.id === unitId) ? unitId : units[0]?.id ?? '');
+  const [uid, setUidRaw] = useState(unitId && units.some((u) => u.id === unitId) ? unitId : units[0]?.id ?? '');
+  // Opened for a unit before the account's data has loaded: pick that unit once it is there (unless changed by hand).
+  const touched = useRef(false);
+  const setUid = (v: string) => { touched.current = true; setUidRaw(v); };
+  const ready = units.map((u) => u.id).join(',');
+  useEffect(() => {
+    if (touched.current) return;
+    if (unitId && units.some((u) => u.id === unitId)) setUidRaw(unitId);
+    else if (!units.some((u) => u.id === uid) && units[0]) setUidRaw(units[0].id);
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
   const [date, setDate] = useState('');
   const [time, setTime] = useState('10:00');
   const [kind, setKind] = useState<string>(VISIT_KINDS[0]);
@@ -21,6 +30,9 @@ export function VisitNoticeDrawer({ unitId, onClose }: { unitId?: string; onClos
   const prop = state.properties.find((p) => p.id === unit?.propertyId);
   const people = unit ? activeLeases(state, unit.id, today).flatMap((l) => { const t = state.tenants.find((x) => x.id === l.tenantId); return t ? tenantPeople(t) : []; }) : [];
   const noEmail = people.filter((p) => !p.email);
+  // Emailed anyway; a tenant who has not agreed to notices by email should also get a paper copy.
+  const leasesHere = unit ? activeLeases(state, unit.id, today) : [];
+  const paper = leasesHere.map((l) => state.tenants.find((x) => x.id === l.tenantId)).filter((t) => t && !t.emailConsent && t.noticeMethod !== 'email').flatMap((t) => tenantPeople(t!).filter((p) => p.email).map((p) => p.name.split(' ')[0]));
   const hours = date ? hoursUntil(date, time) : Infinity;
   const short = hours < 24;
   const past = hours < 0;
@@ -36,6 +48,7 @@ export function VisitNoticeDrawer({ unitId, onClose }: { unitId?: string; onClos
           </select>
         </Field>
         {people.length > 0 && <p className="small soft" id="vn-to" style={{ marginTop: -4 }}>To {people.map((p) => p.name).join(', ')}, with a copy to you{prop ? ` · ${prop.address}` : ''}.</p>}
+        {paper.length > 0 && <p className="small callout" id="vn-paper">{paper.join(' and ')} {paper.length === 1 ? 'has' : 'have'} not agreed to notices by email. They will get this email too; for a notice that counts, also give them a paper copy.</p>}
         {noEmail.length > 0 && <p className="small callout warn">{noEmail.map((p) => p.name.split(' ')[0]).join(' and ')} {noEmail.length === 1 ? 'has' : 'have'} no email: give {noEmail.length === 1 ? 'them' : 'them'} a paper copy.</p>}
         <div className="grid2">
           <Field label="Date" htmlFor="vn-date"><input id="vn-date" type="date" className="input" min={today} value={date} onChange={(e) => setDate(e.target.value)} /></Field>

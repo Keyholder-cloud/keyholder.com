@@ -1146,7 +1146,7 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     });
     app.get('/api/dev/outbox', async (req) => {
       const to = String((req.query as { to?: string }).to ?? '');
-      return db.query(`select kind, to_email, subject, text_body, status, created_at, attachment->>'formId' as attached_form, attachment->>'filename' as attached_file, attachment->'fileIds' as file_ids from outbox where ($1 = '' or lower(to_email) = lower($1)) order by created_at desc limit 50`, [to]);
+      return db.query(`select kind, to_email, cc, subject, text_body, status, created_at, attachment->>'formId' as attached_form, attachment->>'filename' as attached_file, attachment->'fileIds' as file_ids from outbox where ($1 = '' or lower(to_email) = lower($1)) order by created_at desc limit 50`, [to]);
     });
   }
 
