@@ -622,7 +622,7 @@ export function TaxPackPage() {
       rentRows.push([r.date, state.tenants.find((x) => x.id === l.tenantId)?.names.join(' & ') ?? '', `${r.period} (marked paid up)`, r.amount]);
     }
     for (const r of rentRows.sort((a, b) => a[0].localeCompare(b[0]))) rows.push([r[0], r[1], r[2], (r[3] / 100).toFixed(2)]);
-    const otherIn = (state.income ?? []).filter((i) => !i.voided && i.date >= from && i.date <= yearEnd && ((i.leaseId && leases.some((l) => l.id === i.leaseId)) || i.propertyId === p.id));
+    const otherIn = (state.income ?? []).filter((i) => !i.voided && i.kind !== 'deposit' && i.date >= from && i.date <= yearEnd && ((i.leaseId && leases.some((l) => l.id === i.leaseId)) || i.propertyId === p.id));
     if (otherIn.length) {
       rows.push([], ['Other income (line 8230)'], ['Date', 'From', 'Type', 'For', 'Amount']);
       for (const i of otherIn.sort((a, b) => a.date.localeCompare(b.date))) rows.push([i.date, state.tenants.find((x) => x.id === leases.find((l) => l.id === i.leaseId)?.tenantId)?.names.join(' & ') ?? '', incomeKindLabel(i.kind), i.label, (i.amount / 100).toFixed(2)]);

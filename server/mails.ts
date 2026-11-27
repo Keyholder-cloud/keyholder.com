@@ -63,11 +63,12 @@ export function tenantMails(state: AppState, m: Message, accountId: string): Mai
     const r = state.receipts.find((x) => x.id === m.receiptId)!;
     const data = receiptData(state, r, (m.sentAt ?? new Date().toISOString()).slice(0, 10));
     if (!data) return [];
-    subject = `Payment receipt #${r.number}: ${data.forWhat}`;
+    const deposit = data.title === 'DEPOSIT RECEIPT';
+    subject = deposit ? `Deposit receipt #${r.number}: last month's rent` : `Payment receipt #${r.number}: ${data.forWhat}`;
     attachment = { kind: 'receipt', filename: `Payment receipt ${r.number}.pdf`, receipt: data };
     text = [
       `Hi ${tenant.names.map((n) => n.split(' ')[0]).join(' & ')},`, '',
-      `Thank you. This is your receipt for your payment.`, '',
+      deposit ? `Thank you. This is your receipt for last month's rent, which is held as a deposit and used for the last month of your tenancy.` : `Thank you. This is your receipt for your payment.`, '',
       `Receipt number: ${r.number}`,
       `Received from: ${tenant.names.join(' & ')}`,
       `Amount: ${data.amount}`,

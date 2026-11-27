@@ -17,6 +17,7 @@ export const INCOME_KINDS: { id: IncomeKind; label: string; icon: string }[] = [
   { id: 'storage', label: 'Storage', icon: 'box' },
   { id: 'late-fee', label: 'Late fee', icon: 'clock' },
   { id: 'other', label: 'Other', icon: 'cash' },
+  { id: 'deposit', label: "Last month's rent deposit", icon: 'key' },
 ];
 export const incomeKindLabel = (k: IncomeKind) => INCOME_KINDS.find((x) => x.id === k)?.label ?? 'Other';
 
@@ -52,9 +53,9 @@ function incomeReceiptData(state: AppState, r: Receipt, asOf: string): ReceiptPd
   const owner = state.profile.name || state.profile.account?.name || 'Your landlord';
   const email = state.profile.account?.email || state.profile.email || undefined;
   const room = unit ? (lease?.room ?? (/^[A-Z0-9]{1,3}$/i.test(unit.label) ? `Unit ${unit.label}` : unit.label)) : '';
-  const what = `${inc.label}${inc.kind === 'bill' ? ' (your share)' : ''}`;
+  const what = inc.kind === 'deposit' ? "Last month's rent (deposit)" : `${inc.label}${inc.kind === 'bill' ? ' (your share)' : ''}`;
   return {
-    number: r.number, issued: (r.sentAt ?? asOf).slice(0, 10), title: 'PAYMENT RECEIPT', forWhat: what, kindLabel: incomeKindLabel(inc.kind),
+    number: r.number, issued: (r.sentAt ?? asOf).slice(0, 10), title: inc.kind === 'deposit' ? 'DEPOSIT RECEIPT' : 'PAYMENT RECEIPT', forWhat: what, kindLabel: inc.kind === 'deposit' ? undefined : incomeKindLabel(inc.kind),
     landlord: { name: owner, email, phone: state.profile.phone },
     tenant: tenant?.names.join(' & ') ?? '—', rental: prop ? `${prop.address}${room ? `, ${room}` : ''}` : (room || '—'),
     period: what, amount: fmt(inc.amount), paidOn: inc.date, method: receiptMethod(inc.method), note: inc.note || r.note,

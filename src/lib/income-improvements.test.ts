@@ -93,3 +93,16 @@ describe('mortgage in Money out', () => {
     expect(line.due).toBe('2026-11-25');
   });
 });
+
+describe("last month's rent deposit", () => {
+  it('is kept as a deposit: not in Money in, not in other income on the tax return', () => {
+    const s = base();
+    const lease = s.leases.find((l) => !l.end)!;
+    const unit = s.units.find((u) => u.id === lease.unitId)!;
+    const before = picture(s, '2026-01-01', today, { propertyId: unit.propertyId });
+    const packBefore = taxPack(s, s.properties.find((p) => p.id === unit.propertyId)!, 2026);
+    s.income = [...(s.income ?? []), { id: 'dep1', kind: 'deposit', label: "Last month's rent deposit", amount: 165000, date: today, method: 'etransfer', leaseId: lease.id, propertyId: unit.propertyId, source: 'manual', createdAt: '' }];
+    expect(picture(s, '2026-01-01', today, { propertyId: unit.propertyId }).otherIncome).toBe(before.otherIncome);
+    expect(taxPack(s, s.properties.find((p) => p.id === unit.propertyId)!, 2026).otherIncome).toBe(packBefore.otherIncome);
+  });
+});

@@ -961,6 +961,17 @@ const step = async (tag, name, fn) => { if (!want(name[0])) return; try { const 
       const st = await state(pg); const sent = st.messages.slice(before).filter((m) => m.kind === 'visit');
       if (!sent.length || !sent[0].subject.startsWith('Urgent: Notice of entry') || sent.slice(1).some((m) => m.ccLandlord !== false)) throw new Error(JSON.stringify(sent).slice(0, 300));
     });
+    await step(tag, "H33 Last month's rent: logged as a deposit from Mark paid (Other month → Last month's rent), with a receipt; not counted as rent or income", async () => {
+      const st0 = await state(pg); const lease = st0.leases.find((l) => l.tenantId === 't-maya');
+      await go(pg, 'rent/tenant/t-maya'); await pg.locator('.page-head button', { hasText: /Confirm rent|Mark paid/ }).first().click();
+      await pg.locator('.drawer-foot >> text=Other month').click(); await pg.waitForSelector('#mrp-lmr');
+      await pg.click('#mrp-lmr'); await pg.waitForSelector('#mrp-lmr-note'); await pg.click('#mrp-go'); await pg.waitForSelector('#mrp-done >> text=last month\'s rent deposit');
+      const st = await state(pg); const dep = (st.income || []).find((i) => i.kind === 'deposit' && i.leaseId === lease.id);
+      if (!dep || !st.receipts.some((r) => r.incomeId === dep.id)) throw new Error('no deposit or receipt');
+      if (st.payments.length !== st0.payments.length) throw new Error('logged as a rent payment');
+      await pg.locator('.drawer-foot >> text=Done').click();
+      await go(pg, 'rent/tenant/t-maya'); await pg.waitForSelector('.kv >> text=/received/');
+    });
     await step(tag, 'H27 Resend a rent receipt from Income and from a tenant\'s messages; long lists show 8 lines, then Show more', async () => {
       await go(pg, 'income'); await pg.waitForSelector('.resend-receipt');
       const before = (await state(pg)).messages.length; await pg.locator('.resend-receipt').first().click(); await pg.waitForTimeout(250);

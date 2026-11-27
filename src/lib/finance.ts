@@ -368,8 +368,9 @@ export function picture(state: AppState, from: ISODate, to: ISODate, opts: { pro
     for (const r of paidUpRent(state, l, bought && bought > from ? bought : from, to)) rentCollected += r.amount;
   }
 
+  // A last month's rent deposit is held, not income (it becomes rent when it is used for the last month).
   const otherIncome = (state.income ?? [])
-    .filter((i) => !i.voided && i.date >= from && i.date <= to && ((i.leaseId && leaseIds.has(i.leaseId)) || (!!i.propertyId && propIds.has(i.propertyId)) || (!i.leaseId && !i.propertyId && !opts.propertyId)))
+    .filter((i) => !i.voided && i.kind !== 'deposit' && i.date >= from && i.date <= to && ((i.leaseId && leaseIds.has(i.leaseId)) || (!!i.propertyId && propIds.has(i.propertyId)) || (!i.leaseId && !i.propertyId && !opts.propertyId)))
     .reduce((a, i) => a + i.amount, 0);
 
   // Expected rent = charges falling due inside the window.
@@ -655,7 +656,7 @@ export function taxPack(state: AppState, prop: Property, year: number, start?: I
   const grossRents0 = state.payments.filter((p) => !p.voided && leaseIds.has(p.leaseId) && p.date >= from && p.date <= to).reduce((a, p) => a + p.amount, 0);
   // Months the landlord marked as paid up count as rent received.
   const grossRents = grossRents0 + state.leases.filter((l) => leaseIds.has(l.id)).flatMap((l) => paidUpRent(state, l, from, to)).reduce((a, r) => a + r.amount, 0);
-  const otherIncome = (state.income ?? []).filter((i) => !i.voided && i.date >= from && i.date <= to && ((i.leaseId && leaseIds.has(i.leaseId)) || i.propertyId === prop.id)).reduce((a, i) => a + i.amount, 0);
+  const otherIncome = (state.income ?? []).filter((i) => !i.voided && i.kind !== 'deposit' && i.date >= from && i.date <= to && ((i.leaseId && leaseIds.has(i.leaseId)) || i.propertyId === prop.id)).reduce((a, i) => a + i.amount, 0);
 
   const exps = state.expenses.filter((e) => e.propertyId === prop.id && e.date >= from && e.date <= to);
   const byLine = new Map<string, TaxPack['lines'][number]>();
