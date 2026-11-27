@@ -15,7 +15,7 @@ export type Stage = 'applied' | 'approved' | 'lease' | 'moved-in' | 'paying' | '
 export const STAGES: { id: Stage; label: string }[] = [
   { id: 'applied', label: 'Applied' },
   { id: 'approved', label: 'Approved' },
-  { id: 'lease', label: 'Lease signed' },
+  { id: 'lease', label: 'Lease prepared' },
   { id: 'moved-in', label: 'Moved in' },
   { id: 'paying', label: 'Paying rent' },
   { id: 'renewal', label: 'Renewal' },

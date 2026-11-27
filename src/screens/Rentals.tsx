@@ -598,13 +598,13 @@ export function LateRentDrawer({ lease, onClose }: { lease: Lease; onClose: () =
   );
 }
 
-export const statusLabel = (s: Notice['status']) => ({ served: 'Served', 'voided-by-payment': 'Paid', filed: 'Ready', signed: 'Signed' })[s];
+export const statusLabel = (s: Notice['status']) => ({ served: 'Served', 'voided-by-payment': 'Paid', filed: 'Ready', signed: 'Signed', sent: 'To sign' })[s];
 
 // =====================================================================================
 // Notices tab (property page)
 // =====================================================================================
 export function NoticesTab({ propertyId }: { propertyId: string }) {
-  const { state, today } = useStore();
+  const { state, act, today } = useStore();
   const [late, setLate] = useState<Lease | null>(null);
   const unitIds = state.units.filter((u) => u.propertyId === propertyId).map((u) => u.id);
   const leases = state.leases.filter((l) => unitIds.includes(l.unitId));
@@ -630,7 +630,7 @@ export function NoticesTab({ propertyId }: { propertyId: string }) {
           {notices.length === 0 ? <p className="soft" style={{ margin: 0 }}>No notices yet.</p> : (
             <ul className="rows">{notices.map((n) => {
               const t = state.tenants.find((x) => x.id === n.tenantId);
-              return <li key={n.id} className="row"><span className="margin">{n.servedOn ? fmtDate(n.servedOn) : '—'}</span><span><span className="title">{n.kind} · {t?.names.join(' & ')}</span><span className="sub" style={{ display: 'block' }}>{n.arrears ? `${fmt(n.arrears)} · ` : ''}{n.serveMethod} by {n.servedBy}{n.emailedAt ? ' · emailed' : ''}{n.terminationDate ? ` · ${n.arrears ? 'pay by' : 'ends'} ${fmtDate(n.terminationDate)}` : ''}</span></span><span className="row-act"><OfficialPdfButton notice={n} /><Stamp kind={n.status === 'voided-by-payment' ? 'superseded' : 'served'}>{statusLabel(n.status)}</Stamp></span></li>;
+              return <li key={n.id} className="row"><span className="margin">{n.servedOn ? fmtDate(n.servedOn) : '—'}</span><span><span className="title">{n.kind} · {t?.names.join(' & ')}</span><span className="sub" style={{ display: 'block' }}>{n.arrears ? `${fmt(n.arrears)} · ` : ''}{n.status === 'sent' ? `prepared by ${n.servedBy}${n.emailedAt ? ', emailed to the tenant' : ''} · waiting for signatures` : n.status === 'signed' && !n.official ? `details recorded by ${n.servedBy} · not sent, not signed` : `${n.serveMethod} by ${n.servedBy}${n.emailedAt ? ' · emailed' : ''}`}{n.terminationDate ? ` · ${n.arrears ? 'pay by' : 'ends'} ${fmtDate(n.terminationDate)}` : ''}</span></span><span className="row-act">{n.status === 'sent' && <button className="btn small primary" onClick={() => act.markLeaseSigned(n.id, today)}><Icon name="check" size={14} />Mark signed by tenant</button>}<OfficialPdfButton notice={n} /><Stamp kind={n.status === 'voided-by-payment' ? 'superseded' : n.status === 'sent' || (n.status === 'signed' && !n.official) ? 'draft' : 'served'}>{statusLabel(n.status)}</Stamp></span></li>;
             })}</ul>
           )}
         </div>

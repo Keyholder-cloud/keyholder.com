@@ -112,7 +112,7 @@ function Income() {
 
 /** Notices served, with proof of service. */
 function NoticesLog() {
-  const { state } = useStore();
+  const { state, act, today } = useStore();
   const ns = [...state.notices].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const [nsShown, nsMore] = useMore(ns);
   return (
@@ -122,7 +122,7 @@ function NoticesLog() {
         {ns.length === 0 ? <p className="soft" style={{ margin: 0 }}>No notices yet. Prepare one from a tenant's page.</p> : (
           <><ul className="rows">{nsShown.map((n) => {
             const t = state.tenants.find((x) => x.id === n.tenantId);
-            return <li key={n.id} className="row"><span className="margin">{n.servedOn ? fmtDate(n.servedOn) : '—'}</span><span><span className="title">{n.kind} · {t?.names.join(' & ')}</span><span className="sub" style={{ display: 'block' }}>{n.arrears ? `${fmt(n.arrears)} · ` : ''}delivered {n.serveMethod} by {n.servedBy}{n.emailedAt ? ' · emailed' : ''}{n.terminationDate ? ` · ${n.arrears ? 'pay by' : 'ends'} ${fmtDate(n.terminationDate)}` : ''}</span></span><span className="row-act"><OfficialPdfButton notice={n} /><Stamp kind={n.status === 'voided-by-payment' ? 'superseded' : 'served'}>{({ served: 'Served', 'voided-by-payment': 'Paid', filed: 'Ready', signed: 'Signed' } as Record<string, string>)[n.status]}</Stamp></span></li>;
+            return <li key={n.id} className="row"><span className="margin">{n.servedOn ? fmtDate(n.servedOn) : '—'}</span><span><span className="title">{n.kind} · {t?.names.join(' & ')}</span><span className="sub" style={{ display: 'block' }}>{n.arrears ? `${fmt(n.arrears)} · ` : ''}{n.status === 'sent' ? `prepared by ${n.servedBy}${n.emailedAt ? ', emailed to the tenant' : ''} · waiting for signatures` : n.status === 'signed' && n.official ? `signed${n.tenantSignedOn ? ` ${fmtDate(n.tenantSignedOn)}` : ''} · keep the signed copy` : n.status === 'signed' ? `details recorded by ${n.servedBy} · not sent to the tenant, not signed` : `delivered ${n.serveMethod} by ${n.servedBy}`}{n.emailedAt && n.status !== 'sent' && !(n.status === 'signed' && n.official) ? ' · emailed' : ''}{n.terminationDate ? ` · ${n.arrears ? 'pay by' : 'ends'} ${fmtDate(n.terminationDate)}` : ''}</span></span><span className="row-act">{n.status === 'sent' && <button className="btn small primary" id={`lease-signed-${n.id}`} onClick={() => act.markLeaseSigned(n.id, today)}><Icon name="check" size={14} />Mark signed by tenant</button>}<OfficialPdfButton notice={n} /><Stamp kind={n.status === 'voided-by-payment' ? 'superseded' : (n.status === 'signed' && !n.official) || n.status === 'sent' ? 'draft' : 'served'}>{({ served: 'Served', 'voided-by-payment': 'Paid', filed: 'Ready', signed: n.official ? 'Signed' : 'Recorded', sent: 'To sign' } as Record<string, string>)[n.status]}</Stamp></span></li>;
           })}</ul>{nsMore}</>
         )}
       </div>

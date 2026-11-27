@@ -1,6 +1,7 @@
 import type { AppState, ISODate, Lease } from '../data/types';
 import { addDays, addMonths, dueDate } from './dates';
-import { leaseLedger } from './finance';
+import { firstMonthProrated, leaseLedger } from './finance';
+import { tenantPeople } from './people';
 import { province } from './jurisdiction';
 
 // Ontario's official Landlord and Tenant Board (LTB) forms, filled in with Keyholder's records.
@@ -16,6 +17,8 @@ export interface OfficialForm {
   version: string;
   /** What the tenant gets (the first pages of some forms are the landlord's checklist). */
   tenantPages: string;
+  /** Text size in the boxes (a form with small boxes). */
+  fontSize?: number;
 }
 
 export const OFFICIAL: Record<string, OfficialForm> = {
@@ -25,6 +28,8 @@ export const OFFICIAL: Record<string, OfficialForm> = {
   'on-n5': { file: 'N5.pdf', version: 'N5 (2026/09)', tenantPages: 'Give the tenant pages 3 to 6. Pages 1 and 2 are your checklist.' },
   'on-n12': { file: 'N12.pdf', version: 'N12 (2026/10)', tenantPages: 'Give the tenant pages 3 to 5. Pages 1 and 2 are your checklist.' },
   'on-n11': { file: 'N11.pdf', version: 'N11 (v. 01/04/2022)', tenantPages: 'You and the tenant both sign page 2. Each keeps a copy.' },
+  // Ontario's Residential Tenancy Agreement (Standard Form of Lease), from the Central Forms Repository.
+  'on-lease': { file: '2229E.pdf', version: '2229E (2020/12)', tenantPages: 'All 14 pages. You and each tenant sign page 7; each keeps a signed copy.', fontSize: 9 },
 };
 export const hasOfficialForm = (formId: string) => formId in OFFICIAL;
 
@@ -201,6 +206,92 @@ export function ltbValues(i: LtbInput): Record<string, PdfValue> {
         out[d.aboveGuideline === 'applied' ? `${F}Check_2_2[0]` : `${F}Check_2_1[0]`] = true;
       }
     }
+  }
+
+  if (i.formId === 'on-lease') {
+    const P = 'form1[0].page1[0].body[0].';
+    const ymd = (x?: ISODate) => (x ? x.replace(/-/g, '/') : '');
+    const yes = (k: string) => { out[`${P}${k}`] = true; };
+    const people = tenant ? tenantPeople(tenant) : [];
+    // 1. Parties
+    out[`${P}section1[0].landlord[0].instructorInfo[0].instructorName[0].instrName[0]`] = landlord;
+    people.slice(0, 4).forEach((p, k) => {
+      const n = splitName(p.name);
+      out[`${P}section1[0].tenantsnames[0].tenant[${k}].instructorInfo[0].instructorName[0].instrName[0]`] = n.last || n.first;
+      out[`${P}section1[0].tenantsnames[0].tenant[${k}].instructorInfo[0].instructorName[0].evalName[0]`] = n.last ? n.first : '';
+    });
+    // 2. Rental unit
+    out[`${P}section2[0].busUnitNo[0]`] = unitLabel;
+    out[`${P}section2[0].busStreetNo[0]`] = addr.number;
+    out[`${P}section2[0].busStreetName[0]`] = addr.name;
+    out[`${P}section2[0].busCity[0]`] = prop?.city ?? '';
+    out[`${P}section2[0].province[0]`] = 'ON';
+    out[`${P}section2[0].busPostalCode[0]`] = (prop?.postalCode ?? '').replace(/\s/g, '');
+    if (d.parkingDesc?.trim()) out[`${P}section2[0].vehicle[0]`] = d.parkingDesc.trim();
+    yes(d.condo === 'yes' ? 'section2[0].#subform[0].yes[0]' : 'section2[0].#subform[0].no[0]');
+    // 3. Contact: the landlord's address for notices; notices by email; contact details
+    const m = mailing.split(',').map((x) => x.trim()).filter(Boolean);
+    const ma = splitAddress(m[0] ?? '');
+    const post = /([A-Z]\d[A-Z])\s?(\d[A-Z]\d)/i.exec(mailing);
+    out[`${P}section3[0].unitNo[0]`] = ma.unit;
+    out[`${P}section3[0].streetNo[0]`] = ma.number;
+    out[`${P}section3[0].streetName[0]`] = ma.name;
+    out[`${P}section3[0].city[0]`] = m[1] ?? '';
+    out[`${P}section3[0].province[0]`] = m[2] ? m[2].replace(post?.[0] ?? '', '').trim() || 'ON' : m.length ? 'ON' : '';
+    out[`${P}section3[0].postalCode[0]`] = post ? `${post[1]}${post[2]}`.toUpperCase() : '';
+    const tenantEmails = people.map((p) => p.email).filter(Boolean);
+    const ownerEmail = state.profile.email || state.profile.account?.email || '';
+    if (d.emailNotices === 'yes' && tenantEmails.length) {
+      yes('section3[0].question1[0].yes[0]');
+      out[`${P}section3[0].question1[0].email[0]`] = [ownerEmail, ...tenantEmails].filter(Boolean).join(', ');
+    } else yes('section3[0].question1[0].no[0]');
+    const contact = [phone, ownerEmail].filter(Boolean).join(' · ');
+    if (contact) { yes('section3[0].question2[0].yes[0]'); out[`${P}section3[0].question2[0].comment[0]`] = `${landlord}: ${contact}`; } else yes('section3[0].question2[0].no[0]');
+    // 4. Term
+    out[`${P}section4[0].question1[0].date[0]`] = ymd(lease.start);
+    if (d.termType === 'fixed') { yes('section4[0].question2[0].choice1[0]'); out[`${P}section4[0].question2[0].date[0]`] = ymd(d.termEnd); }
+    else yes('section4[0].question2[0].choice2[0]');
+    // 5. Rent
+    const dd = lease.dueDay;
+    out[`${P}section5[0].text[0]`] = `${dd}${dd % 10 === 1 && dd !== 11 ? 'st' : dd % 10 === 2 && dd !== 12 ? 'nd' : dd % 10 === 3 && dd !== 13 ? 'rd' : 'th'}`;
+    yes('section5[0].month[0]');
+    const parkingRent = Math.round(Number(d.parkingRent || 0) * 100);
+    out[`${P}section5[0].Table1[0].Row1[0].cost[0]`] = ltbMoney(lease.rent);
+    if (parkingRent) out[`${P}section5[0].Table1[0].Row2[0].cost[0]`] = ltbMoney(parkingRent);
+    out[`${P}section5[0].Table1[0].Row6[0].totalcost[0]`] = ltbMoney(lease.rent + parkingRent);
+    out[`${P}section5[0].#subform[2].questionc[0]`] = landlord;
+    out[`${P}section5[0].#subform[3].questiond[0]`] = ({ etransfer: `Interac e-Transfer${ownerEmail ? ` to ${ownerEmail}` : ''}`, cheque: 'Cheque', cash: 'Cash', pad: 'Pre-authorized debit', other: 'As agreed' } as Record<string, string>)[lease.paymentMethod] ?? 'As agreed';
+    const pro = firstMonthProrated(lease);
+    if (pro) {
+      out[`${P}section5[0].questione[0].day[0]`] = ltbMoney(pro.charge);
+      out[`${P}section5[0].questione[0].date[0]`] = ymd(lease.start);
+      out[`${P}section5[0].questione[0].RWFrom[0]`] = ymd(lease.start);
+      out[`${P}section5[0].questione[0].RWTO[0]`] = ymd(`${pro.period}-${String(pro.inMonth).padStart(2, '0')}`);
+    }
+    if (d.nsf?.trim()) out[`${P}section5[0].questionf[0].day[0]`] = d.nsf.trim();
+    // 6. Services (included in the rent) and utilities
+    const svc = ['gas', 'ac', 'storage', 'laundry', 'guestParking'];
+    svc.forEach((k, n) => {
+      const v = d[k] ?? 'no';
+      yes(`section6[0].suggestions[0].service[0].${v === 'no' ? 'no' : 'yes'}[${n}]`);
+      if (k === 'laundry' && v !== 'no') yes(v === 'pay' ? 'section6[0].suggestions[0].service[0].payperuse1[0]' : 'section6[0].suggestions[0].service[0].charge1[0]');
+      if (k === 'guestParking' && v !== 'no') yes(v === 'pay' ? 'section6[0].suggestions[0].service[0].payperuse2[0]' : 'section6[0].suggestions[0].service[0].charge2[0]');
+    });
+    ['electricity', 'heat', 'water'].forEach((k, n) => yes(`section6[0].utilities[0].${(d[k] ?? 'landlord') === 'tenant' ? 'tenant' : 'Landlord'}[${n}]`));
+    if (d.utilNote?.trim()) out[`${P}section6[0].comment2[0]`] = d.utilNote.trim();
+    // 7. No rent discount. 8. Rent deposit. 9. Key deposit. 10. Smoking. 11. Insurance. 15. Additional terms
+    yes('section7[0].question2[0].yes[0]');
+    if (lease.lmrDeposit > 0) { yes('section8[0].question2[0].c[0]'); out[`${P}section8[0].question2[0].deposit[0]`] = ltbMoney(lease.lmrDeposit); } else yes('section8[0].question2[0].yes[0]');
+    const key = Math.round(Number(d.keyDeposit || 0) * 100);
+    if (key > 0) { yes('section9[0].question2[0].c[0]'); out[`${P}section9[0].question2[0].deposit[0]`] = ltbMoney(key); if (d.keyNote?.trim()) out[`${P}section9[0].comment[0]`] = d.keyNote.trim(); }
+    else yes('section9[0].question2[0].yes[0]');
+    if (d.smoking === 'rules' && d.smokingRules?.trim()) { yes('section10[0].question2[0].Smokingrules[0]'); out[`${P}section10[0].comment[0]`] = d.smokingRules.trim(); } else yes('section10[0].question2[0].None[0]');
+    yes(d.insurance === 'none' ? 'section11[0].question2[0].choice1[0]' : 'section11[0].question2[0].choice2[0]');
+    yes('section15[0].choice1[0]');
+    // 17. Signatures: the landlord's name and date; each tenant's name (they sign and date it)
+    out[`${P}section17[0].landlords[0].signature1[0].name[0]`] = landlord;
+    out[`${P}section17[0].landlords[0].signature1[0].date[0]`] = ymd(i.servedOn);
+    people.slice(0, 8).forEach((p, k) => { out[`${P}section17[0].tenants[0].signature${k + 1}[0].name[0]`] = p.name; });
   }
 
   if (i.formId === 'on-n11') {

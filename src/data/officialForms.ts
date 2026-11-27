@@ -34,7 +34,12 @@ export async function openOfficialPdf(formId: string, values: Record<string, Pdf
 
 /** Emails a served notice to everyone on the lease (who agreed to notices by email), with the official form attached. */
 export const emailNotice = (id: string) => api<{ queued: number; to: string[] }>('POST', `/api/notices/${encodeURIComponent(id)}/email`);
+/** A copy of the official form to the landlord's own email. */
+export const copyNotice = (id: string) => api<{ to: string }>('POST', `/api/notices/${encodeURIComponent(id)}/copy`);
 
 /** "N4 - Nora Bell - 2026-11-12.pdf" */
 export const pdfName = (n: Pick<Notice, 'kind' | 'servedOn' | 'createdAt'>, who: string) =>
   `${n.kind} - ${who} - ${n.servedOn ?? n.createdAt.slice(0, 10)}`.replace(/[^\w .-]+/g, ' ').replace(/\s+/g, ' ').trim() + '.pdf';
+
+/** The form as filled in now, emailed to the landlord only (a test: nothing saved, nothing to the tenant). */
+export const testEmailForm = (formId: string, values: Record<string, unknown>, filename: string) => api<{ to: string }>('POST', `/api/forms/${encodeURIComponent(formId)}/test-email`, { values, filename });
