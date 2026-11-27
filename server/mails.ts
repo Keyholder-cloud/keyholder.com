@@ -1,3 +1,4 @@
+import { tenantPeople } from '../src/lib/people';
 import type { AppState, Message } from '../src/data/types';
 import { fmt } from '../src/lib/money';
 import { fmtPeriod } from '../src/lib/dates';
@@ -50,7 +51,8 @@ const first = (name: string) => name.trim().split(/\s+/)[0] || 'there';
 export function tenantMails(state: AppState, m: Message, accountId: string): Mail[] {
   const tenant = state.tenants.find((t) => t.id === m.tenantId);
   if (!tenant) return [];
-  const people = tenant.people?.length ? tenant.people : [{ name: tenant.names[0] ?? '', email: tenant.email }];
+  // Everyone on the lease with an email (each person, or the lease's one email for older leases).
+  const people = tenantPeople(tenant);
   const owner = state.profile.name || state.profile.account?.name || 'Your landlord';
   const replyTo = state.profile.account?.email || state.profile.email || undefined;
   let subject = m.subject || 'A message from your landlord';

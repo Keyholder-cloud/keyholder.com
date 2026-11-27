@@ -734,6 +734,29 @@ function watch(pg, errors, label) {
         await p.goto(`${BASE}apply/not-a-listing`); await p.waitForSelector('text=This listing is closed');
         await ctx.close();
       });
+      await step(tag, 'E36 A visit notice reaches every tenant in the unit (roommates, a second person on a lease), even one who has not agreed to email notices; the landlord is copied once', async () => {
+        const cur = (await api(pg, '/api/state')).body; const d = cur.data;
+        const uid = `u-vis-${tag}`; const start = isoToday().slice(0, 8) + '01';
+        d.units.push({ id: uid, propertyId: d.properties.find((x) => !x.archived).id, label: 'V', rent: 90000, bedrooms: 2, utilitiesIncluded: [], status: 'occupied', rentedBy: 'room', rooms: 2 });
+        const mk = (n, consent, people) => ({ id: `t-vis${n}-${tag}`, unitId: uid, names: people.map((p) => p.name), email: people[0].email, phone: '', people, noticeMethod: consent ? 'email' : 'hand', emailConsent: consent, aliases: [] });
+        d.tenants.push(mk(1, true, [{ name: 'Ana Room', email: `ana.${tag}@tenant-e2e.ca`, phone: '' }, { name: 'Ben Room', email: `ben.${tag}@tenant-e2e.ca`, phone: '' }]));
+        d.tenants.push(mk(2, false, [{ name: 'Cleo Room', email: `cleo.${tag}@tenant-e2e.ca`, phone: '' }]));
+        [1, 2].forEach((n) => d.leases.push({ id: `l-vis${n}-${tag}`, unitId: uid, tenantId: `t-vis${n}-${tag}`, room: `Room ${n}`, start, rent: 90000, dueDay: 1, paymentMethod: 'etransfer', lmrDeposit: 0, utilities: '', parking: false, pets: false, standingChecked: true }));
+        const put = await pg.evaluate(async (body) => (await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Keyholder': '1' }, body: JSON.stringify(body) })).status, { baseRevision: cur.revision, data: d });
+        if (put !== 200) throw new Error('save ' + put);
+        await pg.reload(); await go(pg, `paperwork/notices?visit=${uid}`); await pg.waitForSelector('#vn-unit');
+        if (!(await pg.locator('#vn-to >> text=Cleo Room').count())) {
+          const srv = (await api(pg, '/api/state')).body.data;
+          throw new Error(`options ${(await pg.locator('#vn-unit option').allTextContents()).join('|')} · server unit ${!!srv.units.find((u) => u.id === uid)} leases ${srv.leases.filter((l) => l.unitId === uid).length} tenants ${srv.tenants.filter((t) => t.unitId === uid).length} prop ${JSON.stringify(srv.properties.map((x) => [x.nickname, !!x.archived]))}`);
+        }
+        await pg.waitForSelector('#vn-paper >> text=Cleo');
+        const day = new Date(Date.now() + 3 * 86400_000); const z = (n) => String(n).padStart(2, '0');
+        await pg.fill('#vn-date', `${day.getFullYear()}-${z(day.getMonth() + 1)}-${z(day.getDate())}`); await pg.fill('#vn-time', '10:00');
+        await pg.click('#vn-send'); await pg.waitForSelector('#visit-notices >> text=Inspection at 10:00 a.m.');
+        for (const who of ['ana', 'ben', 'cleo']) await until(async () => (await outbox(`${who}.${tag}@tenant-e2e.ca`)).find((m) => m.kind === 'visit'), 10000, `the notice to ${who}`);
+        const ccs = (await outbox('')).filter((m) => m.kind === 'visit' && m.to_email.includes(`.${tag}@`) && m.cc).length;
+        if (ccs !== 1) throw new Error('landlord copied ' + ccs + ' times');
+      });
       await step(tag, 'E18 No preview on the live site: admin / admin is refused', async () => {
         const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); const p = await ctx.newPage();
         await signIn(p, 'admin', 'admin'); await p.waitForSelector('.acct-error');

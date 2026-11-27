@@ -207,7 +207,9 @@ export async function queueNewlySent(q: Q, accountId: string, prev: AppState | n
     const fresh = await q.query(`insert into message_deliveries (account_id, message_id) values ($1, $2) on conflict do nothing returning message_id`, [accountId, m.id]);
     if (!fresh.length) continue;
     const tenant = next.tenants.find((t) => t.id === m.tenantId);
-    if (tenant && tenant.noticeMethod !== 'email' && !tenant.emailConsent) continue; // this tenant gets paper, not email
+    // A tenant who gets paper, not email, is skipped, except for a visit notice: everyone in the unit is told by
+    // email (the landlord is shown who also needs a paper copy).
+    if (tenant && m.kind !== 'visit' && tenant.noticeMethod !== 'email' && !tenant.emailConsent) continue;
     for (const mail of tenantMails(next, m, accountId)) { await queueMail(q, mail); n++; }
   }
   return n;
