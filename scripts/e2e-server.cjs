@@ -772,6 +772,12 @@ function watch(pg, errors, label) {
         const [tab, res] = await Promise.all([pg.waitForEvent('popup'), pg.waitForResponse((r) => r.url().endsWith('/api/forms/on-lease/pdf')), pg.click('#fw-open-form')]);
         if (res.status() !== 200 || res.headers()['content-type'] !== 'application/pdf') throw new Error('preview ' + res.status());
         await tab.close().catch(() => {});
+        // A test copy goes to the landlord only: nothing saved, nothing to the tenant.
+        const ritaBefore = (await outbox(`rita.${tag}@tenant-e2e.ca`)).length; const notesBefore = (await api(pg, '/api/state')).body.data.notices.length;
+        const testSince = new Date(Date.now() - 2000).toISOString();
+        await pg.click('#fw-test-email');
+        await until(async () => (await outbox('')).find((x) => x.kind === 'notice-test' && x.attached_form === 'on-lease' && new Date(x.created_at).toISOString() > testSince), 8000, 'the test copy');
+        if ((await outbox(`rita.${tag}@tenant-e2e.ca`)).length !== ritaBefore || (await api(pg, '/api/state')).body.data.notices.length !== notesBefore) throw new Error('the test copy reached the tenant or saved a lease');
         await pg.waitForSelector('#fw-lease-send >> text=with a copy to you');
         await pg.waitForTimeout(200); if (!(await pg.locator('.slide-confirm').count())) throw new Error('checks failed: ' + (await pg.locator('.checks li.bad').allTextContents()).join(' | '));
         await approve(pg);

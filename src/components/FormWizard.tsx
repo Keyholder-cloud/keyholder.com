@@ -9,7 +9,7 @@ import { fmt } from '../lib/money';
 import { MAIL_EXTRA_DAYS, arrears, earliestIncrease, formChecks, n4NoticeDays, propertyOf, terminationDate } from '../lib/notices';
 import { OFFICIAL, REL, REL_LABEL, endOfRentalPeriod, hasOfficialForm, ltbValues } from '../lib/ltbForms';
 import { ApiError, serverMode } from '../data/api';
-import { emailNotice, openOfficialPdf, pdfName } from '../data/officialForms';
+import { emailNotice, openOfficialPdf, pdfName, testEmailForm } from '../data/officialForms';
 import * as sync from '../data/sync';
 import { Drawer, Field, Seg, SlideToConfirm, Stamp } from './ui';
 import { Icon } from './Icon';
@@ -268,7 +268,14 @@ export function FormWizard({ lease, formId, onClose }: { lease: Lease; formId: s
             {live ? (
               <>
                 <p className="small" style={{ margin: '8px 0' }}>The Landlord and Tenant Board's own form ({official.version}), filled in with these details and signed with your name. {official.tenantPages}</p>
-                <button className="btn" id="fw-open-form" onClick={openForm} disabled={busy}><Icon name="paper" size={16} />{busy ? 'Opening…' : isLease ? 'Preview the lease (PDF)' : 'Open the filled form (PDF)'}</button>
+                <div className="btn-row">
+                  <button className="btn" id="fw-open-form" onClick={openForm} disabled={busy}><Icon name="paper" size={16} />{busy ? 'Opening…' : isLease ? 'Preview the lease (PDF)' : 'Open the filled form (PDF)'}</button>
+                  <button className="btn ghost" id="fw-test-email" disabled={busy || !values} title="Emails this PDF to you only. Nothing is saved or sent to the tenant." onClick={async () => {
+                    setBusy(true);
+                    try { const r = await testEmailForm(fid, values!, pdfName({ kind: form.code, servedOn, createdAt: today }, who)); act.say(`Test copy sent to ${r.to} only. Nothing went to the tenant.`); }
+                    catch (e) { act.say((e as Error).message); } finally { setBusy(false); }
+                  }}><Icon name="mail" size={16} />Email me a test copy</button>
+                </div>
               </>
             ) : <p className="tiny" style={{ color: '#55605B' }}>On your live account, this is the Landlord and Tenant Board's own form ({official.version}), filled in and ready to print or email.</p>}
           </div>

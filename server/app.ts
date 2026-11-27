@@ -858,6 +858,19 @@ export async function buildApp({ cfg, db, fetch: fetcher = fetch, staticDir, key
     await audit(db, { actor: u.email, actorId: u.id, accountId, scope: 'app', action: lease ? 'Lease emailed to sign' : 'Notice emailed', detail: `${f.code} to ${people.length} tenant${people.length > 1 ? 's' : ''}`, ip: ip(req) });
     return { queued, to: people.map((p) => p.email) };
   });
+  // A test copy: the form as filled in now, to the landlord only (nothing saved, nothing to the tenant).
+  app.post('/api/forms/:formId/test-email', { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } }, async (req) => {
+    const { u, accountId } = await ownerAccount(req);
+    const { formId } = z.object({ formId: z.string().max(40) }).parse(req.params);
+    if (!hasOfficialForm(formId)) fail(404, 'There is no official form for this.');
+    const b = z.object({ values: formValues, filename: z.string().max(120).optional() }).parse(req.body);
+    try { await fillOfficial(formId, b.values); } catch (e) { if (e instanceof OfficialFormError) fail(422, e.message); throw e; }
+    const f = formById(formId)!;
+    await queueMail(db, { to: u.email, toName: u.name, kind: 'notice-test', accountId, subject: `Test copy (not sent to anyone else): ${f.code}`,
+      text: [`This is a test copy of ${f.code}, ${f.title}, filled in as it is now. It went only to you: nothing was saved or sent to the tenant.`, '', 'Open Keyholder: ' + `${cfg.appUrl}/#/paperwork/notices`].join('\n'),
+      attachment: { formId, values: b.values, filename: (b.filename ?? `${f.code} - test.pdf`).replace(/[^\w .-]/g, '') } });
+    return { to: u.email };
+  });
   // A copy of an official form (a lease or a notice) to the landlord's own email.
   app.post('/api/notices/:id/copy', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
     const { u, accountId } = await ownerAccount(req);
