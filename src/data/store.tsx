@@ -325,6 +325,8 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
         const nowIso = new Date().toISOString();
         d.income = [...(d.income ?? []), { ...i, id, createdAt: nowIso }];
         const lease = i.leaseId ? d.leases.find((l) => l.id === i.leaseId) : undefined;
+        // Last month's rent received: the lease's deposit is that amount (it shows on the lease and the tenant's page).
+        if (lease && i.kind === 'deposit' && !lease.lmrDeposit) lease.lmrDeposit = i.amount;
         if (lease) {
           auto = d.profile.autoSend;
           const number = Math.max(1000, ...d.receipts.map((r) => r.number)) + 1;

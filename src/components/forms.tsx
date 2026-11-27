@@ -109,21 +109,31 @@ export function MarkRentPaid({ onClose, leaseId }: { onClose: () => void; leaseI
   const tenant = lease ? state.tenants.find((t) => t.id === lease.tenantId) : undefined;
   const unit = lease ? state.units.find((u) => u.id === lease.unitId) : undefined;
   const who = tenant ? `${tenant.names.join(' & ')} · ${lease?.room ?? `Unit ${unit?.label ?? ''}`}` : '';
-  const pickMonth = (p: string) => { const l = months.find((x) => x.period === p); setPeriod(p); setAmount(l ? Math.max(0, l.charge - l.paid) || l.charge : lease?.rent); setMethod(lease?.paymentMethod ?? 'etransfer'); setStep('confirm'); };
+  // Last month's rent, paid in advance: a deposit (held, not rent for a month), with its own receipt.
+  const lmrPaid = lease ? (state.income ?? []).find((i) => !i.voided && i.kind === 'deposit' && i.leaseId === lease.id) : undefined;
+  const isLmr = period === 'LMR';
+  const [lmrId, setLmrId] = useState('');
+  const pickMonth = (p: string) => { const l = months.find((x) => x.period === p); setPeriod(p); setAmount(p === 'LMR' ? (lease?.lmrDeposit || lease?.rent) : l ? Math.max(0, l.charge - l.paid) || l.charge : lease?.rent); setMethod(lease?.paymentMethod ?? 'etransfer'); setStep('confirm'); };
   const submit = () => {
     if (!lease || !amount || !period) return;
+    if (isLmr) {
+      const u = state.units.find((x) => x.id === lease.unitId);
+      setLmrId(act.logIncome({ kind: 'deposit', label: "Last month's rent deposit", amount, date, method, leaseId: lease.id, propertyId: u?.propertyId, source: 'manual' }));
+      setStep('done'); return;
+    }
     setBefore(new Set(state.payments.map((p) => p.id)));
     act.logPayment({ leaseId: lease.id, amount, date, period, method, source: 'manual' });
     setStep('done');
   };
   // The receipt made just now for this payment.
-  const receipt = step === 'done' && lease ? state.payments.filter((p) => p.leaseId === lease.id && p.period === period && !p.voided && !before?.has(p.id))
-    .map((p) => state.receipts.find((r) => r.paymentId === p.id && r.status !== 'superseded')).find(Boolean) : undefined;
+  const receipt = step === 'done' && lease ? (isLmr ? state.receipts.find((r) => r.incomeId === lmrId && r.status !== 'superseded')
+    : state.payments.filter((p) => p.leaseId === lease.id && p.period === period && !p.voided && !before?.has(p.id))
+      .map((p) => state.receipts.find((r) => r.paymentId === p.id && r.status !== 'superseded')).find(Boolean)) : undefined;
   const back = step === 'month' && leases.length > 1 && !leaseId ? () => setStep('who') : step === 'confirm' ? () => setStep('month') : undefined;
-  const title = step === 'who' ? 'Who paid?' : step === 'month' ? 'Which month is it for?' : step === 'confirm' ? `Mark ${fmtPeriod(period)} paid` : 'Rent marked paid';
+  const title = step === 'who' ? 'Who paid?' : step === 'month' ? 'Which month is it for?' : step === 'confirm' ? (isLmr ? "Log last month's rent deposit" : `Mark ${fmtPeriod(period)} paid`) : isLmr ? 'Deposit logged' : 'Rent marked paid';
   return (
     <Drawer title={title} onClose={onClose} footer={step === 'done' ? <button className="btn primary" onClick={onClose}>Done</button>
-      : step === 'confirm' ? <><button className="btn ghost" onClick={back}>Other month</button><button className="btn primary" id="mrp-go" disabled={!amount} onClick={submit}>Mark paid</button></>
+      : step === 'confirm' ? <><button className="btn ghost" onClick={back}>Other month</button><button className="btn primary" id="mrp-go" disabled={!amount} onClick={submit}>{isLmr ? 'Log deposit' : 'Mark paid'}</button></>
       : back ? <button className="btn ghost" onClick={back}>Back</button> : <button className="btn ghost" onClick={onClose}>Cancel</button>}>
       <ol className="mrp-steps" aria-label="Steps">{['Tenant', 'Month', 'Amount', 'Receipt'].map((t, i) => <li key={t} className={i <= ['who', 'month', 'confirm', 'done'].indexOf(step) ? 'on' : ''}>{t}</li>)}</ol>
       {step !== 'who' && who && <p className="small soft" style={{ marginTop: 0 }}><Icon name="user" size={14} /> {who}</p>}
@@ -146,8 +156,13 @@ export function MarkRentPaid({ onClose, leaseId }: { onClose: () => void; leaseI
               </button>
             );
           })}
+          <button role="radio" aria-checked={false} id="mrp-lmr" disabled={!!lmrPaid} className={`mrp-month mrp-lmr${lmrPaid ? ' paid' : ''}`} onClick={() => pickMonth('LMR')}>
+            <strong>Last month's rent</strong>
+            <span>{lmrPaid ? <><Icon name="check" size={13} /> Deposit received {fmtDate(lmrPaid.date)}</> : `Deposit${lease.lmrDeposit ? ` of ${fmt(lease.lmrDeposit)}` : ''}, paid in advance`}</span>
+          </button>
         </div>
       )}
+      {step === 'confirm' && lease && isLmr && <p className="small soft" style={{ marginTop: 0 }} id="mrp-lmr-note">Kept as a deposit for the last month of the tenancy, not as this month's rent or this year's income. The receipt says what it is for.</p>}
       {step === 'confirm' && lease && (
         <>
           <div className="grid2">
@@ -159,7 +174,7 @@ export function MarkRentPaid({ onClose, leaseId }: { onClose: () => void; leaseI
       )}
       {step === 'done' && (
         <div className="mrp-done" id="mrp-done">
-          <p className="callout pine" role="status" style={{ marginTop: 0 }}><Icon name="check" size={16} /> {fmt(amount ?? 0)} for {fmtPeriod(period)} is recorded.</p>
+          <p className="callout pine" role="status" style={{ marginTop: 0 }}><Icon name="check" size={16} /> {fmt(amount ?? 0)} {isLmr ? "last month's rent deposit" : `for ${fmtPeriod(period)}`} is recorded.</p>
           {receipt ? (
             <div className="mrp-receipt"><span><Icon name="receipt" size={16} /> Receipt #{receipt.number}{receipt.status === 'sent' ? ' · sent to the tenant' : ' · ready to send'}</span>
               <ResendReceipt receiptId={receipt.id} label={receipt.status === 'sent' ? 'Resend' : 'Send receipt'} primary={receipt.status !== 'sent'} /></div>

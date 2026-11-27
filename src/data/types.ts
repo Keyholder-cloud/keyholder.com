@@ -200,7 +200,8 @@ export interface Payment {
  * Money in that is not rent: a tenant's share of a bill, parking, laundry, storage, a late fee, or anything else.
  * Kept apart from rent payments so the rent ledger (and late-rent steps) never count it; it does count as income.
  */
-export type IncomeKind = 'bill' | 'parking' | 'laundry' | 'storage' | 'late-fee' | 'other';
+/** 'deposit': last month's rent paid in advance (held, not this year's income until it is used for the last month). */
+export type IncomeKind = 'bill' | 'parking' | 'laundry' | 'storage' | 'late-fee' | 'other' | 'deposit';
 export interface Income {
   id: ID;
   kind: IncomeKind;

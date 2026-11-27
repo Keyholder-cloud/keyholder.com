@@ -904,3 +904,4 @@ a.unit-who:hover strong, .unit-who.as-link:hover strong { text-decoration: under
 .lease-util { display: grid; gap: 8px; }
 .lease-util > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .lease-util > div > .small { min-width: 120px; }
+.mrp-lmr { grid-column: 1 / -1; border-style: dashed; }

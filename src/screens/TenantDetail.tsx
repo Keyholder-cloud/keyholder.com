@@ -162,7 +162,7 @@ export function TenantDetail() {
                 <div>Start</div><div>{fmtDate(lease.start)}</div>
                 {lease.end && <><div>Ended</div><div>{fmtDate(lease.end)}</div></>}
                 <div>Paid by</div><div>{methodLabel(lease.paymentMethod)}</div>
-                <div>Last month's rent</div><div>{fmt(lease.lmrDeposit)}</div>
+                <div>Last month's rent</div><div>{(() => { const got = (state.income ?? []).find((i) => !i.voided && i.kind === 'deposit' && i.leaseId === lease.id); return got ? `${fmt(got.amount)} · received ${fmtDate(got.date)}` : lease.lmrDeposit ? `${fmt(lease.lmrDeposit)} · not received yet` : 'None'; })()}</div>
                 <div>Utilities</div><div style={{ fontFamily: 'inherit' }}>{lease.utilities || '—'}</div>
                 <div>Parking / pets</div><div>{lease.parking ? 'Yes' : 'No'} / {lease.pets ? 'Yes' : 'No'}</div>
                 <div>Email notices</div><div>{t.emailConsent ? `Consented ${t.emailConsentDate ? fmtDate(t.emailConsentDate) : ''}` : 'Not consented'}</div>
