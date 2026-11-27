@@ -793,7 +793,7 @@ function makeActions(mut: Mut, toast: (s: string) => void, get: () => AppState) 
       const status: Notice['status'] = f?.kind === 'application' ? 'filed' : f?.kind === 'notice' ? 'served' : 'signed';
       const id = uid('n');
       mut((d) => { d.notices.push({ ...n, id, createdAt: new Date().toISOString(), status }); audit(d, `${n.kind} ${status}`, `${f?.title ?? ''}${n.terminationDate ? ` · ${n.terminationDate}` : ''}${n.official ? ` · official form ${n.official.version}` : ''}`); });
-      toast(status === 'filed' ? `${n.kind} prepared with the ledger, notice and proof of service.` : status === 'served' ? `${n.kind} approved and recorded with proof of service.` : `${n.kind} saved with the lease.`);
+      toast(status === 'filed' ? `${n.kind} prepared with the ledger, notice and proof of service.` : status === 'served' ? `${n.kind} approved and recorded with proof of service.` : `${n.kind} details recorded with the lease. Nothing was sent to the tenant; print it or send it yourself to sign.`);
       return id;
     },
     /** The official form of a served notice went to the tenants by email. */

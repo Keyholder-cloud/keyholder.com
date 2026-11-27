@@ -243,7 +243,7 @@ export function FormWizard({ lease, formId, onClose }: { lease: Lease; formId: s
           <p className="small soft">Recorded as your proof of service.</p>
         </>
       )}
-      {(form.kind === 'agreement' || form.kind === 'report') && <p className="small soft" style={{ marginTop: 16 }}>Both you and the tenant sign. Keyholder keeps the signed copy with the lease.</p>}
+      {(form.kind === 'agreement' || form.kind === 'report') && <p className="small soft" style={{ marginTop: 16 }}>Approving records these details with the lease. Keyholder does not send it to the tenant or sign it: print or send the lease yourself, and both of you sign it.</p>}
 
       <p className="small soft" style={{ marginTop: 16 }}><Icon name="info" size={14} /> A legal document: read it{official && live ? ' (open the form above)' : ''} before you approve{official ? `. Approving signs it as ${state.profile.name || 'you'}` : ''}.</p>
       {ok ? <SlideToConfirm label={form.kind === 'application' ? 'Slide to prepare the application' : form.kind === 'notice' ? 'Slide to approve and record' : 'Slide to approve'} onConfirm={() => void approve()} />
